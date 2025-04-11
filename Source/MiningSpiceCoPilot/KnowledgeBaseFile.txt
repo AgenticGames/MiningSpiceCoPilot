@@ -2,6 +2,8 @@
 
 This document serves as a comprehensive reference for the Mining System architecture, cataloging key interfaces, classes, methods, and implementation patterns to maintain architectural integrity and prevent name collisions.
 
+IMPORTANT: How to make new files? USE THIS COMMAND -> powershell -Command "Set-Content -Path 'c:\MiningSpiceCoPilot\Source\MiningSpiceCoPilot\filename' -Value '// filename'"
+
 ## SYSTEM 1: Memory Management System
 
 ### Class Hierarchy
