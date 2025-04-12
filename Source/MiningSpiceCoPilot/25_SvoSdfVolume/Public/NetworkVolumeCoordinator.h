@@ -1,5 +1,5 @@
 // NetworkVolumeCoordinator.h
-// Network state coordination for SVO+SDF volume across clients
+// Coordinates network syncing of volume changes between clients and server
 
 #pragma once
 
@@ -7,19 +7,20 @@
 #include "Net/UnrealNetwork.h"
 #include "Engine/ActorChannel.h"
 #include "Net/DataReplication.h"
-#include "Net/Core/NetResult.h"
 #include "HAL/ThreadSafeBool.h"
+#include "Containers/Map.h"
+#include "25_SvoSdfVolume/Public/BoxHash.h"
 
 // Forward declarations
 class USVOHybridVolume;
+class FVolumeSerializer;
 class FOctreeNodeManager;
 class FMaterialSDFManager;
-class FVolumeSerializer;
 
 /**
- * Network state coordination for SVO+SDF volume across clients
- * Handles field modification tracking, authority validation, and replication
- * Supports bandwidth-optimized updates and conflict resolution
+ * Network volume coordination system
+ * Handles synchronization of volume data between clients and server
+ * Implements conflict resolution, region locking, and delta compression
  */
 class MININGSPICECOPILOT_API FNetworkVolumeCoordinator
 {
@@ -27,78 +28,127 @@ public:
     FNetworkVolumeCoordinator();
     ~FNetworkVolumeCoordinator();
 
-    // Operation authority levels
-    enum class EOperationAuthority : uint8
+    // Network operation results
+    enum class ENetworkResult : uint8
     {
-        Server,           // Server-only operations
-        ServerValidated,  // Client request, server validated
-        ClientAuthoritative, // Client operations with zone authority
-        ReplicatedOnly    // Operations for replication only
+        Success,
+        Failure,
+        Conflict,
+        OutOfSync,
+        Pending
     };
 
-    // Initialization
-    void Initialize(USVOHybridVolume* InVolume, FOctreeNodeManager* InNodeManager, 
-                   FMaterialSDFManager* InMaterialManager, FVolumeSerializer* InSerializer);
+    // Authority levels for access control
+    enum class EAuthorityLevel : uint8
+    {
+        None,
+        ReadOnly,
+        ReadWrite,
+        Admin
+    };
+
+    // Types of pending operations
+    enum class EOperationType : uint8
+    {
+        Modification,
+        Query,
+        Lock,
+        Unlock,
+        Sync
+    };
+
+    // Network operation tracking
+    struct FPendingOperation
+    {
+        uint64 OperationId;
+        EOperationType Type;
+        FBox Region;
+        uint8 MaterialIndex;
+        uint64 BaseVersion;
+        double Timestamp;
+        bool bCompleted;
+        ENetworkResult Result;
+        
+        // Constructor with defaults
+        FPendingOperation()
+            : OperationId(0)
+            , Type(EOperationType::Modification)
+            , Region(ForceInit)
+            , MaterialIndex(0)
+            , BaseVersion(0)
+            , Timestamp(0.0)
+            , bCompleted(false)
+            , Result(ENetworkResult::Pending)
+        {}
+        
+        // Constructor with parameters
+        FPendingOperation(uint64 InOpId, EOperationType InType, const FBox& InRegion,
+                          uint8 InMaterialIdx, uint64 InBaseVersion)
+            : OperationId(InOpId)
+            , Type(InType)
+            , Region(InRegion)
+            , MaterialIndex(InMaterialIdx)
+            , BaseVersion(InBaseVersion)
+            , Timestamp(FPlatformTime::Seconds())
+            , bCompleted(false)
+            , Result(ENetworkResult::Pending)
+        {}
+    };
+
+    // Initialize with volume reference
+    void Initialize(USVOHybridVolume* InVolume, FVolumeSerializer* InSerializer);
     
-    // Network state management
-    void RegisterNetworkOperation(uint64 OperationId, const FVector& Position, float Radius, uint8 MaterialIndex);
-    bool ValidateNetworkOperation(uint64 OperationId, const FVector& Position, float Radius, uint8 MaterialIndex);
-    void CompleteNetworkOperation(uint64 OperationId, bool Success);
-    void AbortNetworkOperation(uint64 OperationId);
+    // Volume synchronization
+    ENetworkResult RequestRegionModification(const FBox& Region, uint8 MaterialIndex);
+    ENetworkResult SubmitRegionModification(const FBox& Region, uint8 MaterialIndex, const TArray<uint8>& DeltaData, uint64 BaseVersion);
+    ENetworkResult RequestRegionLock(const FBox& Region, float TimeoutSeconds);
+    ENetworkResult ReleaseRegionLock(const FBox& Region);
+    
+    // Data synchronization
+    ENetworkResult SynchronizeWithServer(uint64 ClientVersion);
+    TArray<uint8> GenerateServerUpdate(uint64 BaseVersion);
+    ENetworkResult ApplyClientUpdate(const TArray<uint8>& DeltaData, uint64 BaseVersion, uint64 ClientId);
     
     // Authority management
-    bool HasAuthorityForOperation(const FVector& Position, float Radius) const;
-    void RegisterClientAuthority(uint64 ClientId, const FBox& Zone);
-    void RevokeClientAuthority(uint64 ClientId, const FBox& Zone);
-    void SynchronizeAuthorityZones();
+    void SetClientAuthority(uint64 ClientId, EAuthorityLevel Authority);
+    EAuthorityLevel GetClientAuthority(uint64 ClientId) const;
+    bool IsClientAuthorized(uint64 ClientId, const FBox& Region) const;
     
-    // State synchronization
-    void GenerateStateDelta(uint64 FromVersion, uint64 ToVersion, TArray<uint8>& OutDeltaData);
-    bool ApplyStateDelta(const TArray<uint8>& DeltaData, uint64 FromVersion, uint64 ToVersion);
-    void RequestFullStateSync();
-    void RequestPartialStateSync(const FBox& Region, const TArray<uint8>& MaterialIndices);
+    // Conflict resolution
+    void SetConflictResolutionStrategy(uint8 Strategy);
+    void RegisterConflictHandler(TFunction<bool(const FBox&, uint8, uint64)> Handler);
+    bool ResolveConflict(const FBox& Region, uint8 MaterialIndex, uint64 ClientId);
     
-    // Network traffic optimization
-    void SetReplicationPriority(const FBox& Region, uint8 Priority);
-    void SetMaterialReplicationPriority(uint8 MaterialIndex, uint8 Priority);
-    void OptimizeBandwidthUsage(float AvailableBandwidth);
+    // Region queries and tracking
+    bool IsRegionLocked(const FBox& Region) const;
+    bool IsRegionModifiedSince(const FBox& Region, uint64 BaseVersion) const;
+    TArray<FBox> GetModifiedRegions(uint64 BaseVersion) const;
+    TMap<FBox, uint8> GetActiveRegions() const;
     
-    // Network events
-    void OnClientConnected(uint64 ClientId);
-    void OnClientDisconnected(uint64 ClientId);
-    void OnNetworkStateReceived(const TArray<uint8>& StateData, uint64 BaseVersion, uint64 TargetVersion);
-    void OnNetworkStateSent(uint64 BaseVersion, uint64 TargetVersion);
+    // Operation management
+    uint64 GetPendingOperationCount() const;
+    ENetworkResult GetOperationResult(uint64 OperationId) const;
+    void CancelOperation(uint64 OperationId);
+    void CleanupCompletedOperations(float TimeThresholdSeconds = 60.0f);
     
-    // Version management
-    uint64 GetCurrentStateVersion() const;
-    bool ValidateStateVersion(uint64 Version) const;
-    void RegisterStateVersion(uint64 Version);
-
 private:
-    // Internal data structures
-    struct FPendingOperation;
-    struct FClientAuthZone;
-    struct FReplicationState;
-    struct FOperationConflict;
-    
-    // Implementation details
+    // Internal data
     USVOHybridVolume* Volume;
-    FOctreeNodeManager* NodeManager;
-    FMaterialSDFManager* MaterialManager;
     FVolumeSerializer* Serializer;
     TMap<uint64, FPendingOperation> PendingOperations;
-    TMap<uint64, TArray<FClientAuthZone>> ClientAuthorityZones;
-    TMap<FBox, uint8> RegionPriorities;
-    TMap<uint8, uint8> MaterialPriorities;
-    uint64 StateVersion;
-    FThreadSafeBool IsSynchronizing;
+    TMap<FBox, uint8> ActiveRegions;
+    TMap<FBox, uint64> RegionLocks;
+    TMap<uint64, EAuthorityLevel> ClientAuthorities;
+    uint8 ConflictResolutionStrategy;
+    TFunction<bool(const FBox&, uint8, uint64)> ConflictHandler;
+    FThreadSafeBool bServerMode;
     
     // Helper methods
-    bool CheckOperationConflicts(const FVector& Position, float Radius, uint8 MaterialIndex, TArray<FOperationConflict>& Conflicts);
-    void ResolveOperationConflict(const FOperationConflict& Conflict);
-    void PrioritizeUpdates(TArray<FBox>& RegionsToUpdate, float AvailableBandwidth);
-    bool IsMaterialReplicationRequired(uint8 MaterialIndex, const FBox& Region);
-    void TrackBandwidthUsage(uint64 DataSize, bool IsOutgoing);
-    bool ValidateClientAuthority(uint64 ClientId, const FBox& OperationZone);
-    void UpdateNetworkStatistics();
+    bool CheckRegionOverlap(const FBox& RegionA, const FBox& RegionB) const;
+    uint64 GenerateOperationId() const;
+    void TrackModifiedRegion(const FBox& Region, uint8 MaterialIndex);
+    void UpdateOperationStatus(uint64 OperationId, ENetworkResult Result);
+    void CleanupStaleRegionLocks();
+    bool ValidateVersionConsistency(uint64 BaseVersion) const;
+    ENetworkResult ProcessModificationRequest(const FBox& Region, uint8 MaterialIndex, uint64 ClientId);
 };

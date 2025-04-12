@@ -1,80 +1,132 @@
 // DistanceFieldEvaluator.h
-// High-performance distance field evaluation with SIMD optimization
+// Evaluates distance fields for different materials at arbitrary positions
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Math/SIMDFloat.h"
-#include "Math/VectorRegister.h"
-#include "Math/Vector.h"
+#include "Containers/Map.h"
+#include "25_SvoSdfVolume/Public/BoxHash.h"
 
 // Forward declarations
 class FOctreeNodeManager;
 class FMaterialSDFManager;
 
 /**
- * High-performance distance field evaluation with SIMD optimization
- * Provides efficient field sampling, hierarchical traversal, and gradient computation
- * Supports multi-channel evaluation and hardware-specific optimizations
+ * Distance field evaluator for multi-channel SDF volume
+ * Provides efficient field sampling with hardware acceleration when available
+ * Includes gradient computation, normal estimation, and intersection testing
  */
 class MININGSPICECOPILOT_API FDistanceFieldEvaluator
 {
 public:
     FDistanceFieldEvaluator();
     ~FDistanceFieldEvaluator();
-
-    // Initialization
-    void Initialize(FOctreeNodeManager* InNodeManager, FMaterialSDFManager* InMaterialManager);
-    void DetectHardwareCapabilities();
-
-    // Field evaluation
-    float EvaluateField(const FVector& WorldPosition, uint8 MaterialIndex) const;
-    TArray<float> EvaluateMultiMaterialField(const FVector& WorldPosition, const TArray<uint8>& MaterialIndices) const;
     
-    // SIMD-accelerated batch evaluation
-    void EvaluateFieldBatch(const TArray<FVector>& WorldPositions, uint8 MaterialIndex, TArray<float>& OutValues) const;
-    void EvaluateMultiMaterialFieldBatch(const TArray<FVector>& WorldPositions, 
-                                         const TArray<uint8>& MaterialIndices, 
-                                         TArray<TArray<float>>& OutValues) const;
+    // Hardware acceleration capabilities
+    struct FHardwareCapabilities
+    {
+        bool bHasSSE4;
+        bool bHasAVX;
+        bool bHasAVX2;
+        bool bHasNeonSupport;
+        bool bHasGPUAcceleration;
+        uint32 MaxThreadCount;
+        
+        // Constructor with defaults
+        FHardwareCapabilities() 
+            : bHasSSE4(false)
+            , bHasAVX(false)
+            , bHasAVX2(false)
+            , bHasNeonSupport(false)
+            , bHasGPUAcceleration(false)
+            , MaxThreadCount(1)
+        {}
+    };
     
-    // Gradient and normal calculation
-    FVector EvaluateGradient(const FVector& WorldPosition, uint8 MaterialIndex) const;
-    FVector EvaluateNormal(const FVector& WorldPosition, uint8 MaterialIndex) const;
-    void EvaluateGradientBatch(const TArray<FVector>& WorldPositions, uint8 MaterialIndex, TArray<FVector>& OutGradients) const;
+    // Cache entry for distance field results
+    struct FCacheEntry
+    {
+        float Distance;
+        FVector Position;
+        FVector Gradient;
+        double Timestamp;
+        bool bHasGradient;
+        
+        // Constructor
+        FCacheEntry()
+            : Distance(0.0f)
+            , Position(FVector::ZeroVector)
+            , Gradient(FVector::ZeroVector)
+            , Timestamp(0.0)
+            , bHasGradient(false)
+        {}
+        
+        // Constructor with values
+        FCacheEntry(float InDistance, const FVector& InPosition)
+            : Distance(InDistance)
+            , Position(InPosition)
+            , Gradient(FVector::ZeroVector)
+            , Timestamp(FPlatformTime::Seconds())
+            , bHasGradient(false)
+        {}
+    };
     
-    // Material boundary detection
-    bool FindMaterialBoundary(const FVector& Start, const FVector& Direction, float MaxDistance, 
-                              uint8 MaterialIndex, FVector& OutHitPoint, FVector& OutNormal) const;
+    // Initialize with managers
+    void Initialize(FOctreeNodeManager* InOctreeManager, FMaterialSDFManager* InMaterialManager);
     
-    // Performance optimization
-    void SetEvaluationQuality(float Quality);
+    // Distance field evaluation
+    float EvaluateDistanceField(const FVector& Position, uint8 MaterialIndex) const;
+    TArray<float> EvaluateMultiChannelField(const FVector& Position) const;
+    
+    // Gradient and normal computation
+    FVector EvaluateGradient(const FVector& Position, uint8 MaterialIndex) const;
+    FVector EstimateNormal(const FVector& Position, uint8 MaterialIndex) const;
+    
+    // Intersection and inside/outside tests
+    bool IsPositionInside(const FVector& Position, uint8 MaterialIndex) const;
+    bool IsIntersectingField(const FBox& Box, uint8 MaterialIndex, float Threshold = 0.0f) const;
+    bool TraceSphere(const FVector& Start, const FVector& End, float Radius, uint8 MaterialIndex, FVector& HitPosition) const;
+    
+    // Batch operations
+    void EvaluateFieldBatch(const TArray<FVector>& Positions, uint8 MaterialIndex, TArray<float>& OutDistances) const;
+    void EvaluateGradientBatch(const TArray<FVector>& Positions, uint8 MaterialIndex, TArray<FVector>& OutGradients) const;
+    
+    // Configuration
+    void SetEvaluationAccuracy(float Accuracy);
     void EnableCaching(bool bEnable);
+    void SetMaxCacheSize(uint32 MaxEntries);
     void ClearCache();
-    void PreCacheRegion(const FBox& Region, float Spacing, uint8 MaterialIndex);
     
-    // Network-related functionality
-    void RegisterNetworkQuery(const FVector& WorldPosition, uint8 MaterialIndex, float Value);
-    float PredictNetworkValue(const FVector& WorldPosition, uint8 MaterialIndex) const;
-    void ReconcileNetworkPrediction(const FVector& WorldPosition, uint8 MaterialIndex, float ActualValue);
-
+    // Performance monitoring
+    double GetAverageEvaluationTime() const;
+    uint32 GetCacheHitCount() const;
+    uint32 GetCacheMissCount() const;
+    
 private:
-    // Internal data structures
-    struct FCacheEntry;
-    struct FHardwareCapabilities;
-    
-    // Implementation details
-    FOctreeNodeManager* NodeManager;
+    // Internal data
+    FOctreeNodeManager* OctreeManager;
     FMaterialSDFManager* MaterialManager;
-    TMap<uint64, FCacheEntry> EvaluationCache;
-    FHardwareCapabilities Capabilities;
-    float EvaluationQuality;
+    
+    // Evaluation cache
+    mutable TMap<uint64, FCacheEntry> EvaluationCache;
+    mutable FHardwareCapabilities Capabilities;
+    
+    // Configuration
+    float EvaluationAccuracy;
+    uint32 MaxCacheSize;
     bool bCachingEnabled;
     
+    // Performance counters
+    mutable uint32 CacheHitCount;
+    mutable uint32 CacheMissCount;
+    mutable double TotalEvaluationTime;
+    mutable uint32 TotalEvaluations;
+    
     // Helper methods
-    float EvaluateFieldSIMD(VectorRegister4Float Position, uint8 MaterialIndex) const;
-    float EvaluateFieldAccurate(const FVector& WorldPosition, uint8 MaterialIndex) const;
-    float EvaluateFieldFast(const FVector& WorldPosition, uint8 MaterialIndex) const;
-    FVector CalculateNumericalGradient(const FVector& WorldPosition, uint8 MaterialIndex, float Delta) const;
-    uint64 GenerateCacheKey(const FVector& Position, uint8 MaterialIndex) const;
-    void UpdateQueryStatistics(const FVector& Position, uint8 MaterialIndex) const;
+    float EvaluateDistanceFieldInternal(const FVector& Position, uint8 MaterialIndex) const;
+    FVector EvaluateGradientInternal(const FVector& Position, uint8 MaterialIndex) const;
+    uint64 CalculateCacheKey(const FVector& Position, uint8 MaterialIndex) const;
+    void UpdateCache(const FVector& Position, uint8 MaterialIndex, float Distance) const;
+    void MaintainCacheSize() const;
+    void DetectHardwareCapabilities();
 };

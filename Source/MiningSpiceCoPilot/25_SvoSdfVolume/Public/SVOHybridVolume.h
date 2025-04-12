@@ -6,21 +6,19 @@
 #include "CoreMinimal.h"
 #include "Containers/SparseArray.h"
 #include "Math/UnrealMathSSE.h"
-#include "Math/SIMDFloat.h"
 #include "HAL/ThreadSafeCounter64.h"
 #include "Templates/Atomic.h"
 #include "HAL/ThreadSafeBool.h"
 #include "Net/UnrealNetwork.h"
+#include "MiningSpiceCoPilot/2_MemoryManagement/Public/Interfaces/IMemoryTracker.h"
+#include "MiningSpiceCoPilot/25_SvoSdfVolume/Public/OctreeNodeManager.h"
+#include "MiningSpiceCoPilot/25_SvoSdfVolume/Public/MaterialSDFManager.h"
+#include "MiningSpiceCoPilot/25_SvoSdfVolume/Public/DistanceFieldEvaluator.h"
+#include "MiningSpiceCoPilot/25_SvoSdfVolume/Public/MaterialInteractionModel.h"
+#include "MiningSpiceCoPilot/25_SvoSdfVolume/Public/VolumeSerializer.h"
+#include "MiningSpiceCoPilot/25_SvoSdfVolume/Public/NetworkVolumeCoordinator.h"
+#include "MiningSpiceCoPilot/25_SvoSdfVolume/Public/NarrowBandAllocator.h"
 #include "SVOHybridVolume.generated.h"
-
-// Forward declarations
-class FOctreeNodeManager;
-class FMaterialSDFManager;
-class FDistanceFieldEvaluator;
-class FMaterialInteractionModel;
-class FVolumeSerializer;
-class FNetworkVolumeCoordinator;
-class FNarrowBandAllocator;
 
 /**
  * Core hybrid volume representation combining sparse octree with multi-channel SDFs

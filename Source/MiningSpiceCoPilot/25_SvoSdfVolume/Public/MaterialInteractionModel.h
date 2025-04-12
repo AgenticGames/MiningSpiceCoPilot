@@ -40,6 +40,84 @@ public:
         Custom
     };
 
+    // Material pair definition used as key in the interaction rules
+    struct FMaterialPair
+    {
+        uint8 MaterialA;
+        uint8 MaterialB;
+        
+        // Default constructor
+        FMaterialPair() : MaterialA(0), MaterialB(0) {}
+        
+        // Constructor with materials
+        FMaterialPair(uint8 InMaterialA, uint8 InMaterialB) : MaterialA(InMaterialA), MaterialB(InMaterialB) {}
+        
+        // Equal operator for use with TMap
+        bool operator==(const FMaterialPair& Other) const
+        {
+            return MaterialA == Other.MaterialA && MaterialB == Other.MaterialB;
+        }
+        
+        // For use in TMap as key
+        friend uint32 GetTypeHash(const FMaterialPair& Pair)
+        {
+            return HashCombine(GetTypeHash(Pair.MaterialA), GetTypeHash(Pair.MaterialB));
+        }
+    };
+    
+    // Defines how two materials interact when they meet
+    struct FInteractionRule
+    {
+        enum class EInteractionType : uint8
+        {
+            None,
+            Blend,
+            Replace,
+            Erode,
+            Repel
+        };
+        
+        EInteractionType Type;
+        float Strength; // 0.0 to 1.0, how strongly materials interact
+        float Distance; // Distance threshold for interaction to take effect
+        
+        // Default constructor
+        FInteractionRule() 
+            : Type(EInteractionType::None)
+            , Strength(0.0f)
+            , Distance(0.0f) 
+        {}
+        
+        // Constructor with parameters
+        FInteractionRule(EInteractionType InType, float InStrength, float InDistance)
+            : Type(InType)
+            , Strength(InStrength)
+            , Distance(InDistance)
+        {}
+    };
+    
+    // Settings for blending two materials
+    struct FBlendSettings
+    {
+        float BlendFactor; // 0.0 to 1.0, how much to blend
+        float TransitionWidth; // Width of the transition region
+        bool bSmoothTransition; // Whether to use smooth interpolation
+        
+        // Default constructor
+        FBlendSettings()
+            : BlendFactor(0.5f)
+            , TransitionWidth(1.0f)
+            , bSmoothTransition(true)
+        {}
+        
+        // Constructor with parameters
+        FBlendSettings(float InBlendFactor, float InTransitionWidth, bool bInSmoothTransition)
+            : BlendFactor(InBlendFactor)
+            , TransitionWidth(InTransitionWidth)
+            , bSmoothTransition(bInSmoothTransition)
+        {}
+    };
+
     // Initialization
     void Initialize(FMaterialSDFManager* InMaterialManager);
     
@@ -75,11 +153,6 @@ public:
 
 private:
     // Internal data structures
-    struct FMaterialPair;
-    struct FInteractionRule;
-    struct FBlendSettings;
-    
-    // Implementation details
     FMaterialSDFManager* MaterialManager;
     TMap<FMaterialPair, FInteractionRule> InteractionRules;
     TMap<uint8, uint8> MaterialPriorities;

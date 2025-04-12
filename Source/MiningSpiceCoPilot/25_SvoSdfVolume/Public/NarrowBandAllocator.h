@@ -68,7 +68,7 @@ private:
     
     // Implementation details
     TArray<FMemoryChunk> MemoryChunks;
-    TBinaryHeap<FMemoryBlock> FreeBlocks;
+    TBinaryHeap<FMemoryBlock*, TLess<FMemoryBlock*>> FreeBlocks;
     TArray<FNarrowBandRegion> ActiveRegions;
     EAllocationStrategy AllocationStrategy;
     uint32 DefaultBlockSize;
