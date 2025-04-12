@@ -3,38 +3,33 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Interfaces/IRegistry.h"
+#include "Core/Public/Interfaces/IRegistry.h"
 #include "Containers/Map.h"
 #include "Templates/SharedPointer.h"
 #include "HAL/ThreadSafeBool.h"
 #include "Misc/SpinLock.h"
-#include "Math/Vector.h"
-#include "Math/Transform.h"
-
-// Forward declarations
-class UMaterialInterface;
 
 /**
  * SDF field operation types for CSG operations
  */
 enum class ESDFOperationType : uint8
 {
-    /** Union operation (min) */
+    /** Union of two SDF fields */
     Union,
     
-    /** Subtraction operation */
+    /** Subtraction of two SDF fields */
     Subtraction,
     
-    /** Intersection operation (max) */
+    /** Intersection of two SDF fields */
     Intersection,
     
-    /** Smooth union with blending */
+    /** Smooth union of two SDF fields */
     SmoothUnion,
     
-    /** Smooth subtraction with blending */
+    /** Smooth subtraction of two SDF fields */
     SmoothSubtraction,
     
-    /** Smooth intersection with blending */
+    /** Smooth intersection of two SDF fields */
     SmoothIntersection,
     
     /** Custom operation type */
@@ -55,12 +50,12 @@ enum class ESDFEvaluationContext : uint8
     /** Physics simulation */
     Physics,
     
-    /** Game logic and effects */
+    /** Game logic and gameplay */
     GameLogic
 };
 
 /**
- * Structure containing metadata for an SDF field type
+ * Information about a registered SDF field type
  */
 struct MININGSPICECOPILOT_API FSDFFieldTypeInfo
 {
@@ -70,33 +65,27 @@ struct MININGSPICECOPILOT_API FSDFFieldTypeInfo
     /** Name of this field type */
     FName TypeName;
     
+    /** Number of channels supported by this field */
+    uint32 ChannelCount;
+    
     /** Version of this field type's schema */
     uint32 SchemaVersion;
     
-    /** Number of channels supported by this field type */
-    uint32 ChannelCount;
-    
-    /** Whether this field type supports narrow-band optimization */
-    bool bSupportsNarrowBand;
+    /** Alignment requirements for field data */
+    uint32 AlignmentRequirement;
     
     /** Whether this field type supports GPU evaluation */
-    bool bSupportsGPUEvaluation;
+    bool bSupportsGPU;
+    
+    /** Whether this field type supports multi-threaded evaluation */
+    bool bSupportsThreading;
     
     /** Whether this field type supports SIMD operations */
     bool bSupportsSIMD;
-    
-    /** Whether this field type supports serialization */
-    bool bSupportsSerialization;
-    
-    /** Optimal evaluation batch size for SIMD operations */
-    uint32 OptimalBatchSize;
-    
-    /** Default narrow band width for this field type */
-    float DefaultNarrowBandWidth;
 };
 
 /**
- * Structure containing information about an SDF field operation
+ * Information about a registered SDF operation
  */
 struct MININGSPICECOPILOT_API FSDFOperationInfo
 {
@@ -106,23 +95,20 @@ struct MININGSPICECOPILOT_API FSDFOperationInfo
     /** Name of this operation */
     FName OperationName;
     
-    /** Type of this operation */
+    /** Type of CSG operation */
     ESDFOperationType OperationType;
     
-    /** Field types that this operation is compatible with */
-    TArray<uint32> CompatibleFieldTypes;
+    /** Number of input fields required */
+    uint32 InputCount;
     
-    /** Material types that this operation is compatible with */
-    TArray<uint32> CompatibleMaterialTypes;
+    /** Whether operation supports variable smoothing */
+    bool bSupportsSmoothing;
     
-    /** Whether this operation supports GPU evaluation */
-    bool bSupportsGPUEvaluation;
+    /** Whether operation preserves field sign */
+    bool bPreservesSign;
     
-    /** Whether this operation supports SIMD operations */
-    bool bSupportsSIMD;
-    
-    /** Approximate computational cost of this operation (normalized value) */
-    float ComputationalCost;
+    /** Whether operation is commutative */
+    bool bIsCommutative;
 };
 
 /**
@@ -149,29 +135,33 @@ public:
     //~ End IRegistry Interface
     
     /**
-     * Registers a new SDF field type with the registry
+     * Registers a new SDF field type
      * @param InTypeName Name of the field type
-     * @param InChannelCount Number of channels supported by this field type
-     * @param bInSupportsNarrowBand Whether this field supports narrow-band optimization
+     * @param InChannelCount Number of channels supported
+     * @param InAlignmentRequirement Memory alignment requirement (must be power of 2)
+     * @param bInSupportsGPU Whether this field type supports GPU evaluation
      * @return Unique ID for the registered type, or 0 if registration failed
      */
     uint32 RegisterFieldType(
         const FName& InTypeName,
-        uint32 InChannelCount = 1,
-        bool bInSupportsNarrowBand = true);
-    
+        uint32 InChannelCount,
+        uint32 InAlignmentRequirement = 16,
+        bool bInSupportsGPU = false);
+
     /**
-     * Registers a new field operation with the registry
+     * Registers a new SDF operation
      * @param InOperationName Name of the operation
-     * @param InOperationType Type of the operation
-     * @param InCompatibleFieldTypes Field types that this operation is compatible with
+     * @param InOperationType Type of CSG operation
+     * @param InInputCount Number of input fields required
+     * @param bInSupportsSmoothing Whether operation supports smoothing
      * @return Unique ID for the registered operation, or 0 if registration failed
      */
-    uint32 RegisterFieldOperation(
+    uint32 RegisterOperation(
         const FName& InOperationName,
         ESDFOperationType InOperationType,
-        const TArray<uint32>& InCompatibleFieldTypes);
-    
+        uint32 InInputCount,
+        bool bInSupportsSmoothing = false);
+        
     /**
      * Gets information about a registered field type
      * @param InTypeId Unique ID of the field type
@@ -187,18 +177,18 @@ public:
     const FSDFFieldTypeInfo* GetFieldTypeInfoByName(const FName& InTypeName) const;
     
     /**
-     * Gets information about a registered field operation
+     * Gets information about a registered operation
      * @param InOperationId Unique ID of the operation
      * @return Pointer to operation info, or nullptr if not found
      */
-    const FSDFOperationInfo* GetFieldOperationInfo(uint32 InOperationId) const;
+    const FSDFOperationInfo* GetOperationInfo(uint32 InOperationId) const;
     
     /**
-     * Gets information about a registered field operation by name
+     * Gets information about a registered operation by name
      * @param InOperationName Name of the operation
      * @return Pointer to operation info, or nullptr if not found
      */
-    const FSDFOperationInfo* GetFieldOperationInfoByName(const FName& InOperationName) const;
+    const FSDFOperationInfo* GetOperationInfoByName(const FName& InOperationName) const;
     
     /**
      * Gets all registered field types
@@ -207,25 +197,10 @@ public:
     TArray<FSDFFieldTypeInfo> GetAllFieldTypes() const;
     
     /**
-     * Gets all registered field operations
+     * Gets all registered operations
      * @return Array of all operation infos
      */
-    TArray<FSDFOperationInfo> GetAllFieldOperations() const;
-    
-    /**
-     * Gets compatible operations for a specific field type
-     * @param InTypeId Field type ID
-     * @return Array of compatible operation infos
-     */
-    TArray<FSDFOperationInfo> GetCompatibleOperations(uint32 InTypeId) const;
-    
-    /**
-     * Checks if an operation is compatible with a field type
-     * @param InOperationId Operation ID
-     * @param InTypeId Field type ID
-     * @return True if compatible
-     */
-    bool IsOperationCompatible(uint32 InOperationId, uint32 InTypeId) const;
+    TArray<FSDFOperationInfo> GetAllOperations() const;
     
     /**
      * Checks if a field type is registered
@@ -235,11 +210,11 @@ public:
     bool IsFieldTypeRegistered(uint32 InTypeId) const;
     
     /**
-     * Checks if a field operation is registered
+     * Checks if an operation is registered
      * @param InOperationId Unique ID of the operation
      * @return True if the operation is registered
      */
-    bool IsFieldOperationRegistered(uint32 InOperationId) const;
+    bool IsOperationRegistered(uint32 InOperationId) const;
     
     /** Gets the singleton instance of the SDF type registry */
     static FSDFTypeRegistry& Get();
@@ -248,22 +223,22 @@ private:
     /** Generates a unique type ID for new field type registrations */
     uint32 GenerateUniqueTypeId();
     
-    /** Generates a unique operation ID for new operation registrations */
+    /** Generates a unique ID for new operation registrations */
     uint32 GenerateUniqueOperationId();
     
     /** Map of registered field types by ID */
     TMap<uint32, TSharedRef<FSDFFieldTypeInfo>> FieldTypeMap;
     
-    /** Map of registered field types by name for fast lookup */
+    /** Map of field types by name for fast lookup */
     TMap<FName, uint32> FieldTypeNameMap;
     
     /** Map of registered operations by ID */
     TMap<uint32, TSharedRef<FSDFOperationInfo>> OperationMap;
     
-    /** Map of registered operations by name for fast lookup */
+    /** Map of operations by name for fast lookup */
     TMap<FName, uint32> OperationNameMap;
     
-    /** Counter for generating unique type IDs */
+    /** Counter for generating unique field type IDs */
     uint32 NextTypeId;
     
     /** Counter for generating unique operation IDs */

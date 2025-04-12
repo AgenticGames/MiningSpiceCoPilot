@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Interfaces/IRegistry.h"
+#include "Core/Public/Interfaces/IRegistry.h"
 #include "Containers/Map.h"
 #include "Templates/SharedPointer.h"
 #include "HAL/ThreadSafeBool.h"
