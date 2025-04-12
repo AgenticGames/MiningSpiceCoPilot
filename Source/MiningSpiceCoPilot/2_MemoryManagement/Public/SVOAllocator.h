@@ -7,27 +7,24 @@
 #include "2_MemoryManagement/Public/Interfaces/IMemoryManager.h"
 
 /**
- * Specialized memory allocator for SVO (Sparse Voxel Octree) nodes
- * Uses Z-order curve indexing for cache-coherent spatial access
+ * Specialized allocator for SVO octree nodes
+ * Provides Z-order curve mapping for cache-coherent spatial data allocation
  */
 class MININGSPICECOPILOT_API FSVOAllocator : public IPoolAllocator
 {
 public:
     /**
      * Constructor
-     * @param InPoolName Name of the pool
-     * @param InBlockSize Size of each block in bytes
-     * @param InBlockCount Initial number of blocks
-     * @param InAccessPattern Access pattern for optimization
-     * @param InAllowGrowth Whether the pool can grow
+     * @param InPoolName Name of this memory pool
+     * @param InBlockSize Size of each memory block in bytes
+     * @param InBlockCount Initial number of blocks to allocate
+     * @param InAccessPattern Memory access pattern to optimize for
+     * @param InAllowGrowth Whether the pool can grow beyond initial size
      */
-    FSVOAllocator(
-        const FName& InPoolName,
-        uint32 InBlockSize, 
-        uint32 InBlockCount,
-        EMemoryAccessPattern InAccessPattern = EMemoryAccessPattern::OctreeTraversal,
+    FSVOAllocator(const FName& InPoolName, uint32 InBlockSize, uint32 InBlockCount, 
+        EMemoryAccessPattern InAccessPattern = EMemoryAccessPattern::OctreeTraversal, 
         bool InAllowGrowth = true);
-        
+
     /** Destructor */
     virtual ~FSVOAllocator();
 
@@ -47,119 +44,128 @@ public:
     virtual FPoolStats GetStats() const override;
     virtual bool Defragment(float MaxTimeMs = 5.0f) override;
     virtual bool Validate(TArray<FString>& OutErrors) const override;
-    virtual bool Reset() override;
     //~ End IPoolAllocator Interface
 
     /**
-     * Gets the Z-order curve mapping function
-     * @return Z-order curve mapping function pointer
+     * Sets the Z-order mapping function for optimizing spatial data locality
+     * @param NewMappingFunction New mapping function to use
      */
-    typedef uint32 (*FZOrderMappingFunction)(uint32 X, uint32 Y, uint32 Z);
-    FORCEINLINE FZOrderMappingFunction GetZOrderMapping() const { return ZOrderMappingFunction; }
+    void SetZOrderMappingFunction(uint32 (*NewMappingFunction)(uint32 x, uint32 y, uint32 z));
 
     /**
-     * Sets the Z-order curve mapping function
-     * @param InMappingFunction New Z-order curve mapping function
+     * Default Z-order curve mapping function
+     * Interleaves bits from x, y, z coordinates to create a cache-friendly index
+     * @param x X-coordinate
+     * @param y Y-coordinate
+     * @param z Z-coordinate 
+     * @return Z-order curve index
      */
-    void SetZOrderMapping(FZOrderMappingFunction InMappingFunction);
+    static uint32 DefaultZOrderMapping(uint32 x, uint32 y, uint32 z);
 
     /**
-     * Allocates a block at a specific position in the octree
-     * @param X X coordinate in the octree
-     * @param Y Y coordinate in the octree
-     * @param Z Z coordinate in the octree
-     * @param RequestingObject Optional object for tracking
-     * @param AllocationTag Optional tag for tracking
-     * @return Pointer to the allocated memory or nullptr if allocation failed
+     * High-performance Z-order curve mapping using lookup tables
+     * @param x X-coordinate
+     * @param y Y-coordinate
+     * @param z Z-coordinate
+     * @return Z-order curve index
      */
-    void* AllocateAtPosition(uint32 X, uint32 Y, uint32 Z, 
-        const UObject* RequestingObject = nullptr, FName AllocationTag = NAME_None);
+    static uint32 LookupTableZOrderMapping(uint32 x, uint32 y, uint32 z);
+
+    /**
+     * Resets the pool to its initial empty state
+     * @return True if the pool was successfully reset
+     */
+    bool Reset();
+
+private:
+    /**
+     * Allocates memory for the pool
+     * @param BlockCount Number of blocks to allocate
+     * @return True if allocation was successful
+     */
+    bool AllocatePoolMemory(uint32 BlockCount);
+
+    /**
+     * Frees all memory allocated by this pool
+     */
+    void FreePoolMemory();
+
+    /**
+     * Calculates memory metrics for this pool
+     */
+    void UpdateStats();
+
+    /**
+     * Gets a block index from a pointer
+     * @param Ptr Pointer to convert to block index
+     * @return Block index or INDEX_NONE if invalid
+     */
+    int32 GetBlockIndex(const void* Ptr) const;
+
+    /** Structure containing metadata for a single block in the pool */
+    struct FBlockMetadata
+    {
+        /** Whether this block is currently allocated */
+        bool bAllocated;
         
-    /**
-     * Gets the position of a block in the octree
-     * @param Ptr Pointer to the block
-     * @param OutX Output X coordinate
-     * @param OutY Output Y coordinate
-     * @param OutZ Output Z coordinate
-     * @return True if the position was retrieved successfully
-     */
-    bool GetBlockPosition(const void* Ptr, uint32& OutX, uint32& OutY, uint32& OutZ) const;
-    
-    /**
-     * Preallocation for expected access pattern
-     * @param X Center X coordinate
-     * @param Y Center Y coordinate
-     * @param Z Center Z coordinate
-     * @param Radius Radius of the preallocation sphere
-     * @return Number of blocks preallocated
-     */
-    uint32 PreallocateRegion(uint32 X, uint32 Y, uint32 Z, uint32 Radius);
+        /** Allocation tag for tracking */
+        FName AllocationTag;
+        
+        /** Object that requested this allocation */
+        TWeakObjectPtr<const UObject> RequestingObject;
+        
+        /** Time when this block was allocated */
+        double AllocationTime;
+        
+        /** Constructor */
+        FBlockMetadata()
+            : bAllocated(false)
+            , AllocationTag(NAME_None)
+            , RequestingObject(nullptr)
+            , AllocationTime(0.0)
+        {
+        }
+    };
 
-protected:
-    /** The name of this pool */
+    /** Name of this pool */
     FName PoolName;
     
     /** Size of each block in bytes */
     uint32 BlockSize;
     
-    /** Pointer to the memory blocks */
+    /** Base address of the pool memory */
     uint8* PoolMemory;
+    
+    /** Maximum number of blocks this pool can hold (initial capacity) */
+    uint32 MaxBlockCount;
+    
+    /** Current number of blocks in the pool */
+    uint32 CurrentBlockCount;
     
     /** Array of free block indices */
     TArray<uint32> FreeBlocks;
     
-    /** Maximum number of blocks */
-    uint32 MaxBlockCount;
-    
-    /** Current number of blocks */
-    uint32 CurrentBlockCount;
-    
-    /** Whether the pool has been initialized */
-    bool bIsInitialized;
-    
-    /** Whether the pool allows growth */
-    bool bAllowsGrowth;
-    
-    /** Current access pattern */
-    EMemoryAccessPattern AccessPattern;
-    
-    /** Z-order curve mapping function */
-    FZOrderMappingFunction ZOrderMappingFunction;
-    
-    /** Block metadata */
-    struct FBlockMetadata
-    {
-        FName AllocationTag;
-        TWeakObjectPtr<const UObject> RequestingObject;
-        uint32 X;
-        uint32 Y;
-        uint32 Z;
-        bool bAllocated;
-        double AllocationTime;
-    };
-    
-    /** Array of block metadata */
+    /** Array of metadata for each block */
     TArray<FBlockMetadata> BlockMetadata;
     
-    /** Protection for thread-safety */
+    /** Lock for thread safety */
     mutable FCriticalSection PoolLock;
     
-    /** Pool statistics */
-    mutable FPoolStats CachedStats;
-
-    /** Whether stats are dirty and need recalculation */
+    /** Whether this pool has been initialized */
+    bool bIsInitialized;
+    
+    /** Whether this pool allows growth beyond initial capacity */
+    bool bAllowsGrowth;
+    
+    /** Memory access pattern for this pool */
+    EMemoryAccessPattern AccessPattern;
+    
+    /** Z-order curve mapping function for spatial data */
+    uint32 (*ZOrderMappingFunction)(uint32 x, uint32 y, uint32 z);
+    
+    /** Whether the stats need to be recalculated */
     mutable bool bStatsDirty;
-
-private:
-    /** Allocate the pool memory */
-    bool AllocatePoolMemory(uint32 InBlockCount);
     
-    /** Free the pool memory */
-    void FreePoolMemory();
-    
-    /** Calculate pool statistics */
-    void UpdateStats() const;
-
-    /** Default Z-order mapping function */
-    static uint32 DefaultZOrderMapping(uint32 X, uint32 Y, uint32 Z);
+    /** Cached pool statistics */
+    mutable FPoolStats CachedStats;
 };

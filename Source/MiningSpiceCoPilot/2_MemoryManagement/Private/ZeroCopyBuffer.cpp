@@ -1,79 +1,79 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "2_MemoryManagement/Public/ZeroCopyBuffer.h"
-#include "HAL/PlatformProcess.h"
-#include "HAL/PlatformMemory.h"
 #include "RHI.h"
-#include "RHIResources.h"
-#include "Engine/Engine.h"
+#include "RenderingThread.h"
+#include "HAL/PlatformMemory.h"
+#include "Misc/ScopeLock.h"
+#include "Containers/ResourceArray.h"
 
-FZeroCopyBuffer::FZeroCopyBuffer(const FName& InName, uint64 InSizeInBytes, bool bInGPUWritable)
+FZeroCopyBuffer::FZeroCopyBuffer(const FName& InName, uint64 InSizeInBytes, bool InGPUWritable)
     : Name(InName)
     , SizeInBytes(InSizeInBytes)
-    , bGPUWritable(bInGPUWritable)
-    , bInitialized(false)
     , RawData(nullptr)
     , MappedData(nullptr)
     , ResourceBuffer(nullptr)
-    , LastAccessTime(0)
-    , AccessCount(0)
+    , ShaderResourceView(nullptr)
+    , UnorderedAccessView(nullptr)
+    , bGPUWritable(InGPUWritable)
+    , bInitialized(false)
+    , CurrentAccessMode(EBufferAccessMode::ReadWrite)
 {
-    Stats.BufferSize = SizeInBytes;
-    Stats.Name = Name;
-    Stats.Type = TEXT("ZeroCopy");
-    Stats.AccessCount = 0;
-    Stats.LastAccessTime = 0;
 }
 
 FZeroCopyBuffer::~FZeroCopyBuffer()
 {
-    Shutdown();
+    if (bInitialized)
+    {
+        Shutdown();
+    }
 }
 
 bool FZeroCopyBuffer::Initialize()
 {
+    // Check if already initialized
     if (bInitialized)
     {
-        UE_LOG(LogTemp, Warning, TEXT("ZeroCopyBuffer: Buffer '%s' already initialized"), *Name.ToString());
         return true;
     }
 
+    // Validate size
     if (SizeInBytes == 0)
     {
         UE_LOG(LogTemp, Error, TEXT("ZeroCopyBuffer: Cannot initialize buffer '%s' with zero size"), *Name.ToString());
         return false;
     }
 
-    // Ensure size is aligned to system page size
-    const uint64 PageSize = FPlatformMemory::GetConstants().PageSize;
-    SizeInBytes = ((SizeInBytes + PageSize - 1) / PageSize) * PageSize;
-
-    // Allocate the CPU accessible memory
-    RawData = FPlatformMemory::BinnedAllocFromOS(SizeInBytes);
+    // Allocate CPU memory aligned to platform cache line size for optimal performance
+    const uint32 Alignment = FPlatformMemory::GetConstants().CacheLineSize;
+    RawData = FPlatformMemory::BinnedAllocFromOS(SizeInBytes, Alignment);
+    
     if (!RawData)
     {
-        UE_LOG(LogTemp, Error, TEXT("ZeroCopyBuffer: Failed to allocate memory for buffer '%s' (%llu bytes)"), 
-            *Name.ToString(), SizeInBytes);
+        UE_LOG(LogTemp, Error, TEXT("ZeroCopyBuffer: Failed to allocate %llu bytes for buffer '%s'"), 
+            SizeInBytes, *Name.ToString());
         return false;
     }
 
-    // Initialize memory to zero
+    // Zero out the memory
     FMemory::Memzero(RawData, SizeInBytes);
 
-    // Create GPU resource if we're running with a valid RHI
+    // Create GPU resource if RHI is available
     if (IsRunningRHIInSeparateThread())
     {
+        // Enqueue command to create buffer on render thread
         ENQUEUE_RENDER_COMMAND(CreateZeroCopyBuffer)(
             [this](FRHICommandListImmediate& RHICmdList)
             {
                 CreateGPUBuffer_RenderThread();
             }
         );
-        // Wait for render thread to complete
+        // Wait for completion
         FlushRenderingCommands();
     }
-    else
+    else if (IsRHIInitialized())
     {
+        // RHI is available but not on a separate thread
         CreateGPUBuffer_RenderThread();
     }
 
@@ -112,6 +112,33 @@ void FZeroCopyBuffer::CreateGPUBuffer_RenderThread()
     else
     {
         UE_LOG(LogTemp, Log, TEXT("ZeroCopyBuffer: Created GPU resource for buffer '%s'"), *Name.ToString());
+        
+        // Create Shader Resource View
+        ShaderResourceView = RHICreateShaderResourceView(ResourceBuffer);
+        
+        // Create Unordered Access View if writable
+        if (bGPUWritable)
+        {
+            UnorderedAccessView = RHICreateUnorderedAccessView(ResourceBuffer);
+        }
+    }
+}
+
+void FZeroCopyBuffer::ReleaseGPUBuffer_RenderThread()
+{
+    if (UnorderedAccessView)
+    {
+        UnorderedAccessView.SafeRelease();
+    }
+    
+    if (ShaderResourceView)
+    {
+        ShaderResourceView.SafeRelease();
+    }
+    
+    if (ResourceBuffer)
+    {
+        ResourceBuffer.SafeRelease();
     }
 }
 
@@ -136,7 +163,7 @@ void FZeroCopyBuffer::Shutdown()
             ENQUEUE_RENDER_COMMAND(ReleaseZeroCopyBuffer)(
                 [this](FRHICommandListImmediate& RHICmdList)
                 {
-                    ResourceBuffer.SafeRelease();
+                    ReleaseGPUBuffer_RenderThread();
                 }
             );
             // Wait for render thread to complete
@@ -144,7 +171,7 @@ void FZeroCopyBuffer::Shutdown()
         }
         else
         {
-            ResourceBuffer.SafeRelease();
+            ReleaseGPUBuffer_RenderThread();
         }
     }
 
@@ -164,9 +191,9 @@ bool FZeroCopyBuffer::IsInitialized() const
     return bInitialized;
 }
 
-void* FZeroCopyBuffer::GetRawBuffer() const
+FName FZeroCopyBuffer::GetName() const
 {
-    return RawData;
+    return Name;
 }
 
 uint64 FZeroCopyBuffer::GetBufferSize() const
@@ -174,7 +201,12 @@ uint64 FZeroCopyBuffer::GetBufferSize() const
     return SizeInBytes;
 }
 
-void* FZeroCopyBuffer::MapBuffer(EBufferAccessFlags AccessFlags)
+void* FZeroCopyBuffer::GetRawBuffer() const
+{
+    return RawData;
+}
+
+void* FZeroCopyBuffer::MapBuffer(EBufferAccessMode AccessMode)
 {
     if (!bInitialized || !RawData)
     {
@@ -182,197 +214,167 @@ void* FZeroCopyBuffer::MapBuffer(EBufferAccessFlags AccessFlags)
         return nullptr;
     }
 
+    // If buffer is already mapped, return the existing mapping
     if (MappedData)
     {
-        UE_LOG(LogTemp, Warning, TEXT("ZeroCopyBuffer: Buffer '%s' already mapped, returning existing mapping"), *Name.ToString());
         return MappedData;
     }
 
-    // For CPU-only access, just use the raw pointer
-    if (AccessFlags == EBufferAccessFlags::CPU_Read || AccessFlags == EBufferAccessFlags::CPU_Write)
-    {
-        MappedData = RawData;
-        CurrentAccessFlags = AccessFlags;
+    CurrentAccessMode = AccessMode;
 
-        // Update stats
-        Stats.AccessCount++;
-        Stats.LastAccessTime = FPlatformTime::Seconds();
-        Stats.CurrentMappingType = AccessFlags == EBufferAccessFlags::CPU_Read ? TEXT("CPU Read") : TEXT("CPU Write");
-
-        return MappedData;
-    }
-
-    // For GPU-shared access, we need to properly synchronize with the GPU
+    // If we have a GPU resource, lock it for access
     if (ResourceBuffer)
     {
-        bool bNeedGPUSync = (AccessFlags == EBufferAccessFlags::CPU_GPU_Read || 
-                          AccessFlags == EBufferAccessFlags::CPU_GPU_Write);
-        
-        if (bNeedGPUSync)
+        // Sync from GPU to CPU if reading
+        if (AccessMode == EBufferAccessMode::ReadOnly || AccessMode == EBufferAccessMode::ReadWrite)
         {
-            // Synchronize with GPU - in a real implementation, this would properly fence and wait
-            // But for simplicity, we'll just flush rendering commands
-            FlushRenderingCommands();
-            
-            if (AccessFlags == EBufferAccessFlags::CPU_GPU_Read)
-            {
-                // If reading from GPU, might need to copy from GPU to CPU
-                // This is a simplified approach - real implementation would handle this on the render thread
-            }
+            SyncFromGPU();
         }
     }
 
     MappedData = RawData;
-    CurrentAccessFlags = AccessFlags;
-
-    // Update stats
-    Stats.AccessCount++;
-    Stats.LastAccessTime = FPlatformTime::Seconds();
-    if (AccessFlags == EBufferAccessFlags::CPU_GPU_Read)
-        Stats.CurrentMappingType = TEXT("CPU-GPU Read");
-    else if (AccessFlags == EBufferAccessFlags::CPU_GPU_Write)
-        Stats.CurrentMappingType = TEXT("CPU-GPU Write");
-
     return MappedData;
 }
 
-bool FZeroCopyBuffer::UnmapBuffer()
+void FZeroCopyBuffer::UnmapBuffer()
 {
     if (!bInitialized || !MappedData)
     {
-        return false;
+        return;
     }
 
-    // If this was GPU-shared access, we need to properly synchronize with the GPU
+    // If we have a GPU resource and we potentially modified the buffer, sync to GPU
     if (ResourceBuffer && 
-        (CurrentAccessFlags == EBufferAccessFlags::CPU_GPU_Read || 
-         CurrentAccessFlags == EBufferAccessFlags::CPU_GPU_Write))
+        (CurrentAccessMode == EBufferAccessMode::WriteOnly || CurrentAccessMode == EBufferAccessMode::ReadWrite))
     {
-        bool bNeedToUpdateGPU = (CurrentAccessFlags == EBufferAccessFlags::CPU_GPU_Write);
+        SyncToGPU();
+    }
+
+    MappedData = nullptr;
+}
+
+bool FZeroCopyBuffer::IsBufferMapped() const
+{
+    return MappedData != nullptr;
+}
+
+void FZeroCopyBuffer::SyncToGPU()
+{
+    if (!bInitialized || !ResourceBuffer || !RawData)
+    {
+        return;
+    }
+
+    // Update GPU resource with CPU memory content
+    if (IsRunningRHIInSeparateThread())
+    {
+        void* SourceData = RawData;
+        uint64 BufferSize = SizeInBytes;
+        FStructuredBufferRHIRef Buffer = ResourceBuffer;
+
+        ENQUEUE_RENDER_COMMAND(UpdateZeroCopyBuffer)(
+            [SourceData, BufferSize, Buffer](FRHICommandListImmediate& RHICmdList)
+            {
+                void* GPUData = RHILockStructuredBuffer(
+                    Buffer, 
+                    0, 
+                    BufferSize, 
+                    RLM_WriteOnly);
+                
+                if (GPUData)
+                {
+                    FMemory::Memcpy(GPUData, SourceData, BufferSize);
+                    RHIUnlockStructuredBuffer(Buffer);
+                }
+            }
+        );
+    }
+    else if (IsRHIInitialized())
+    {
+        void* GPUData = RHILockStructuredBuffer(
+            ResourceBuffer, 
+            0, 
+            SizeInBytes, 
+            RLM_WriteOnly);
         
-        if (bNeedToUpdateGPU)
+        if (GPUData)
         {
-            // Update GPU buffer from CPU memory
-            // This is a simplified approach - real implementation would handle this on the render thread
-            if (IsRunningRHIInSeparateThread())
-            {
-                ENQUEUE_RENDER_COMMAND(UpdateZeroCopyBuffer)(
-                    [this](FRHICommandListImmediate& RHICmdList)
-                    {
-                        // In an actual implementation, this would copy from CPU memory to GPU
-                        // or make sure they are properly synchronized
-                    }
-                );
-            }
-            else
-            {
-                // Direct update if not on separate thread
-            }
+            FMemory::Memcpy(GPUData, RawData, SizeInBytes);
+            RHIUnlockStructuredBuffer(ResourceBuffer);
         }
-        
-        // Flush commands to ensure synchronization
+    }
+}
+
+void FZeroCopyBuffer::SyncFromGPU()
+{
+    if (!bInitialized || !ResourceBuffer || !RawData)
+    {
+        return;
+    }
+
+    // Update CPU memory with GPU resource content
+    if (IsRunningRHIInSeparateThread())
+    {
+        void* DestData = RawData;
+        uint64 BufferSize = SizeInBytes;
+        FStructuredBufferRHIRef Buffer = ResourceBuffer;
+
+        ENQUEUE_RENDER_COMMAND(ReadZeroCopyBuffer)(
+            [DestData, BufferSize, Buffer](FRHICommandListImmediate& RHICmdList)
+            {
+                void* GPUData = RHILockStructuredBuffer(
+                    Buffer, 
+                    0, 
+                    BufferSize, 
+                    RLM_ReadOnly);
+                
+                if (GPUData)
+                {
+                    FMemory::Memcpy(DestData, GPUData, BufferSize);
+                    RHIUnlockStructuredBuffer(Buffer);
+                }
+            }
+        );
+        // Wait for completion
         FlushRenderingCommands();
     }
-
-    // Clear the mapping
-    MappedData = nullptr;
-    CurrentAccessFlags = EBufferAccessFlags::None;
-    
-    // Update stats
-    Stats.CurrentMappingType = TEXT("None");
-    
-    return true;
-}
-
-bool FZeroCopyBuffer::ResizeBuffer(uint64 NewSizeInBytes)
-{
-    if (!bInitialized)
+    else if (IsRHIInitialized())
     {
-        UE_LOG(LogTemp, Error, TEXT("ZeroCopyBuffer: Cannot resize uninitialized buffer '%s'"), *Name.ToString());
-        return false;
-    }
-
-    if (NewSizeInBytes == SizeInBytes)
-    {
-        // No change needed
-        return true;
-    }
-
-    // Ensure buffer is unmapped
-    if (MappedData)
-    {
-        UnmapBuffer();
-    }
-
-    // Ensure size is aligned to system page size
-    const uint64 PageSize = FPlatformMemory::GetConstants().PageSize;
-    NewSizeInBytes = ((NewSizeInBytes + PageSize - 1) / PageSize) * PageSize;
-
-    // Allocate new memory
-    void* NewData = FPlatformMemory::BinnedAllocFromOS(NewSizeInBytes);
-    if (!NewData)
-    {
-        UE_LOG(LogTemp, Error, TEXT("ZeroCopyBuffer: Failed to allocate memory for resize of buffer '%s' (%llu bytes)"), 
-            *Name.ToString(), NewSizeInBytes);
-        return false;
-    }
-
-    // Initialize memory to zero (important for new segments)
-    FMemory::Memzero(NewData, NewSizeInBytes);
-
-    // Copy old data to new buffer
-    uint64 CopySize = FMath::Min(SizeInBytes, NewSizeInBytes);
-    FMemory::Memcpy(NewData, RawData, CopySize);
-
-    // Free old data
-    FPlatformMemory::BinnedFreeToOS(RawData, SizeInBytes);
-    RawData = NewData;
-
-    // Update size
-    uint64 OldSize = SizeInBytes;
-    SizeInBytes = NewSizeInBytes;
-    Stats.BufferSize = SizeInBytes;
-
-    // If we have a GPU resource, need to recreate it
-    if (ResourceBuffer)
-    {
-        if (IsRunningRHIInSeparateThread())
+        void* GPUData = RHILockStructuredBuffer(
+            ResourceBuffer, 
+            0, 
+            SizeInBytes, 
+            RLM_ReadOnly);
+        
+        if (GPUData)
         {
-            ENQUEUE_RENDER_COMMAND(RecreateZeroCopyBuffer)(
-                [this](FRHICommandListImmediate& RHICmdList)
-                {
-                    ResourceBuffer.SafeRelease();
-                    CreateGPUBuffer_RenderThread();
-                }
-            );
-            // Wait for render thread to complete
-            FlushRenderingCommands();
-        }
-        else
-        {
-            ResourceBuffer.SafeRelease();
-            CreateGPUBuffer_RenderThread();
+            FMemory::Memcpy(RawData, GPUData, SizeInBytes);
+            RHIUnlockStructuredBuffer(ResourceBuffer);
         }
     }
-
-    UE_LOG(LogTemp, Log, TEXT("ZeroCopyBuffer: Resized buffer '%s' from %llu to %llu bytes"), 
-        *Name.ToString(), OldSize, SizeInBytes);
-
-    return true;
 }
 
-void* FZeroCopyBuffer::GetGPUBuffer() const
+bool FZeroCopyBuffer::IsGPUBufferValid() const
 {
-    return ResourceBuffer.GetReference();
+    return ResourceBuffer.IsValid();
 }
 
-FBufferStats FZeroCopyBuffer::GetStats() const
+FStructuredBufferRHIRef FZeroCopyBuffer::GetRHIBuffer() const
 {
-    FBufferStats CurrentStats = Stats;
+    return ResourceBuffer;
+}
+
+FShaderResourceViewRHIRef FZeroCopyBuffer::GetShaderResourceView() const
+{
+    return ShaderResourceView;
+}
+
+FUnorderedAccessViewRHIRef FZeroCopyBuffer::GetUnorderedAccessView() const
+{
+    if (!bGPUWritable)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("ZeroCopyBuffer: Buffer '%s' is not GPU writable, UAV not available"), *Name.ToString());
+    }
     
-    // Update any dynamic stats
-    CurrentStats.CurrentMappingType = MappedData ? Stats.CurrentMappingType : TEXT("None");
-    CurrentStats.IsMapped = (MappedData != nullptr);
-    
-    return CurrentStats;
+    return UnorderedAccessView;
 }

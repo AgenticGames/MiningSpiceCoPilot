@@ -5,442 +5,552 @@
 #include "HAL/PlatformTime.h"
 #include "Misc/ScopeLock.h"
 
-FThreadSafeOperationQueue::FThreadSafeOperationQueue(int32 MaxSize)
-    : MaxQueueSize(FMath::Max(1, MaxSize))
+// Constants for hazard pointer system
+const int32 MAX_THREADS = 64;
+const int32 MAX_HAZARD_POINTERS_PER_THREAD = 4;
+
+// Hazard pointer system for safe memory reclamation
+struct FHazardPointerRecord
+{
+    const void* Pointer;
+    int32 ThreadId;
+    int32 SlotIndex;
+};
+
+// Per-thread hazard pointer storage
+TArray<FHazardPointerRecord> GHazardPointers;
+FCriticalSection GHazardPointerLock;
+
+// Thread-local storage for thread ID
+static uint32 ThreadLocalIdTLS = FPlatformTLS::AllocTlsSlot();
+
+FThreadSafeOperationQueue::FThreadSafeOperationQueue(int32 InitialCapacity, bool bAllowConcurrentConsumers)
+    : bAllowMultipleConsumers(bAllowConcurrentConsumers)
+    , CurrentConsumerThreadId(0)
     , bIsClosed(false)
 {
+    // Initialize with specified capacity
+    Operations.Reserve(InitialCapacity);
+    RetiredNodes.Reserve(InitialCapacity);
+    
     // Initialize statistics
     Stats.EnqueueCount = 0;
     Stats.DequeueCount = 0;
-    Stats.EnqueueWaitTimeMs = 0.0;
-    Stats.DequeueWaitTimeMs = 0.0;
     Stats.PeakQueueSize = 0;
-    Stats.FailedEnqueueCount = 0;
-    Stats.FailedDequeueCount = 0;
-    Stats.AverageWaitTimeMs = 0.0;
-    Stats.AverageQueueTimeMs = 0.0;
-    Stats.BatchesProcessed = 0;
-    Stats.OperationsPacked = 0;
-    
-    // Initialize last statistics reset time
-    LastStatsResetTime = FPlatformTime::Seconds();
+    Stats.EnqueueBlockedCount = 0;
+    Stats.DequeueBlockedCount = 0;
+    Stats.EnqueueBlockTimeMs = 0.0;
+    Stats.DequeueBlockTimeMs = 0.0;
 }
 
 FThreadSafeOperationQueue::~FThreadSafeOperationQueue()
 {
-    // Close the queue if not already closed
-    if (!bIsClosed)
+    // Close the queue first to prevent new operations
+    Close();
+    
+    // Drain any remaining operations
+    FQueuedOperation Operation;
+    while (Dequeue(Operation, 0))
     {
-        Close();
+        // Just remove all operations
+    }
+    
+    // Clean up any retired nodes
+    ProcessRetiredNodes(true);
+}
+
+int32 FThreadSafeOperationQueue::GetCurrentThreadId()
+{
+    // Get thread ID from TLS or assign a new one
+    int32 ThreadId = (int32)(UPTRINT)FPlatformTLS::GetTlsValue(ThreadLocalIdTLS);
+    
+    if (ThreadId == 0)
+    {
+        // Assign a new thread ID (simple incrementing counter is sufficient for our needs)
+        static std::atomic<int32> NextThreadId(1);
+        ThreadId = NextThreadId.fetch_add(1);
+        
+        // Store in TLS
+        FPlatformTLS::SetTlsValue(ThreadLocalIdTLS, (void*)(UPTRINT)ThreadId);
+    }
+    
+    return ThreadId;
+}
+
+void* FThreadSafeOperationQueue::AcquireHazardPointer(const void* Pointer, int32 SlotIndex)
+{
+    // Validate slot index
+    if (SlotIndex < 0 || SlotIndex >= MAX_HAZARD_POINTERS_PER_THREAD)
+    {
+        return nullptr;
+    }
+    
+    // Get thread ID
+    int32 ThreadId = GetCurrentThreadId();
+    
+    // Register the hazard pointer
+    FScopeLock Lock(&GHazardPointerLock);
+    
+    // Look for existing slot for this thread/index
+    for (int32 i = 0; i < GHazardPointers.Num(); ++i)
+    {
+        FHazardPointerRecord& Record = GHazardPointers[i];
+        
+        if (Record.ThreadId == ThreadId && Record.SlotIndex == SlotIndex)
+        {
+            Record.Pointer = Pointer;
+            return const_cast<void*>(Pointer);
+        }
+    }
+    
+    // Create new hazard pointer record
+    FHazardPointerRecord NewRecord;
+    NewRecord.Pointer = Pointer;
+    NewRecord.ThreadId = ThreadId;
+    NewRecord.SlotIndex = SlotIndex;
+    GHazardPointers.Add(NewRecord);
+    
+    return const_cast<void*>(Pointer);
+}
+
+void FThreadSafeOperationQueue::ReleaseHazardPointer(int32 SlotIndex)
+{
+    // Validate slot index
+    if (SlotIndex < 0 || SlotIndex >= MAX_HAZARD_POINTERS_PER_THREAD)
+    {
+        return;
+    }
+    
+    // Get thread ID
+    int32 ThreadId = GetCurrentThreadId();
+    
+    // Clear the hazard pointer
+    FScopeLock Lock(&GHazardPointerLock);
+    
+    for (int32 i = 0; i < GHazardPointers.Num(); ++i)
+    {
+        FHazardPointerRecord& Record = GHazardPointers[i];
+        
+        if (Record.ThreadId == ThreadId && Record.SlotIndex == SlotIndex)
+        {
+            Record.Pointer = nullptr;
+            break;
+        }
     }
 }
 
-EQueueOperationResult FThreadSafeOperationQueue::Enqueue(void* Item, uint32 TimeoutMs)
+bool FThreadSafeOperationQueue::IsPointerHazardous(const void* Pointer)
+{
+    // Check if any thread has this pointer as a hazard pointer
+    FScopeLock Lock(&GHazardPointerLock);
+    
+    for (const FHazardPointerRecord& Record : GHazardPointers)
+    {
+        if (Record.Pointer == Pointer)
+        {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+bool FThreadSafeOperationQueue::Enqueue(const FQueuedOperation& Op, uint32 TimeoutMs)
 {
     // Check if queue is closed
     if (bIsClosed)
     {
-        Stats.FailedEnqueueCount++;
-        return EQueueOperationResult::Closed;
+        Stats.EnqueueBlockedCount++;
+        return false;
     }
     
-    // Check if item is valid
-    if (!Item)
-    {
-        Stats.FailedEnqueueCount++;
-        return EQueueOperationResult::InvalidArgument;
-    }
-    
-    // Track enqueue start time
     double StartTime = FPlatformTime::Seconds();
-    bool bTimeoutSpecified = (TimeoutMs > 0);
+    bool bAcquiredLock = false;
     
-    // Acquire lock for enqueueing
-    FScopeLock Lock(&QueueLock);
-    
-    // Check if queue is full
-    const bool bHasCapacityLimit = (MaxQueueSize > 0);
-    
-    if (bHasCapacityLimit && Queue.Num() >= MaxQueueSize)
+    // Try to acquire lock with timeout
+    if (TimeoutMs == 0)
     {
-        // Wait for space if timeout specified
-        if (bTimeoutSpecified)
+        // No timeout, try once
+        bAcquiredLock = QueueLock.TryLock();
+    }
+    else
+    {
+        // With timeout, try repeatedly
+        double EndTimeSeconds = StartTime + TimeoutMs / 1000.0;
+        
+        while (!bAcquiredLock && FPlatformTime::Seconds() < EndTimeSeconds)
         {
-            double EndTime = StartTime + (TimeoutMs / 1000.0);
+            bAcquiredLock = QueueLock.TryLock();
             
-            while (Queue.Num() >= MaxQueueSize && FPlatformTime::Seconds() < EndTime)
+            if (!bAcquiredLock)
             {
-                // Release lock temporarily
-                QueueLock.Unlock();
-                
-                // Sleep briefly
-                FPlatformProcess::Sleep(0.001f);
-                
-                // Reacquire lock
-                QueueLock.Lock();
-                
-                // Check if queue closed while waiting
-                if (bIsClosed)
-                {
-                    Stats.FailedEnqueueCount++;
-                    return EQueueOperationResult::Closed;
-                }
+                // Back off slightly and try again
+                FPlatformProcess::Sleep(0.0001f);
             }
-            
-            // Check if we're still full after timeout
-            if (Queue.Num() >= MaxQueueSize)
-            {
-                Stats.FailedEnqueueCount++;
-                return EQueueOperationResult::Timeout;
-            }
-        }
-        else
-        {
-            // No timeout, fail immediately
-            Stats.FailedEnqueueCount++;
-            return EQueueOperationResult::Full;
         }
     }
     
-    // Add item to queue
-    FQueuedOperation QueuedOp;
-    QueuedOp.Item = Item;
-    QueuedOp.EnqueueTime = FPlatformTime::Seconds();
-    Queue.Add(QueuedOp);
+    if (!bAcquiredLock)
+    {
+        // Failed to acquire lock within timeout
+        Stats.EnqueueBlockedCount++;
+        double ElapsedMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
+        Stats.EnqueueBlockTimeMs += ElapsedMs;
+        return false;
+    }
     
-    // Update statistics
-    Stats.EnqueueCount++;
-    Stats.PeakQueueSize = FMath::Max(Stats.PeakQueueSize, Queue.Num());
+    // Lock acquired
+    bool bEnqueued = false;
     
-    // Calculate and update enqueue wait time
-    double WaitTime = (QueuedOp.EnqueueTime - StartTime) * 1000.0;
-    Stats.EnqueueWaitTimeMs += WaitTime;
+    // Check again if queue is closed
+    if (!bIsClosed)
+    {
+        // Add the operation to the queue
+        Operations.Add(Op);
+        
+        // Update statistics
+        Stats.EnqueueCount++;
+        Stats.PeakQueueSize = FMath::Max(Stats.PeakQueueSize, Operations.Num());
+        
+        bEnqueued = true;
+    }
+    else
+    {
+        Stats.EnqueueBlockedCount++;
+    }
     
-    // Signal waiting threads
+    // Signal new item available
     QueueEvent.Trigger();
     
-    return EQueueOperationResult::Success;
+    // Release the lock
+    QueueLock.Unlock();
+    
+    // Calculate block time if enqueue failed
+    if (!bEnqueued)
+    {
+        double ElapsedMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
+        Stats.EnqueueBlockTimeMs += ElapsedMs;
+    }
+    
+    return bEnqueued;
 }
 
-EQueueOperationResult FThreadSafeOperationQueue::Dequeue(void*& OutItem, uint32 TimeoutMs)
+bool FThreadSafeOperationQueue::EnqueueBatch(const TArray<FQueuedOperation>& Ops, uint32 TimeoutMs)
 {
-    // Initialize output parameter
-    OutItem = nullptr;
-    
-    // Track dequeue start time
-    double StartTime = FPlatformTime::Seconds();
-    bool bTimeoutSpecified = (TimeoutMs > 0);
-    
-    // Acquire lock for dequeueing
-    FScopeLock Lock(&QueueLock);
-    
-    // Check if queue is empty
-    if (Queue.Num() == 0)
+    // Check if queue is closed or no operations to enqueue
+    if (bIsClosed || Ops.Num() == 0)
     {
-        // If closed and empty, return closed
         if (bIsClosed)
         {
-            Stats.FailedDequeueCount++;
-            return EQueueOperationResult::Closed;
+            Stats.EnqueueBlockedCount++;
+        }
+        return false;
+    }
+    
+    double StartTime = FPlatformTime::Seconds();
+    bool bAcquiredLock = false;
+    
+    // Try to acquire lock with timeout
+    if (TimeoutMs == 0)
+    {
+        // No timeout, try once
+        bAcquiredLock = QueueLock.TryLock();
+    }
+    else
+    {
+        // With timeout, try repeatedly
+        double EndTimeSeconds = StartTime + TimeoutMs / 1000.0;
+        
+        while (!bAcquiredLock && FPlatformTime::Seconds() < EndTimeSeconds)
+        {
+            bAcquiredLock = QueueLock.TryLock();
+            
+            if (!bAcquiredLock)
+            {
+                // Back off slightly and try again
+                FPlatformProcess::Sleep(0.0001f);
+            }
+        }
+    }
+    
+    if (!bAcquiredLock)
+    {
+        // Failed to acquire lock within timeout
+        Stats.EnqueueBlockedCount++;
+        double ElapsedMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
+        Stats.EnqueueBlockTimeMs += ElapsedMs;
+        return false;
+    }
+    
+    // Lock acquired
+    bool bEnqueued = false;
+    
+    // Check again if queue is closed
+    if (!bIsClosed)
+    {
+        // Reserve space for the new operations
+        const int32 OriginalNum = Operations.Num();
+        Operations.Reserve(OriginalNum + Ops.Num());
+        
+        // Add the operations to the queue
+        for (const FQueuedOperation& Op : Ops)
+        {
+            Operations.Add(Op);
         }
         
-        // Wait for items if timeout specified
-        if (bTimeoutSpecified)
-        {
-            double EndTime = StartTime + (TimeoutMs / 1000.0);
-            
-            while (Queue.Num() == 0 && !bIsClosed && FPlatformTime::Seconds() < EndTime)
-            {
-                // Release lock temporarily
-                QueueLock.Unlock();
-                
-                // Wait for signal with timeout
-                QueueEvent.Wait(1); // Wait with 1ms timeout
-                
-                // Reacquire lock
-                QueueLock.Lock();
-            }
-            
-            // Check if we're still empty after timeout
-            if (Queue.Num() == 0)
-            {
-                // If closed, return closed, otherwise timeout
-                Stats.FailedDequeueCount++;
-                return bIsClosed ? EQueueOperationResult::Closed : EQueueOperationResult::Timeout;
-            }
-        }
-        else
-        {
-            // No timeout, fail immediately
-            Stats.FailedDequeueCount++;
-            return EQueueOperationResult::Empty;
-        }
-    }
-    
-    // Get the first item
-    FQueuedOperation QueuedOp = Queue[0];
-    Queue.RemoveAt(0);
-    
-    // Set output parameter
-    OutItem = QueuedOp.Item;
-    
-    // Update statistics
-    Stats.DequeueCount++;
-    
-    // Calculate queue time
-    double QueueTime = (FPlatformTime::Seconds() - QueuedOp.EnqueueTime) * 1000.0;
-    
-    // Update queue time statistics
-    if (Stats.DequeueCount > 1)
-    {
-        Stats.AverageQueueTimeMs = ((Stats.AverageQueueTimeMs * (Stats.DequeueCount - 1)) + QueueTime) / Stats.DequeueCount;
+        // Update statistics
+        Stats.EnqueueCount += Ops.Num();
+        Stats.PeakQueueSize = FMath::Max(Stats.PeakQueueSize, Operations.Num());
+        
+        bEnqueued = true;
     }
     else
     {
-        Stats.AverageQueueTimeMs = QueueTime;
+        Stats.EnqueueBlockedCount++;
     }
     
-    // Calculate and update dequeue wait time
-    double WaitTime = (FPlatformTime::Seconds() - StartTime) * 1000.0;
-    Stats.DequeueWaitTimeMs += WaitTime;
+    // Signal new items available
+    QueueEvent.Trigger();
     
-    // Update average wait time
-    if (Stats.DequeueCount > 1)
+    // Release the lock
+    QueueLock.Unlock();
+    
+    // Calculate block time if enqueue failed
+    if (!bEnqueued)
     {
-        Stats.AverageWaitTimeMs = ((Stats.AverageWaitTimeMs * (Stats.DequeueCount - 1)) + WaitTime) / Stats.DequeueCount;
-    }
-    else
-    {
-        Stats.AverageWaitTimeMs = WaitTime;
+        double ElapsedMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
+        Stats.EnqueueBlockTimeMs += ElapsedMs;
     }
     
-    return EQueueOperationResult::Success;
+    return bEnqueued;
 }
 
-EQueueOperationResult FThreadSafeOperationQueue::DequeueAll(TArray<void*>& OutItems, uint32 TimeoutMs)
+bool FThreadSafeOperationQueue::Dequeue(FQueuedOperation& OutOp, uint32 TimeoutMs)
+{
+    // Check if multiple consumers are allowed
+    if (!bAllowMultipleConsumers)
+    {
+        // Get current thread ID
+        int32 ThreadId = GetCurrentThreadId();
+        
+        // Check if another thread is already consuming
+        if (CurrentConsumerThreadId != 0 && CurrentConsumerThreadId != ThreadId)
+        {
+            Stats.DequeueBlockedCount++;
+            return false;
+        }
+    }
+    
+    double StartTime = FPlatformTime::Seconds();
+    bool bGotOperation = false;
+    
+    // Try to get an operation
+    while (!bGotOperation)
+    {
+        // Check if queue is empty
+        bool bIsEmpty = true;
+        
+        {
+            FScopeLock Lock(&QueueLock);
+            
+            // Check if we have operations
+            if (Operations.Num() > 0)
+            {
+                // Get the next operation
+                OutOp = Operations[0];
+                Operations.RemoveAt(0, 1, false); // Don't shrink the array
+                
+                // Update statistics
+                Stats.DequeueCount++;
+                
+                // Set current consumer thread ID
+                if (!bAllowMultipleConsumers)
+                {
+                    CurrentConsumerThreadId = GetCurrentThreadId();
+                }
+                
+                bGotOperation = true;
+                bIsEmpty = false;
+            }
+            else
+            {
+                // Queue is empty
+                bIsEmpty = true;
+                
+                // If queue is closed and empty, return failure
+                if (bIsClosed)
+                {
+                    Stats.DequeueBlockedCount++;
+                    double ElapsedMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
+                    Stats.DequeueBlockTimeMs += ElapsedMs;
+                    return false;
+                }
+            }
+        }
+        
+        if (!bGotOperation)
+        {
+            // If timeout is 0, don't wait
+            if (TimeoutMs == 0)
+            {
+                Stats.DequeueBlockedCount++;
+                double ElapsedMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
+                Stats.DequeueBlockTimeMs += ElapsedMs;
+                return false;
+            }
+            
+            // Check if we've timed out
+            double ElapsedMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
+            if (ElapsedMs >= TimeoutMs)
+            {
+                Stats.DequeueBlockedCount++;
+                Stats.DequeueBlockTimeMs += ElapsedMs;
+                return false;
+            }
+            
+            // Wait for signal with remaining timeout
+            uint32 RemainingTimeoutMs = static_cast<uint32>(TimeoutMs - ElapsedMs);
+            if (bIsEmpty)
+            {
+                // Wait for a signal that new items are available
+                QueueEvent.Wait(FMath::Min(RemainingTimeoutMs, 1u)); // Wait at most 1ms at a time
+            }
+        }
+    }
+    
+    // Process any retired nodes periodically
+    if (Stats.DequeueCount % 100 == 0)
+    {
+        ProcessRetiredNodes(false);
+    }
+    
+    return true;
+}
+
+bool FThreadSafeOperationQueue::DequeueBatch(TArray<FQueuedOperation>& OutOps, int32 MaxOperations, uint32 TimeoutMs)
 {
     // Initialize output array
-    OutItems.Empty();
+    OutOps.Reset();
     
-    // Track dequeue start time
+    if (MaxOperations <= 0)
+    {
+        return false;
+    }
+    
+    // Check if multiple consumers are allowed
+    if (!bAllowMultipleConsumers)
+    {
+        // Get current thread ID
+        int32 ThreadId = GetCurrentThreadId();
+        
+        // Check if another thread is already consuming
+        if (CurrentConsumerThreadId != 0 && CurrentConsumerThreadId != ThreadId)
+        {
+            Stats.DequeueBlockedCount++;
+            return false;
+        }
+    }
+    
     double StartTime = FPlatformTime::Seconds();
-    bool bTimeoutSpecified = (TimeoutMs > 0);
+    bool bGotOperations = false;
     
-    // Acquire lock for dequeueing
-    FScopeLock Lock(&QueueLock);
-    
-    // Check if queue is empty
-    if (Queue.Num() == 0)
+    // Try to get operations
+    while (!bGotOperations)
     {
-        // If closed and empty, return closed
-        if (bIsClosed)
+        // Check if queue is empty
+        bool bIsEmpty = true;
+        
         {
-            Stats.FailedDequeueCount++;
-            return EQueueOperationResult::Closed;
+            FScopeLock Lock(&QueueLock);
+            
+            // Check if we have operations
+            int32 AvailableOps = Operations.Num();
+            if (AvailableOps > 0)
+            {
+                // Determine how many operations to dequeue
+                int32 OpsToDequeue = FMath::Min(AvailableOps, MaxOperations);
+                
+                // Reserve space in output array
+                OutOps.Reserve(OpsToDequeue);
+                
+                // Get the operations
+                for (int32 i = 0; i < OpsToDequeue; ++i)
+                {
+                    OutOps.Add(Operations[i]);
+                }
+                
+                // Remove the operations from the queue
+                Operations.RemoveAt(0, OpsToDequeue, false); // Don't shrink the array
+                
+                // Update statistics
+                Stats.DequeueCount += OpsToDequeue;
+                
+                // Set current consumer thread ID
+                if (!bAllowMultipleConsumers)
+                {
+                    CurrentConsumerThreadId = GetCurrentThreadId();
+                }
+                
+                bGotOperations = true;
+                bIsEmpty = false;
+            }
+            else
+            {
+                // Queue is empty
+                bIsEmpty = true;
+                
+                // If queue is closed and empty, return failure
+                if (bIsClosed)
+                {
+                    Stats.DequeueBlockedCount++;
+                    double ElapsedMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
+                    Stats.DequeueBlockTimeMs += ElapsedMs;
+                    return false;
+                }
+            }
         }
         
-        // Wait for items if timeout specified
-        if (bTimeoutSpecified)
+        if (!bGotOperations)
         {
-            double EndTime = StartTime + (TimeoutMs / 1000.0);
-            
-            while (Queue.Num() == 0 && !bIsClosed && FPlatformTime::Seconds() < EndTime)
+            // If timeout is 0, don't wait
+            if (TimeoutMs == 0)
             {
-                // Release lock temporarily
-                QueueLock.Unlock();
-                
-                // Wait for signal with timeout
-                QueueEvent.Wait(1); // Wait with 1ms timeout
-                
-                // Reacquire lock
-                QueueLock.Lock();
+                Stats.DequeueBlockedCount++;
+                double ElapsedMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
+                Stats.DequeueBlockTimeMs += ElapsedMs;
+                return false;
             }
             
-            // Check if we're still empty after timeout
-            if (Queue.Num() == 0)
+            // Check if we've timed out
+            double ElapsedMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
+            if (ElapsedMs >= TimeoutMs)
             {
-                // If closed, return closed, otherwise timeout
-                Stats.FailedDequeueCount++;
-                return bIsClosed ? EQueueOperationResult::Closed : EQueueOperationResult::Timeout;
+                Stats.DequeueBlockedCount++;
+                Stats.DequeueBlockTimeMs += ElapsedMs;
+                return false;
             }
-        }
-        else
-        {
-            // No timeout, fail immediately
-            Stats.FailedDequeueCount++;
-            return EQueueOperationResult::Empty;
+            
+            // Wait for signal with remaining timeout
+            uint32 RemainingTimeoutMs = static_cast<uint32>(TimeoutMs - ElapsedMs);
+            if (bIsEmpty)
+            {
+                // Wait for a signal that new items are available
+                QueueEvent.Wait(FMath::Min(RemainingTimeoutMs, 10u)); // Wait at most 10ms at a time
+            }
         }
     }
     
-    // Reserve space for all items
-    OutItems.Reserve(Queue.Num());
+    // Process any retired nodes periodically
+    ProcessRetiredNodes(false);
     
-    // Double average queue time for all items
-    double TotalQueueTime = 0.0;
-    double CurrentTime = FPlatformTime::Seconds();
-    
-    // Get all items
-    for (const FQueuedOperation& QueuedOp : Queue)
-    {
-        // Add item to output array
-        OutItems.Add(QueuedOp.Item);
-        
-        // Calculate queue time for statistics
-        TotalQueueTime += (CurrentTime - QueuedOp.EnqueueTime) * 1000.0;
-    }
-    
-    // Update dequeue count
-    Stats.DequeueCount += Queue.Num();
-    
-    // Update batching statistics
-    Stats.BatchesProcessed++;
-    Stats.OperationsPacked += Queue.Num();
-    
-    // Update average queue time
-    if (Stats.BatchesProcessed > 1)
-    {
-        double AverageThisBatch = TotalQueueTime / Queue.Num();
-        Stats.AverageQueueTimeMs = ((Stats.AverageQueueTimeMs * (Stats.BatchesProcessed - 1)) + AverageThisBatch) / Stats.BatchesProcessed;
-    }
-    else
-    {
-        Stats.AverageQueueTimeMs = TotalQueueTime / Queue.Num();
-    }
-    
-    // Clear the queue
-    Queue.Empty();
-    
-    // Calculate and update dequeue wait time
-    double WaitTime = (FPlatformTime::Seconds() - StartTime) * 1000.0;
-    Stats.DequeueWaitTimeMs += WaitTime;
-    
-    return EQueueOperationResult::Success;
+    return (OutOps.Num() > 0);
 }
 
-EQueueOperationResult FThreadSafeOperationQueue::DequeueBatch(TArray<void*>& OutItems, int32 MaxItems, uint32 TimeoutMs)
+void FThreadSafeOperationQueue::Close()
 {
-    // Initialize output array
-    OutItems.Empty();
-    
-    // Validate parameters
-    if (MaxItems <= 0)
-    {
-        Stats.FailedDequeueCount++;
-        return EQueueOperationResult::InvalidArgument;
-    }
-    
-    // Track dequeue start time
-    double StartTime = FPlatformTime::Seconds();
-    bool bTimeoutSpecified = (TimeoutMs > 0);
-    
-    // Acquire lock for dequeueing
+    // Mark queue as closed
     FScopeLock Lock(&QueueLock);
-    
-    // Check if queue is empty
-    if (Queue.Num() == 0)
-    {
-        // If closed and empty, return closed
-        if (bIsClosed)
-        {
-            Stats.FailedDequeueCount++;
-            return EQueueOperationResult::Closed;
-        }
-        
-        // Wait for items if timeout specified
-        if (bTimeoutSpecified)
-        {
-            double EndTime = StartTime + (TimeoutMs / 1000.0);
-            
-            while (Queue.Num() == 0 && !bIsClosed && FPlatformTime::Seconds() < EndTime)
-            {
-                // Release lock temporarily
-                QueueLock.Unlock();
-                
-                // Wait for signal with timeout
-                QueueEvent.Wait(1); // Wait with 1ms timeout
-                
-                // Reacquire lock
-                QueueLock.Lock();
-            }
-            
-            // Check if we're still empty after timeout
-            if (Queue.Num() == 0)
-            {
-                // If closed, return closed, otherwise timeout
-                Stats.FailedDequeueCount++;
-                return bIsClosed ? EQueueOperationResult::Closed : EQueueOperationResult::Timeout;
-            }
-        }
-        else
-        {
-            // No timeout, fail immediately
-            Stats.FailedDequeueCount++;
-            return EQueueOperationResult::Empty;
-        }
-    }
-    
-    // Limit to available items or max batch size
-    int32 ItemsToCopy = FMath::Min(Queue.Num(), MaxItems);
-    
-    // Reserve space for items
-    OutItems.Reserve(ItemsToCopy);
-    
-    // Track queue times for statistics
-    double TotalQueueTime = 0.0;
-    double CurrentTime = FPlatformTime::Seconds();
-    
-    // Get items
-    for (int32 i = 0; i < ItemsToCopy; ++i)
-    {
-        const FQueuedOperation& QueuedOp = Queue[i];
-        
-        // Add item to output array
-        OutItems.Add(QueuedOp.Item);
-        
-        // Calculate queue time for statistics
-        TotalQueueTime += (CurrentTime - QueuedOp.EnqueueTime) * 1000.0;
-    }
-    
-    // Remove items from queue
-    Queue.RemoveAt(0, ItemsToCopy);
-    
-    // Update dequeue count
-    Stats.DequeueCount += ItemsToCopy;
-    
-    // Update batching statistics
-    Stats.BatchesProcessed++;
-    Stats.OperationsPacked += ItemsToCopy;
-    
-    // Update average queue time
-    if (Stats.BatchesProcessed > 1)
-    {
-        double AverageThisBatch = TotalQueueTime / ItemsToCopy;
-        Stats.AverageQueueTimeMs = ((Stats.AverageQueueTimeMs * (Stats.BatchesProcessed - 1)) + AverageThisBatch) / Stats.BatchesProcessed;
-    }
-    else
-    {
-        Stats.AverageQueueTimeMs = TotalQueueTime / ItemsToCopy;
-    }
-    
-    // Calculate and update dequeue wait time
-    double WaitTime = (FPlatformTime::Seconds() - StartTime) * 1000.0;
-    Stats.DequeueWaitTimeMs += WaitTime;
-    
-    return EQueueOperationResult::Success;
-}
-
-void FThreadSafeOperationQueue::Close(bool bDrainQueue)
-{
-    FScopeLock Lock(&QueueLock);
-    
-    // Mark as closed
     bIsClosed = true;
-    
-    // Clear queue if not draining
-    if (!bDrainQueue)
-    {
-        Queue.Empty();
-    }
     
     // Signal any waiting threads
     QueueEvent.Trigger();
@@ -454,64 +564,64 @@ bool FThreadSafeOperationQueue::IsClosed() const
 int32 FThreadSafeOperationQueue::GetCount() const
 {
     FScopeLock Lock(&QueueLock);
-    return Queue.Num();
+    return Operations.Num();
 }
 
 bool FThreadSafeOperationQueue::IsEmpty() const
 {
     FScopeLock Lock(&QueueLock);
-    return Queue.Num() == 0;
-}
-
-bool FThreadSafeOperationQueue::IsFull() const
-{
-    if (MaxQueueSize <= 0)
-    {
-        return false; // No capacity limit
-    }
-    
-    FScopeLock Lock(&QueueLock);
-    return Queue.Num() >= MaxQueueSize;
+    return (Operations.Num() == 0);
 }
 
 FQueueStats FThreadSafeOperationQueue::GetStats() const
 {
-    // Return a copy of the statistics
     return Stats;
 }
 
-void FThreadSafeOperationQueue::ResetStats()
+void FThreadSafeOperationQueue::ResetConsumer()
 {
-    FScopeLock Lock(&QueueLock);
-    
-    // Reset statistics
-    Stats.EnqueueCount = 0;
-    Stats.DequeueCount = 0;
-    Stats.EnqueueWaitTimeMs = 0.0;
-    Stats.DequeueWaitTimeMs = 0.0;
-    Stats.PeakQueueSize = Queue.Num(); // Current size
-    Stats.FailedEnqueueCount = 0;
-    Stats.FailedDequeueCount = 0;
-    Stats.AverageWaitTimeMs = 0.0;
-    Stats.AverageQueueTimeMs = 0.0;
-    Stats.BatchesProcessed = 0;
-    Stats.OperationsPacked = 0;
-    
-    // Reset last statistics reset time
-    LastStatsResetTime = FPlatformTime::Seconds();
+    // Reset consumer thread ID to allow another thread to consume
+    if (!bAllowMultipleConsumers)
+    {
+        CurrentConsumerThreadId = 0;
+    }
 }
 
-bool FThreadSafeOperationQueue::WaitForItems(uint32 TimeoutMs)
+void FThreadSafeOperationQueue::RetireNode(void* Pointer)
 {
-    // Check if queue already has items or is closed
+    if (Pointer)
     {
-        FScopeLock Lock(&QueueLock);
-        if (Queue.Num() > 0 || bIsClosed)
+        FScopeLock Lock(&RetiredNodesLock);
+        RetiredNodes.Add(Pointer);
+    }
+}
+
+void FThreadSafeOperationQueue::ProcessRetiredNodes(bool bForce)
+{
+    // Process retired nodes only if we have accumulated enough or force is true
+    FScopeLock Lock(&RetiredNodesLock);
+    
+    if (bForce || RetiredNodes.Num() > 100)
+    {
+        TArray<void*> NodesToDelete;
+        
+        // Find nodes that are safe to delete
+        for (int32 i = 0; i < RetiredNodes.Num(); ++i)
         {
-            return Queue.Num() > 0;
+            void* Node = RetiredNodes[i];
+            
+            if (!IsPointerHazardous(Node))
+            {
+                NodesToDelete.Add(Node);
+                RetiredNodes.RemoveAtSwap(i);
+                --i; // Adjust index for the swap removal
+            }
+        }
+        
+        // Delete the safe nodes
+        for (void* Node : NodesToDelete)
+        {
+            FMemory::Free(Node);
         }
     }
-    
-    // Wait for signal with timeout
-    return QueueEvent.Wait(TimeoutMs);
 }

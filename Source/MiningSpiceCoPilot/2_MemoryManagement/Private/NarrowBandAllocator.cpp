@@ -1,10 +1,10 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "2_MemoryManagement/Public/SVOAllocator.h"
+#include "2_MemoryManagement/Public/NarrowBandAllocator.h"
 #include "HAL/PlatformMath.h"
 #include "Misc/ScopeLock.h"
 
-FSVOAllocator::FSVOAllocator(const FName& InPoolName, uint32 InBlockSize, uint32 InBlockCount, 
+FNarrowBandAllocator::FNarrowBandAllocator(const FName& InPoolName, uint32 InBlockSize, uint32 InBlockCount, 
     EMemoryAccessPattern InAccessPattern, bool InAllowGrowth)
     : PoolName(InPoolName)
     , BlockSize(FMath::Max(InBlockSize, 8u)) // Ensure minimum block size
@@ -14,19 +14,18 @@ FSVOAllocator::FSVOAllocator(const FName& InPoolName, uint32 InBlockSize, uint32
     , bIsInitialized(false)
     , bAllowsGrowth(InAllowGrowth)
     , AccessPattern(InAccessPattern)
-    , ZOrderMappingFunction(&FSVOAllocator::DefaultZOrderMapping)
+    , PrecisionTier(EMemoryTier::Hot) // Default to high precision
+    , ChannelCount(1) // Default to single channel
     , bStatsDirty(true)
 {
-    // Align block size to 16 bytes for SIMD operations
-    BlockSize = Align(BlockSize, 16);
 }
 
-FSVOAllocator::~FSVOAllocator()
+FNarrowBandAllocator::~FNarrowBandAllocator()
 {
     Shutdown();
 }
 
-bool FSVOAllocator::Initialize()
+bool FNarrowBandAllocator::Initialize()
 {
     FScopeLock Lock(&PoolLock);
     
@@ -34,6 +33,10 @@ bool FSVOAllocator::Initialize()
     {
         return true;
     }
+    
+    // Align block size based on precision tier and SIMD requirements
+    uint32 Alignment = GetElementAlignment();
+    BlockSize = Align(BlockSize, Alignment);
     
     if (!AllocatePoolMemory(MaxBlockCount))
     {
@@ -46,7 +49,7 @@ bool FSVOAllocator::Initialize()
     return true;
 }
 
-void FSVOAllocator::Shutdown()
+void FNarrowBandAllocator::Shutdown()
 {
     FScopeLock Lock(&PoolLock);
     
@@ -59,22 +62,22 @@ void FSVOAllocator::Shutdown()
     bIsInitialized = false;
 }
 
-bool FSVOAllocator::IsInitialized() const
+bool FNarrowBandAllocator::IsInitialized() const
 {
     return bIsInitialized;
 }
 
-FName FSVOAllocator::GetPoolName() const
+FName FNarrowBandAllocator::GetPoolName() const
 {
     return PoolName;
 }
 
-uint32 FSVOAllocator::GetBlockSize() const
+uint32 FNarrowBandAllocator::GetBlockSize() const
 {
     return BlockSize;
 }
 
-void* FSVOAllocator::Allocate(const UObject* RequestingObject, FName AllocationTag)
+void* FNarrowBandAllocator::Allocate(const UObject* RequestingObject, FName AllocationTag)
 {
     FScopeLock Lock(&PoolLock);
     
@@ -107,6 +110,9 @@ void* FSVOAllocator::Allocate(const UObject* RequestingObject, FName AllocationT
     // Calculate address of the block
     void* Ptr = PoolMemory + (BlockIndex * BlockSize);
     
+    // Zero out the memory for the new allocation
+    FMemory::Memzero(Ptr, BlockSize);
+    
     // Update stats
     bStatsDirty = true;
     CachedStats.TotalAllocations++;
@@ -114,7 +120,7 @@ void* FSVOAllocator::Allocate(const UObject* RequestingObject, FName AllocationT
     return Ptr;
 }
 
-bool FSVOAllocator::Free(void* Ptr)
+bool FNarrowBandAllocator::Free(void* Ptr)
 {
     if (!Ptr || !bIsInitialized)
     {
@@ -141,6 +147,7 @@ bool FSVOAllocator::Free(void* Ptr)
     BlockMetadata[BlockIndex].AllocationTag = NAME_None;
     BlockMetadata[BlockIndex].RequestingObject = nullptr;
     BlockMetadata[BlockIndex].AllocationTime = 0.0;
+    BlockMetadata[BlockIndex].DistanceFromSurface = 0.0f;
     
     // Add to free list
     FreeBlocks.Add(BlockIndex);
@@ -152,7 +159,7 @@ bool FSVOAllocator::Free(void* Ptr)
     return true;
 }
 
-bool FSVOAllocator::Grow(uint32 AdditionalBlockCount, bool bForceGrowth)
+bool FNarrowBandAllocator::Grow(uint32 AdditionalBlockCount, bool bForceGrowth)
 {
     FScopeLock Lock(&PoolLock);
     
@@ -178,8 +185,12 @@ bool FSVOAllocator::Grow(uint32 AdditionalBlockCount, bool bForceGrowth)
     uint32 OldBlockCount = CurrentBlockCount;
     uint32 NewBlockCount = OldBlockCount + AdditionalBlockCount;
     
+    // Calculate alignment based on precision tier
+    uint32 Alignment = GetElementAlignment();
+    
     // Allocate new memory
-    uint8* NewMemory = (uint8*)FMemory::Malloc(NewBlockCount * BlockSize, 16);
+    uint64 TotalSize = static_cast<uint64>(NewBlockCount) * static_cast<uint64>(BlockSize);
+    uint8* NewMemory = (uint8*)FMemory::Malloc(TotalSize, Alignment);
     if (!NewMemory)
     {
         return false;
@@ -214,7 +225,7 @@ bool FSVOAllocator::Grow(uint32 AdditionalBlockCount, bool bForceGrowth)
     return true;
 }
 
-uint32 FSVOAllocator::Shrink(uint32 MaxBlocksToRemove)
+uint32 FNarrowBandAllocator::Shrink(uint32 MaxBlocksToRemove)
 {
     FScopeLock Lock(&PoolLock);
     
@@ -248,23 +259,14 @@ uint32 FSVOAllocator::Shrink(uint32 MaxBlocksToRemove)
     }
     
     // Create a compact block layout by moving allocated blocks to the front
-    // This is a complex operation and could be optimized further in a real implementation
-    
-    // Not implementing full defragmentation here as it's a complex operation
-    // In a real implementation, we would:
-    // 1. Sort blocks so that all allocated blocks are at the front
-    // 2. Update pointers to those blocks
-    // 3. Create a new smaller memory buffer
-    // 4. Copy the allocated blocks to the new buffer
-    // 5. Free the old buffer
-    
-    // For this example, we'll just report that we can't shrink since it would
-    // require full pointer tracking
+    // For a real narrow-band allocator, we'd need to implement defragmentation
+    // that preserves the distance field structure and relationships
+    // For now, we'll use a simplified approach that doesn't actually shrink
     
     return 0;
 }
 
-bool FSVOAllocator::OwnsPointer(const void* Ptr) const
+bool FNarrowBandAllocator::OwnsPointer(const void* Ptr) const
 {
     if (!bIsInitialized || !PoolMemory || !Ptr)
     {
@@ -276,18 +278,18 @@ bool FSVOAllocator::OwnsPointer(const void* Ptr) const
     return BytePtr >= PoolMemory && BytePtr < (PoolMemory + (CurrentBlockCount * BlockSize));
 }
 
-void FSVOAllocator::SetAccessPattern(EMemoryAccessPattern InAccessPattern)
+void FNarrowBandAllocator::SetAccessPattern(EMemoryAccessPattern InAccessPattern)
 {
     FScopeLock Lock(&PoolLock);
     AccessPattern = InAccessPattern;
 }
 
-EMemoryAccessPattern FSVOAllocator::GetAccessPattern() const
+EMemoryAccessPattern FNarrowBandAllocator::GetAccessPattern() const
 {
     return AccessPattern;
 }
 
-FPoolStats FSVOAllocator::GetStats() const
+FPoolStats FNarrowBandAllocator::GetStats() const
 {
     FScopeLock Lock(&PoolLock);
     
@@ -300,7 +302,7 @@ FPoolStats FSVOAllocator::GetStats() const
     return CachedStats;
 }
 
-bool FSVOAllocator::Defragment(float MaxTimeMs)
+bool FNarrowBandAllocator::Defragment(float MaxTimeMs)
 {
     FScopeLock Lock(&PoolLock);
     
@@ -313,7 +315,17 @@ bool FSVOAllocator::Defragment(float MaxTimeMs)
     double StartTime = FPlatformTime::Seconds();
     double EndTime = StartTime + MaxTimeMs / 1000.0;
     
-    // Calculate fragmentation (interspersed allocated and free blocks)
+    // For narrow-band allocators, defragmentation is more complex because
+    // we want to keep elements that are close in the distance field also
+    // close in memory for better cache locality
+    
+    // This would be implemented by:
+    // 1. Sort blocks by spatial position or distance from surface
+    // 2. Create a new memory layout
+    // 3. Update pointers to those blocks
+    // 4. Move the data to the new layout
+    
+    // For this example, we'll just identify fragmentation
     uint32 FragmentCount = 0;
     bool PrevWasAllocated = false;
     
@@ -338,54 +350,51 @@ bool FSVOAllocator::Defragment(float MaxTimeMs)
     // Update stats 
     bStatsDirty = true;
     
-    // For a real implementation, we'd actually move blocks around to reduce fragmentation
-    // This would require tracking all pointers to allocated blocks and updating them
-    
-    // Return true if we did any defragmentation work (in this case, just analysis)
+    // Report if we found any fragmentation
     return FragmentCount > 0;
 }
 
-bool FSVOAllocator::Validate(TArray<FString>& OutErrors) const
+bool FNarrowBandAllocator::Validate(TArray<FString>& OutErrors) const
 {
     FScopeLock Lock(&PoolLock);
     
     if (!bIsInitialized)
     {
-        OutErrors.Add(FString::Printf(TEXT("Pool '%s' is not initialized"), *PoolName.ToString()));
+        OutErrors.Add(FString::Printf(TEXT("NarrowBandAllocator '%s' is not initialized"), *PoolName.ToString()));
         return false;
     }
     
     if (!PoolMemory)
     {
-        OutErrors.Add(FString::Printf(TEXT("Pool '%s' has invalid memory"), *PoolName.ToString()));
+        OutErrors.Add(FString::Printf(TEXT("NarrowBandAllocator '%s' has invalid memory"), *PoolName.ToString()));
         return false;
     }
     
     // Verify free list integrity
     TArray<bool> BlockUsed;
     BlockUsed.SetNum(CurrentBlockCount);
-    FMemory::Memset(BlockUsed.GetData(), 0, BlockUsed.Num() * sizeof(bool));
+    FMemory::Memzero(BlockUsed.GetData(), BlockUsed.Num() * sizeof(bool));
     
     // Check free list
     for (uint32 FreeIndex : FreeBlocks)
     {
         if (FreeIndex >= CurrentBlockCount)
         {
-            OutErrors.Add(FString::Printf(TEXT("Pool '%s' has invalid free index %u (max: %u)"), 
+            OutErrors.Add(FString::Printf(TEXT("NarrowBandAllocator '%s' has invalid free index %u (max: %u)"), 
                 *PoolName.ToString(), FreeIndex, CurrentBlockCount - 1));
             return false;
         }
         
         if (BlockUsed[FreeIndex])
         {
-            OutErrors.Add(FString::Printf(TEXT("Pool '%s' has duplicate free index %u"), 
+            OutErrors.Add(FString::Printf(TEXT("NarrowBandAllocator '%s' has duplicate free index %u"), 
                 *PoolName.ToString(), FreeIndex));
             return false;
         }
         
         if (BlockMetadata[FreeIndex].bAllocated)
         {
-            OutErrors.Add(FString::Printf(TEXT("Pool '%s' has free index %u marked as allocated"), 
+            OutErrors.Add(FString::Printf(TEXT("NarrowBandAllocator '%s' has free index %u marked as allocated"), 
                 *PoolName.ToString(), FreeIndex));
             return false;
         }
@@ -411,14 +420,14 @@ bool FSVOAllocator::Validate(TArray<FString>& OutErrors) const
     
     if (FreeCount != (uint32)FreeBlocks.Num())
     {
-        OutErrors.Add(FString::Printf(TEXT("Pool '%s' free count mismatch: %u in metadata, %u in free list"), 
+        OutErrors.Add(FString::Printf(TEXT("NarrowBandAllocator '%s' free count mismatch: %u in metadata, %u in free list"), 
             *PoolName.ToString(), FreeCount, FreeBlocks.Num()));
         return false;
     }
     
     if (AllocatedCount + FreeCount != CurrentBlockCount)
     {
-        OutErrors.Add(FString::Printf(TEXT("Pool '%s' block count mismatch: %u allocated + %u free != %u total"), 
+        OutErrors.Add(FString::Printf(TEXT("NarrowBandAllocator '%s' block count mismatch: %u allocated + %u free != %u total"), 
             *PoolName.ToString(), AllocatedCount, FreeCount, CurrentBlockCount));
         return false;
     }
@@ -426,54 +435,65 @@ bool FSVOAllocator::Validate(TArray<FString>& OutErrors) const
     return true;
 }
 
-void FSVOAllocator::SetZOrderMappingFunction(uint32 (*NewMappingFunction)(uint32, uint32, uint32))
+void FNarrowBandAllocator::SetPrecisionTier(EMemoryTier Tier)
 {
     FScopeLock Lock(&PoolLock);
     
-    if (NewMappingFunction)
+    if (Tier != PrecisionTier)
     {
-        ZOrderMappingFunction = NewMappingFunction;
+        // Save old tier
+        EMemoryTier OldTier = PrecisionTier;
+        PrecisionTier = Tier;
+        
+        // If initialized, we'd need to reallocate with new precision
+        // This is complex and would require recreation of the pool with new block sizes
+        // For now, we'll just log a warning if the allocator is already initialized
+        if (bIsInitialized)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("NarrowBandAllocator '%s' precision tier changed from %d to %d after initialization. Changes will be applied on next allocation."),
+                *PoolName.ToString(), static_cast<int32>(OldTier), static_cast<int32>(Tier));
+        }
+        
+        // Force stats update
+        bStatsDirty = true;
     }
-    else
+}
+
+EMemoryTier FNarrowBandAllocator::GetPrecisionTier() const
+{
+    return PrecisionTier;
+}
+
+void FNarrowBandAllocator::SetChannelCount(uint32 NumChannels)
+{
+    FScopeLock Lock(&PoolLock);
+    
+    if (NumChannels != ChannelCount && NumChannels > 0)
     {
-        ZOrderMappingFunction = &FSVOAllocator::DefaultZOrderMapping;
+        // Save old channel count
+        uint32 OldChannelCount = ChannelCount;
+        ChannelCount = NumChannels;
+        
+        // If initialized, we'd need to reallocate with new channel count
+        // This is complex and would require recreation of the pool with new block sizes
+        // For now, we'll just log a warning if the allocator is already initialized
+        if (bIsInitialized)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("NarrowBandAllocator '%s' channel count changed from %u to %u after initialization. Changes will be applied on next allocation."),
+                *PoolName.ToString(), OldChannelCount, NumChannels);
+        }
+        
+        // Force stats update
+        bStatsDirty = true;
     }
 }
 
-uint32 FSVOAllocator::DefaultZOrderMapping(uint32 x, uint32 y, uint32 z)
+uint32 FNarrowBandAllocator::GetChannelCount() const
 {
-    // Simple 10-bit interleaving for 3D Z-order curve
-    // Interleave bits of x, y, and z to create a cache-coherent spatial index
-    
-    // Separate every bit with two zeros
-    x = (x | (x << 16)) & 0x030000FF;
-    x = (x | (x << 8)) & 0x0300F00F;
-    x = (x | (x << 4)) & 0x030C30C3;
-    x = (x | (x << 2)) & 0x09249249;
-    
-    y = (y | (y << 16)) & 0x030000FF;
-    y = (y | (y << 8)) & 0x0300F00F;
-    y = (y | (y << 4)) & 0x030C30C3;
-    y = (y | (y << 2)) & 0x09249249;
-    
-    z = (z | (z << 16)) & 0x030000FF;
-    z = (z | (z << 8)) & 0x0300F00F;
-    z = (z | (z << 4)) & 0x030C30C3;
-    z = (z | (z << 2)) & 0x09249249;
-    
-    // Interleave the bits
-    return x | (y << 1) | (z << 2);
+    return ChannelCount;
 }
 
-uint32 FSVOAllocator::LookupTableZOrderMapping(uint32 x, uint32 y, uint32 z)
-{
-    // This would be implemented using pre-computed lookup tables
-    // For performance compared to bit manipulation
-    // Not implemented here for brevity, would use DefaultZOrderMapping instead
-    return DefaultZOrderMapping(x, y, z);
-}
-
-bool FSVOAllocator::Reset()
+bool FNarrowBandAllocator::Reset()
 {
     FScopeLock Lock(&PoolLock);
     
@@ -491,6 +511,8 @@ bool FSVOAllocator::Reset()
         BlockMetadata[i].bAllocated = false;
         BlockMetadata[i].AllocationTag = NAME_None;
         BlockMetadata[i].RequestingObject = nullptr;
+        BlockMetadata[i].AllocationTime = 0.0;
+        BlockMetadata[i].DistanceFromSurface = 0.0f;
         
         // Add to free list
         FreeBlocks.Add(i);
@@ -502,7 +524,7 @@ bool FSVOAllocator::Reset()
     return true;
 }
 
-bool FSVOAllocator::AllocatePoolMemory(uint32 BlockCount)
+bool FNarrowBandAllocator::AllocatePoolMemory(uint32 BlockCount)
 {
     // Check inputs
     if (BlockCount == 0 || BlockSize == 0)
@@ -519,12 +541,18 @@ bool FSVOAllocator::AllocatePoolMemory(uint32 BlockCount)
     // Calculate total memory size
     uint64 TotalSize = static_cast<uint64>(BlockCount) * static_cast<uint64>(BlockSize);
     
-    // Allocate memory aligned to 16 bytes for SIMD operations
-    PoolMemory = (uint8*)FMemory::Malloc(TotalSize, 16);
+    // Calculate alignment based on precision tier
+    uint32 Alignment = GetElementAlignment();
+    
+    // Allocate memory aligned appropriately for SIMD operations
+    PoolMemory = (uint8*)FMemory::Malloc(TotalSize, Alignment);
     if (!PoolMemory)
     {
         return false;
     }
+    
+    // Zero out the memory
+    FMemory::Memzero(PoolMemory, TotalSize);
     
     // Initialize metadata
     BlockMetadata.SetNum(BlockCount);
@@ -550,7 +578,7 @@ bool FSVOAllocator::AllocatePoolMemory(uint32 BlockCount)
     return true;
 }
 
-void FSVOAllocator::FreePoolMemory()
+void FNarrowBandAllocator::FreePoolMemory()
 {
     if (PoolMemory)
     {
@@ -563,7 +591,7 @@ void FSVOAllocator::FreePoolMemory()
     CurrentBlockCount = 0;
 }
 
-void FSVOAllocator::UpdateStats() const
+void FNarrowBandAllocator::UpdateStats() const
 {
     // Make sure this is called with the lock held
     
@@ -595,7 +623,8 @@ void FSVOAllocator::UpdateStats() const
     CachedStats.GrowthCount = CurrentBlockCount > MaxBlockCount ? 
         (CurrentBlockCount - MaxBlockCount + MaxBlockCount - 1) / MaxBlockCount : 0;
     
-    // Calculate fragmentation
+    // Calculate fragmentation - for narrow band, fragmentation is more complex
+    // as we want to consider spatial locality
     uint32 FragmentTransitions = 0;
     bool PrevWasAllocated = false;
     
@@ -618,7 +647,7 @@ void FSVOAllocator::UpdateStats() const
         (FragmentTransitions / MaxPossibleTransitions) * 100.0f : 0.0f;
 }
 
-int32 FSVOAllocator::GetBlockIndex(const void* Ptr) const
+int32 FNarrowBandAllocator::GetBlockIndex(const void* Ptr) const
 {
     if (!bIsInitialized || !PoolMemory || !Ptr)
     {
@@ -646,4 +675,58 @@ int32 FSVOAllocator::GetBlockIndex(const void* Ptr) const
     }
     
     return BlockIndex;
+}
+
+uint32 FNarrowBandAllocator::GetElementAlignment() const
+{
+    // Choose alignment based on precision tier and SIMD requirements
+    switch (PrecisionTier)
+    {
+    case EMemoryTier::Hot:
+        // High precision - align for AVX operations (32 bytes)
+        return 32;
+        
+    case EMemoryTier::Warm:
+        // Medium precision - align for SSE operations (16 bytes)
+        return 16;
+        
+    case EMemoryTier::Cold:
+        // Low precision - align for basic SIMD (8 bytes)
+        return 8;
+        
+    case EMemoryTier::Archive:
+        // Compressed format - minimal alignment (4 bytes)
+        return 4;
+        
+    default:
+        // Default to SSE alignment (16 bytes)
+        return 16;
+    }
+}
+
+uint32 FNarrowBandAllocator::GetBytesPerChannel() const
+{
+    // Choose bytes per channel based on precision tier
+    switch (PrecisionTier)
+    {
+    case EMemoryTier::Hot:
+        // High precision - full float (4 bytes)
+        return 4;
+        
+    case EMemoryTier::Warm:
+        // Medium precision - half float (2 bytes)
+        return 2;
+        
+    case EMemoryTier::Cold:
+        // Low precision - 8-bit (1 byte)
+        return 1;
+        
+    case EMemoryTier::Archive:
+        // Compressed format - sub-byte precision
+        return 0; // Special case, handled separately
+        
+    default:
+        // Default to full float
+        return 4;
+    }
 }

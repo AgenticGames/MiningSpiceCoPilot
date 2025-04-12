@@ -515,7 +515,6 @@ bool FSDFTypeRegistry::IsOperationRegistered(uint32 InOperationId) const
 
 FSDFTypeRegistry& FSDFTypeRegistry::Get()
 {
-    // Thread-safe singleton initialization
     if (!bSingletonInitialized)
     {
         bool bWasAlreadyInitialized = false;
