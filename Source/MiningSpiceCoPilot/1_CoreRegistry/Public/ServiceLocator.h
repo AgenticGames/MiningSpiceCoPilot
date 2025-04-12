@@ -3,8 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Core/Public/Interfaces/IServiceLocator.h"
-#include "Core/Public/Interfaces/IServiceProvider.h"
+#include "1_CoreRegistry/Public/Interfaces/IServiceLocator.h"
+#include "1_CoreRegistry/Public/Interfaces/IServiceProvider.h"
 #include "Templates/Atomic.h"
 #include "Containers/Map.h"
 #include "HAL/ThreadSafeBool.h"

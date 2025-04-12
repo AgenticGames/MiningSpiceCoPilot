@@ -1,17 +1,17 @@
-// IServiceProvider.h
+// IDependencyServiceProvider.h
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
-#include "IServiceProvider.generated.h"
+#include "IDependencyServiceProvider.generated.h"
 
 /**
  * Base interface for service providers in the SVO+SDF mining architecture
  */
 UINTERFACE(MinimalAPI, meta=(CannotImplementInterfaceInBlueprint))
-class UServiceProvider : public UInterface
+class UDependencyServiceProvider : public UInterface
 {
     GENERATED_BODY()
 };
@@ -20,7 +20,7 @@ class UServiceProvider : public UInterface
  * Interface for specialized service providers in the SVO+SDF mining architecture
  * Provides domain-specific service registration and resolution
  */
-class MININGSPICECOPILOT_API IServiceProvider
+class MININGSPICECOPILOT_API IDependencyServiceProvider
 {
     GENERATED_BODY()
 

@@ -85,12 +85,12 @@ enum class EConfigPropagationMode : uint8
 };
 
 // Forward declaration
-DECLARE_DELEGATE_TwoParams(FConfigValueChangedDelegate, const FString& /* ConfigKey */, const struct FConfigValue& /* NewValue */);
+DECLARE_DELEGATE_TwoParams(FConfigValueChangedDelegate, const FString& /* ConfigKey */, const struct FMiningConfigValue& /* NewValue */);
 
 /**
  * Configuration value structure
  */
-struct MININGSPICECOPILOT_API FConfigValue
+struct MININGSPICECOPILOT_API FMiningConfigValue
 {
     /** Value type */
     EConfigValueType Type;
@@ -135,7 +135,7 @@ struct MININGSPICECOPILOT_API FConfigValue
     FDateTime LastUpdated;
     
     /** Default constructor */
-    FConfigValue()
+    FMiningConfigValue()
         : Type(EConfigValueType::String)
         , BoolValue(false)
         , IntValue(0)
@@ -152,7 +152,7 @@ struct MININGSPICECOPILOT_API FConfigValue
     }
     
     /** Boolean constructor */
-    FConfigValue(bool InValue, EConfigSourcePriority InSourcePriority = EConfigSourcePriority::Default)
+    FMiningConfigValue(bool InValue, EConfigSourcePriority InSourcePriority = EConfigSourcePriority::Default)
         : Type(EConfigValueType::Boolean)
         , BoolValue(InValue)
         , IntValue(InValue ? 1 : 0)
@@ -169,7 +169,7 @@ struct MININGSPICECOPILOT_API FConfigValue
     }
     
     /** Integer constructor */
-    FConfigValue(int64 InValue, EConfigSourcePriority InSourcePriority = EConfigSourcePriority::Default)
+    FMiningConfigValue(int64 InValue, EConfigSourcePriority InSourcePriority = EConfigSourcePriority::Default)
         : Type(EConfigValueType::Integer)
         , BoolValue(InValue != 0)
         , IntValue(InValue)
@@ -186,7 +186,7 @@ struct MININGSPICECOPILOT_API FConfigValue
     }
     
     /** Float constructor */
-    FConfigValue(double InValue, EConfigSourcePriority InSourcePriority = EConfigSourcePriority::Default)
+    FMiningConfigValue(double InValue, EConfigSourcePriority InSourcePriority = EConfigSourcePriority::Default)
         : Type(EConfigValueType::Float)
         , BoolValue(InValue != 0.0)
         , IntValue(static_cast<int64>(InValue))
@@ -203,7 +203,7 @@ struct MININGSPICECOPILOT_API FConfigValue
     }
     
     /** String constructor */
-    FConfigValue(const FString& InValue, EConfigSourcePriority InSourcePriority = EConfigSourcePriority::Default)
+    FMiningConfigValue(const FString& InValue, EConfigSourcePriority InSourcePriority = EConfigSourcePriority::Default)
         : Type(EConfigValueType::String)
         , BoolValue(InValue.ToBool())
         , IntValue(FCString::Atoi64(*InValue))
@@ -260,13 +260,13 @@ struct MININGSPICECOPILOT_API FConfigValue
 struct MININGSPICECOPILOT_API FConfigMetadata
 {
     /** Default value */
-    FConfigValue DefaultValue;
+    FMiningConfigValue DefaultValue;
     
     /** Minimum value for numeric types */
-    FConfigValue MinValue;
+    FMiningConfigValue MinValue;
     
     /** Maximum value for numeric types */
-    FConfigValue MaxValue;
+    FMiningConfigValue MaxValue;
     
     /** Description of this configuration option */
     FString Description;
@@ -340,12 +340,12 @@ public:
     virtual bool SaveToFile(const FString& FilePath, bool bOnlyModified = true, EConfigSourcePriority Priority = EConfigSourcePriority::User) = 0;
     
     /**
-     * Gets a configuration value as a raw FConfigValue
+     * Gets a configuration value as a raw FMiningConfigValue
      * @param Key Configuration key (section.subsection.name format)
      * @param OutValue Receives the config value
      * @return True if the key was found
      */
-    virtual bool GetValue(const FString& Key, FConfigValue& OutValue) const = 0;
+    virtual bool GetValue(const FString& Key, FMiningConfigValue& OutValue) const = 0;
     
     /**
      * Gets a boolean configuration value
@@ -410,7 +410,7 @@ public:
      * @param PropagationMode How to propagate change notifications
      * @return True if the value was set successfully
      */
-    virtual bool SetValue(const FString& Key, const FConfigValue& Value, EConfigSourcePriority Priority = EConfigSourcePriority::Runtime, EConfigPropagationMode PropagationMode = EConfigPropagationMode::DirectOnly) = 0;
+    virtual bool SetValue(const FString& Key, const FMiningConfigValue& Value, EConfigSourcePriority Priority = EConfigSourcePriority::Runtime, EConfigPropagationMode PropagationMode = EConfigPropagationMode::DirectOnly) = 0;
     
     /**
      * Sets a boolean configuration value

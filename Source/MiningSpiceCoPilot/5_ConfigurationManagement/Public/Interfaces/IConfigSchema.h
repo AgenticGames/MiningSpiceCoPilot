@@ -5,13 +5,15 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
+#include "Templates/SharedPointer.h"
+#include "Dom/JsonObject.h"
 #include "IConfigSchema.generated.h"
 
 /**
  * Defines validation schema type
  */
 UENUM(BlueprintType)
-enum class EConfigValueType : uint8
+enum class ESchemaValueType : uint8
 {
     Bool,       // Boolean values
     Int,        // Integer values
@@ -52,10 +54,10 @@ struct FConfigValueConstraint
 };
 
 /**
- * Configuration property schema definition
+ * Item schema for array items - separate struct to avoid recursion
  */
 USTRUCT(BlueprintType)
-struct FConfigPropertySchema
+struct FArrayItemSchema
 {
     GENERATED_BODY()
 
@@ -65,7 +67,7 @@ struct FConfigPropertySchema
     
     // Property data type
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
-    EConfigValueType ValueType = EConfigValueType::String;
+    ESchemaValueType ValueType = ESchemaValueType::String;
     
     // Default value as string
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
@@ -87,13 +89,95 @@ struct FConfigPropertySchema
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
     TArray<FConfigValueConstraint> Constraints;
     
-    // For object types, nested properties
+    // For enum types, allowed values
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
-    TArray<FConfigPropertySchema> Properties;
+    TArray<FString> EnumValues;
+};
+
+/**
+ * Structure for nested properties to avoid recursion
+ */
+USTRUCT(BlueprintType)
+struct FNestedPropertySchema
+{
+    GENERATED_BODY()
     
-    // For array types, schema for items
+    // Property name
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
-    TSharedPtr<FConfigPropertySchema> ItemSchema;
+    FString Name;
+    
+    // Property data type
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    ESchemaValueType ValueType = ESchemaValueType::String;
+    
+    // Default value as string
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    FString DefaultValue;
+    
+    // Property description
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    FText Description;
+    
+    // Is this property required?
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    bool bRequired = false;
+    
+    // Is this property deprecated?
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    bool bDeprecated = false;
+    
+    // Constraints for validation
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    TArray<FConfigValueConstraint> Constraints;
+};
+
+/**
+ * Configuration property schema definition
+ */
+USTRUCT(BlueprintType)
+struct FConfigPropertySchema
+{
+    GENERATED_BODY()
+
+    // Property name
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    FString Name;
+    
+    // Property data type
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    ESchemaValueType ValueType = ESchemaValueType::String;
+    
+    // Default value as string
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    FString DefaultValue;
+    
+    // Property description
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    FText Description;
+    
+    // Is this property required?
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    bool bRequired = false;
+    
+    // Is this property deprecated?
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    bool bDeprecated = false;
+    
+    // Constraints for validation
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    TArray<FConfigValueConstraint> Constraints;
+    
+    // For object types, nested properties - using a non-recursive type
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    TArray<FNestedPropertySchema> Properties;
+    
+    // For array types, schema for items - using separate struct to avoid recursion
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    FArrayItemSchema ItemSchema;
+    
+    // Flag to indicate if the ItemSchema is valid and should be used
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")
+    bool bHasItemSchema = false;
     
     // For enum types, allowed values
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config Schema")

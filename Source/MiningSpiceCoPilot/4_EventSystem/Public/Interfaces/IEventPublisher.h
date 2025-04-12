@@ -2,9 +2,9 @@
 
 #pragma once
 
-#include " CoreMinimal.h\
-#include \UObject/Interface.h\
-#include \IEventPublisher.generated.h\
+#include "CoreMinimal.h"
+#include "UObject/Interface.h"
+#include "IEventPublisher.generated.h"
 
 /**
  * Event priority for publishing and processing
@@ -121,7 +121,7 @@ struct MININGSPICECOPILOT_API FEventContext
  , RegionId(INDEX_NONE)
  , ZoneId(INDEX_NONE)
  , ChannelId(0)
- , PublisherName(TEXT(\Unknown\))
+ , PublisherName(TEXT("Unknown"))
  , bCancellable(false)
  , bCancelled(false)
  {

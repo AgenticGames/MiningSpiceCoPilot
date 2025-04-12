@@ -54,7 +54,7 @@ struct FServiceHealthMetrics
     
     /** Memory usage in bytes */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Service Health")
-    uint64 MemoryUsageBytes = 0;
+    int64 MemoryUsageBytes = 0;
     
     /** CPU usage percentage (0-100) */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Service Health")

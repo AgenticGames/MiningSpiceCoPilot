@@ -1,17 +1,17 @@
-// IServiceLocator.h
+// IDependencyServiceLocator.h
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
-#include "IServiceLocator.generated.h"
+#include "IDependencyServiceLocator.generated.h"
 
 /**
  * Base interface for service locator in the SVO+SDF mining architecture
  */
 UINTERFACE(MinimalAPI, meta=(CannotImplementInterfaceInBlueprint))
-class UServiceLocator : public UInterface
+class UDependencyServiceLocator : public UInterface
 {
     GENERATED_BODY()
 };
@@ -20,7 +20,7 @@ class UServiceLocator : public UInterface
  * Interface for service locator in the SVO+SDF mining architecture
  * Provides service registration, resolution, and lifecycle management for subsystems
  */
-class MININGSPICECOPILOT_API IServiceLocator
+class MININGSPICECOPILOT_API IDependencyServiceLocator
 {
     GENERATED_BODY()
 
@@ -132,5 +132,5 @@ public:
      * Get the singleton instance of the service locator
      * @return Reference to the service locator instance
      */
-    static IServiceLocator& Get();
+    static IDependencyServiceLocator& Get();
 };

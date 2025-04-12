@@ -9,7 +9,7 @@
 // Forward declarations
 class FTaskGraphInterface;
 class FRunnableThread;
-enum class EThreadPriority : uint8;
+// Using Engine's EThreadPriority enum from GenericPlatformAffinity.h, no need to forward declare
 
 /**
  * Task priority levels for the mining system

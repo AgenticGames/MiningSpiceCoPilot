@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
-#include "Interfaces/Compression/ICompressionManager.h"
+#include "ICompressionManager.h" // Fixed include path to use the file in the same directory
 #include "ISDFCompressionSystem.generated.h"
 
 /**

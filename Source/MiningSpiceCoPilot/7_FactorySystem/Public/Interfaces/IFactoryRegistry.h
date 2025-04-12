@@ -5,8 +5,11 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
-#include "IFactory.h"
 #include "IFactoryRegistry.generated.h"
+
+// Forward declarations
+class IFactory;
+class IComponentBuilder;
 
 /**
  * Base interface for factory registry in the SVO+SDF mining architecture

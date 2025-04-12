@@ -4,29 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
-#include "Interfaces/Compression/ICompressionManager.h"
+#include "../../../2.1_TieredCompression/Public/Interfaces/ICompressionManager.h" // Using relative path
+#include "IHibernationCache.h" // Include this to use the EReactivationPriority enum
 #include "IHibernationManager.generated.h"
-
-/**
- * Reactivation priority levels for hibernated regions
- */
-enum class EReactivationPriority : uint8
-{
-    /** Critical for immediate gameplay (player about to enter) */
-    Critical,
-    
-    /** High priority (visible through portal or imminent necessity) */
-    High,
-    
-    /** Normal priority (predicted need within timeframe) */
-    Normal,
-    
-    /** Low priority (background loading for likely destinations) */
-    Low,
-    
-    /** Optional content that can be loaded opportunistically */
-    Optional
-};
 
 /**
  * Region activity state for hibernation decisions

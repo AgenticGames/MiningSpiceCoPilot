@@ -26,9 +26,9 @@ enum class EValidationSeverity : uint8
 };
 
 /**
- * Configuration validation result
+ * Configuration validation detail
  */
-struct MININGSPICECOPILOT_API FConfigValidationResult
+struct MININGSPICECOPILOT_API FConfigValidationDetail
 {
     /** Whether validation passed */
     bool bIsValid;
@@ -43,13 +43,13 @@ struct MININGSPICECOPILOT_API FConfigValidationResult
     FString Key;
     
     /** Suggested valid value (if available) */
-    FConfigValue SuggestedValue;
+    FMiningConfigValue SuggestedValue;
     
     /** Whether auto-correction was applied */
     bool bAutoCorrected;
     
     /** Default constructor for valid result */
-    FConfigValidationResult()
+    FConfigValidationDetail()
         : bIsValid(true)
         , Severity(EValidationSeverity::Info)
         , bAutoCorrected(false)
@@ -57,7 +57,7 @@ struct MININGSPICECOPILOT_API FConfigValidationResult
     }
     
     /** Constructor for validation failure */
-    FConfigValidationResult(const FString& InKey, const FString& InMessage, EValidationSeverity InSeverity = EValidationSeverity::Error)
+    FConfigValidationDetail(const FString& InKey, const FString& InMessage, EValidationSeverity InSeverity = EValidationSeverity::Error)
         : bIsValid(false)
         , Severity(InSeverity)
         , Message(InMessage)
@@ -67,7 +67,7 @@ struct MININGSPICECOPILOT_API FConfigValidationResult
     }
     
     /** Constructor with suggested correction */
-    FConfigValidationResult(const FString& InKey, const FString& InMessage, const FConfigValue& InSuggestedValue, EValidationSeverity InSeverity = EValidationSeverity::Error)
+    FConfigValidationDetail(const FString& InKey, const FString& InMessage, const FMiningConfigValue& InSuggestedValue, EValidationSeverity InSeverity = EValidationSeverity::Error)
         : bIsValid(false)
         , Severity(InSeverity)
         , Message(InMessage)
@@ -108,7 +108,7 @@ struct MININGSPICECOPILOT_API FConfigValidationSummary
     int32 AutoCorrectedCount;
     
     /** Individual validation results */
-    TArray<FConfigValidationResult> Results;
+    TArray<FConfigValidationDetail> Results;
     
     /** Default constructor */
     FConfigValidationSummary()
@@ -124,7 +124,7 @@ struct MININGSPICECOPILOT_API FConfigValidationSummary
     }
     
     /** Add a validation result to the summary */
-    void AddResult(const FConfigValidationResult& Result)
+    void AddResult(const FConfigValidationDetail& Result)
     {
         ValidatedCount++;
         if (Result.bIsValid)
@@ -220,7 +220,7 @@ public:
      * @param bAutoCorrect Whether to automatically correct invalid values
      * @return Validation result
      */
-    virtual FConfigValidationResult ValidateValue(const FString& Key, const FConfigValue& Value, bool bAutoCorrect = false) = 0;
+    virtual FConfigValidationDetail ValidateValue(const FString& Key, const FMiningConfigValue& Value, bool bAutoCorrect = false) = 0;
     
     /**
      * Registers a validation rule for a configuration key
@@ -231,7 +231,7 @@ public:
      * @param DefaultValue Default value if auto-correction is needed
      * @return True if the rule was registered successfully
      */
-    virtual bool RegisterValidationRule(const FString& Key, const FConfigValue& MinValue, const FConfigValue& MaxValue, bool bRequired = false, const FConfigValue* DefaultValue = nullptr) = 0;
+    virtual bool RegisterValidationRule(const FString& Key, const FMiningConfigValue& MinValue, const FMiningConfigValue& MaxValue, bool bRequired = false, const FMiningConfigValue* DefaultValue = nullptr) = 0;
     
     /**
      * Registers a validation rule for a string configuration key
@@ -249,7 +249,7 @@ public:
      * @param ValidationFunc Function to validate the value, should return validation result
      * @return True if the rule was registered successfully
      */
-    virtual bool RegisterCustomValidationRule(const FString& Key, TFunction<FConfigValidationResult(const FString&, const FConfigValue&, bool)> ValidationFunc) = 0;
+    virtual bool RegisterCustomValidationRule(const FString& Key, TFunction<FConfigValidationDetail(const FString&, const FMiningConfigValue&, bool)> ValidationFunc) = 0;
     
     /**
      * Validates all configuration values

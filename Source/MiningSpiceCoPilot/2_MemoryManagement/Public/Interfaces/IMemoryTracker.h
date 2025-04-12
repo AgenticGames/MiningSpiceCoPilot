@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
-#include "Interfaces/IMemoryManager.h"
+#include "IMemoryManager.h"
 #include "IMemoryTracker.generated.h"
 
 /**

@@ -4,8 +4,22 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
-#include "Interfaces/Hibernation/IHibernationManager.h"
+#include "../../../2.1_TieredCompression/Public/Interfaces/ICompressionManager.h" // Using relative path to fix include
 #include "IHibernationCache.generated.h"
+
+/**
+ * Reactivation priority levels
+ */
+UENUM(BlueprintType)
+enum class EReactivationPriority : uint8
+{
+    Low,        // Low priority, can be evicted first
+    Normal,     // Standard priority
+    High,       // High priority, evicted later
+    Critical    // Critical priority, avoid eviction
+};
+
+// ECompressionTier is now used from ICompressionManager.h
 
 /**
  * Region cache entry type

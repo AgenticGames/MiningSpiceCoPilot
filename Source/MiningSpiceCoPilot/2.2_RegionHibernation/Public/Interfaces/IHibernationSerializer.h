@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
-#include "Interfaces/Hibernation/IHibernationManager.h"
+#include "IHibernationManager.h" // Fixed include path to use the file in the same directory
 #include "IHibernationSerializer.generated.h"
 
 /**

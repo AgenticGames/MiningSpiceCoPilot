@@ -211,7 +211,7 @@ struct MININGSPICECOPILOT_API FTransactionConfig
 /**
  * Transaction context for executing operations within a transaction
  */
-class MININGSPICECOPILOT_API FTransactionContext
+class MININGSPICECOPILOT_API FMiningTransactionContext
 {
 public:
     /**
@@ -273,7 +273,7 @@ public:
     virtual FString GetName() const = 0;
     
     /** Virtual destructor */
-    virtual ~FTransactionContext() {}
+    virtual ~FMiningTransactionContext() {}
 };
 
 /**
@@ -317,40 +317,40 @@ public:
      * @param OutContext Receives the created transaction context
      * @return True if transaction was successfully created
      */
-    virtual bool BeginTransaction(const FTransactionConfig& Config, FTransactionContext*& OutContext) = 0;
+    virtual bool BeginTransaction(const FTransactionConfig& Config, FMiningTransactionContext*& OutContext) = 0;
     
     /**
      * Commits a transaction
      * @param Context Transaction context to commit
      * @return True if transaction was successfully committed, false if it failed or was aborted
      */
-    virtual bool CommitTransaction(FTransactionContext* Context) = 0;
+    virtual bool CommitTransaction(FMiningTransactionContext* Context) = 0;
     
     /**
      * Aborts a transaction
      * @param Context Transaction context to abort
      */
-    virtual void AbortTransaction(FTransactionContext* Context) = 0;
+    virtual void AbortTransaction(FMiningTransactionContext* Context) = 0;
     
     /**
      * Validates the read set of a transaction without committing
      * @param Context Transaction context to validate
      * @return True if the transaction is still valid, false if conflicts were detected
      */
-    virtual bool ValidateTransaction(FTransactionContext* Context) = 0;
+    virtual bool ValidateTransaction(FMiningTransactionContext* Context) = 0;
     
     /**
      * Gets the current transaction for this thread
      * @return Current transaction context or nullptr if not in a transaction
      */
-    virtual FTransactionContext* GetCurrentTransaction() = 0;
+    virtual FMiningTransactionContext* GetCurrentTransaction() = 0;
     
     /**
      * Gets a transaction by ID
      * @param TransactionId ID of the transaction to get
      * @return Transaction context or nullptr if not found
      */
-    virtual FTransactionContext* GetTransaction(uint64 TransactionId) = 0;
+    virtual FMiningTransactionContext* GetTransaction(uint64 TransactionId) = 0;
     
     /**
      * Gets global transaction statistics

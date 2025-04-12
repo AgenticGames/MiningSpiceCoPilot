@@ -11,7 +11,7 @@
  * Base interface for factory in the SVO+SDF mining architecture
  */
 UINTERFACE(MinimalAPI, meta=(CannotImplementInterfaceInBlueprint))
-class UFactory : public UInterface
+class UMiningFactory : public UInterface
 {
     GENERATED_BODY()
 };
@@ -20,7 +20,7 @@ class UFactory : public UInterface
  * Interface for SVO+SDF component factories
  * Provides creation and management of mining system components with proper configuration
  */
-class MININGSPICECOPILOT_API IFactory
+class MININGSPICECOPILOT_API IMiningFactory
 {
     GENERATED_BODY()
 
@@ -132,5 +132,5 @@ public:
      * Get the singleton instance of the factory registry
      * @return Reference to the factory registry instance
      */
-    static IFactory& Get();
+    static IMiningFactory& Get();
 };
