@@ -4,10 +4,76 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Interfaces/IFactory.h"
+#include "Factory/SVONodeFactory.h" // Include the file where IMiningFactory is now defined
 #include "TransactionContextFactory.generated.h"
 
 class IComponentPoolManager;
+
+// Define another enum for transaction isolation levels since it's referenced in the cpp file
+UENUM(BlueprintType)
+enum class ETransactionIsolation : uint8
+{
+    ReadUncommitted,   // Lowest isolation level, allows dirty reads
+    ReadCommitted,     // Prevents dirty reads
+    RepeatableRead,    // Prevents non-repeatable reads
+    Serializable       // Highest isolation level, prevents phantom reads
+};
+
+/** Mining transaction types */
+UENUM(BlueprintType)
+enum class ETransactionType : uint8
+{
+    Standard,        // Standard single-zone transaction
+    Compound,        // Compound multi-zone transaction
+    ReadOnly,        // Read-only transaction (no writes)
+    WriteOnly,       // Write-only transaction (no reads)
+    MaterialSpecific // Material-specific transaction
+};
+
+/** Transaction priorities */
+UENUM(BlueprintType)
+enum class ETransactionPriority : uint8
+{
+    Low,             // Low priority transaction
+    Normal,          // Normal priority transaction
+    High,            // High priority transaction
+    Critical         // Critical priority transaction
+};
+
+/** Transaction pool configuration */
+USTRUCT()
+struct FTransactionPoolConfig
+{
+    GENERATED_BODY()
+
+    // Pool name
+    UPROPERTY()
+    FName PoolName;
+
+    // Transaction type
+    UPROPERTY()
+    ETransactionType TransactionType = ETransactionType::Standard;
+
+    // Default priority
+    UPROPERTY()
+    ETransactionPriority DefaultPriority = ETransactionPriority::Normal;
+
+    // Read set capacity
+    UPROPERTY()
+    int32 ReadSetCapacity = 64;
+
+    // Write set capacity
+    UPROPERTY()
+    int32 WriteSetCapacity = 32;
+
+    // Default pool size
+    UPROPERTY()
+    int32 PoolSize = 128;
+
+    // Whether to collect transaction metrics by default
+    UPROPERTY()
+    bool bCollectMetrics = true;
+};
 
 /**
  * Specialized factory for mining transaction contexts
@@ -159,60 +225,4 @@ protected:
     FName GetTransactionPoolName(
         ETransactionType TransactionType,
         ETransactionPriority Priority);
-};
-
-/** Mining transaction types */
-UENUM(BlueprintType)
-enum class ETransactionType : uint8
-{
-    Standard,        // Standard single-zone transaction
-    Compound,        // Compound multi-zone transaction
-    ReadOnly,        // Read-only transaction (no writes)
-    WriteOnly,       // Write-only transaction (no reads)
-    MaterialSpecific // Material-specific transaction
-};
-
-/** Transaction priorities */
-UENUM(BlueprintType)
-enum class ETransactionPriority : uint8
-{
-    Low,             // Low priority transaction
-    Normal,          // Normal priority transaction
-    High,            // High priority transaction
-    Critical         // Critical priority transaction
-};
-
-/** Transaction pool configuration */
-USTRUCT()
-struct FTransactionPoolConfig
-{
-    GENERATED_BODY()
-
-    // Pool name
-    UPROPERTY()
-    FName PoolName;
-
-    // Transaction type
-    UPROPERTY()
-    ETransactionType TransactionType = ETransactionType::Standard;
-
-    // Default priority
-    UPROPERTY()
-    ETransactionPriority DefaultPriority = ETransactionPriority::Normal;
-
-    // Read set capacity
-    UPROPERTY()
-    int32 ReadSetCapacity = 64;
-
-    // Write set capacity
-    UPROPERTY()
-    int32 WriteSetCapacity = 32;
-
-    // Default pool size
-    UPROPERTY()
-    int32 PoolSize = 128;
-
-    // Whether to collect transaction metrics by default
-    UPROPERTY()
-    bool bCollectMetrics = true;
 };

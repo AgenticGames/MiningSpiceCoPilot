@@ -1,7 +1,7 @@
 // CrossRegionProcessor.cpp - System 25: SVO+SDF Hybrid Volume Representation System
 // Handles continuity of geological features across region boundaries
 
-#include "CrossRegionProcessor.h"
+#include "25_SvoSdfVolume/Public/CrossRegionProcessor.h"
 #include "SVOSystem/SVOHybridVolume.h"
 #include "SVOSystem/MaterialSDFManager.h"
 #include "SVOSystem/ZOrderCurve.h"

@@ -4,22 +4,80 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Interfaces/IComponentBuilder.h"
+#include "UObject/Interface.h"
 #include "ComponentBuilder.generated.h"
 
 class IComponentPoolManager;
+
+// Define the IComponentBuilder interface directly
+UINTERFACE(MinimalAPI, meta = (CannotImplementInterfaceInBlueprint))
+class UComponentBuilder : public UInterface
+{
+    GENERATED_BODY()
+};
+
+/**
+ * Interface for component builders using the fluent builder pattern
+ */
+class MININGSPICECOPILOT_API IComponentBuilder
+{
+    GENERATED_BODY()
+
+public:
+    /** Set a string property on the component */
+    virtual IComponentBuilder* SetProperty(const FName& PropertyName, const FString& Value) = 0;
+    
+    /** Set a numeric property on the component */
+    virtual IComponentBuilder* SetNumericProperty(const FName& PropertyName, double Value) = 0;
+    
+    /** Set a boolean property on the component */
+    virtual IComponentBuilder* SetBoolProperty(const FName& PropertyName, bool Value) = 0;
+    
+    /** Set a vector property on the component */
+    virtual IComponentBuilder* SetVectorProperty(const FName& PropertyName, const FVector& Value) = 0;
+    
+    /** Set a rotator property on the component */
+    virtual IComponentBuilder* SetRotatorProperty(const FName& PropertyName, const FRotator& Value) = 0;
+    
+    /** Set an object property on the component */
+    virtual IComponentBuilder* SetObjectProperty(const FName& PropertyName, UObject* Value) = 0;
+    
+    /** Apply a named configuration to the component */
+    virtual IComponentBuilder* ApplyConfiguration(const FName& ConfigName) = 0;
+    
+    /** Configure the component for a specific spatial location */
+    virtual IComponentBuilder* ConfigureForLocation(const FVector& Location, int32 RegionId = INDEX_NONE, int32 ZoneId = INDEX_NONE) = 0;
+    
+    /** Configure the component for a specific material type */
+    virtual IComponentBuilder* ConfigureForMaterial(uint32 MaterialTypeId) = 0;
+    
+    /** Add a child component to the component being built */
+    virtual IComponentBuilder* AddChildComponent(UClass* ChildComponentType, const FName& AttachmentSocket = NAME_None) = 0;
+    
+    /** Finish configuring the current child component and return to the parent */
+    virtual IComponentBuilder* FinishChild() = 0;
+    
+    /** Register a callback to be called when the component is fully built */
+    virtual IComponentBuilder* OnComplete(TFunction<void(UObject*)> Callback) = 0;
+    
+    /** Build and return the configured component */
+    virtual UObject* Build() = 0;
+    
+    /** Build the component with a specific outer object */
+    virtual UObject* BuildWithOuter(UObject* Outer) = 0;
+};
 
 /**
  * Implements the fluent builder pattern for component creation
  * Provides a chainable API for configuring component properties
  */
 UCLASS()
-class MININGSPICECOPILOT_API UComponentBuilder : public UObject, public IComponentBuilder
+class MININGSPICECOPILOT_API UComponentBuilderImpl : public UObject, public IComponentBuilder
 {
     GENERATED_BODY()
 
 public:
-    UComponentBuilder();
+    UComponentBuilderImpl();
 
     //~ Begin IComponentBuilder Interface
     virtual IComponentBuilder* SetProperty(const FName& PropertyName, const FString& Value) override;
@@ -58,7 +116,7 @@ public:
      * @param UsePooling Whether to use component pooling
      * @return New builder instance
      */
-    static TSharedPtr<UComponentBuilder> CreateBuilder(UClass* ComponentType, bool UsePooling = true);
+    static TSharedPtr<UComponentBuilderImpl> CreateBuilder(UClass* ComponentType, bool UsePooling = true);
 
 protected:
     /** Component type to build */
@@ -94,13 +152,13 @@ protected:
     bool bUsePooling;
 
     /** Reference to the parent builder if this is a child builder */
-    TSharedPtr<UComponentBuilder> ParentBuilder;
+    TSharedPtr<UComponentBuilderImpl> ParentBuilder;
 
     /** Child builders for nested components */
-    TArray<TSharedPtr<UComponentBuilder>> ChildBuilders;
+    TArray<TSharedPtr<UComponentBuilderImpl>> ChildBuilders;
 
     /** Attachment socket names for child components */
-    TMap<TSharedPtr<UComponentBuilder>, FName> ChildAttachmentSockets;
+    TMap<TSharedPtr<UComponentBuilderImpl>, FName> ChildAttachmentSockets;
 
     /** Pool manager reference */
     UPROPERTY()

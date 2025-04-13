@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "MemoryPoolManager.h"
+#include "2_MemoryManagement/Public/MemoryPoolManager.h"
 #include "SVOAllocator.h"
 #include "MemoryNarrowBandAllocator.h"
 #include "SharedBufferManager.h"

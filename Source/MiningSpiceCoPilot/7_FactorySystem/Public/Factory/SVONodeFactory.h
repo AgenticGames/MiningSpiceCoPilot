@@ -4,10 +4,102 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Interfaces/IFactory.h"
+#include "UObject/Interface.h"
 #include "SVONodeFactory.generated.h"
 
 class IComponentPoolManager;
+
+// Define the IMiningFactory interface directly
+UINTERFACE(MinimalAPI, meta = (CannotImplementInterfaceInBlueprint))
+class UMiningFactory : public UInterface
+{
+    GENERATED_BODY()
+};
+
+/**
+ * Base interface for all component factories in the MiningSpice system
+ * Provides common operations for component creation and pooling
+ */
+class MININGSPICECOPILOT_API IMiningFactory
+{
+    GENERATED_BODY()
+
+public:
+    /** Initialize the factory */
+    virtual bool Initialize() = 0;
+
+    /** Shutdown the factory */
+    virtual void Shutdown() = 0;
+
+    /** Check if the factory is initialized */
+    virtual bool IsInitialized() const = 0;
+
+    /** Get the factory name */
+    virtual FName GetFactoryName() const = 0;
+
+    /** Check if the factory can create components of the specified type */
+    virtual bool SupportsType(UClass* ComponentType) const = 0;
+
+    /** Create a component of the specified type with optional parameters */
+    virtual UObject* CreateComponent(UClass* ComponentType, const TMap<FName, FString>& Parameters = TMap<FName, FString>()) = 0;
+
+    /** Get the component types supported by this factory */
+    virtual TArray<UClass*> GetSupportedTypes() const = 0;
+
+    /** Register an archetype for the specified component type */
+    virtual bool RegisterArchetype(UClass* ComponentType, UObject* Archetype) = 0;
+
+    /** Check if a memory pool exists for the specified component type */
+    virtual bool HasPool(UClass* ComponentType) const = 0;
+
+    /** Create a memory pool for the specified component type */
+    virtual bool CreatePool(UClass* ComponentType, int32 InitialSize, int32 MaxSize, bool bEnablePooling = true) = 0;
+
+    /** Return a component to its memory pool */
+    virtual bool ReturnToPool(UObject* Component) = 0;
+
+    /** Flush a memory pool for the specified component type */
+    virtual int32 FlushPool(UClass* ComponentType) = 0;
+
+    /** Get statistics for a memory pool */
+    virtual bool GetPoolStats(UClass* ComponentType, int32& OutAvailable, int32& OutTotal) const = 0;
+};
+
+/** SVO node types */
+UENUM(BlueprintType)
+enum class ENodeType : uint8
+{
+    Internal,        // Internal octree node
+    Leaf,            // Leaf node with material
+    Empty            // Empty space node
+};
+
+/** Node performance metrics */
+USTRUCT()
+struct FNodeMetrics
+{
+    GENERATED_BODY()
+
+    // Average creation time in microseconds
+    UPROPERTY()
+    float AverageCreationTimeUs = 0.0f;
+
+    // Total nodes created
+    UPROPERTY()
+    int64 TotalCreated = 0;
+
+    // Nodes currently active
+    UPROPERTY()
+    int32 ActiveCount = 0;
+
+    // Cache hits when requesting from pool
+    UPROPERTY()
+    int64 CacheHits = 0;
+
+    // Cache misses when requesting from pool
+    UPROPERTY()
+    int64 CacheMisses = 0;
+};
 
 /**
  * Specialized factory for SVO node creation and optimization
@@ -107,40 +199,4 @@ protected:
      * @param Count Number of nodes to be created
      */
     void OptimizeMemoryLayout(ENodeType NodeType, int32 Count);
-};
-
-/** SVO node types */
-UENUM(BlueprintType)
-enum class ENodeType : uint8
-{
-    Internal,        // Internal octree node
-    Leaf,            // Leaf node with material
-    Empty            // Empty space node
-};
-
-/** Node performance metrics */
-USTRUCT()
-struct FNodeMetrics
-{
-    GENERATED_BODY()
-
-    // Average creation time in microseconds
-    UPROPERTY()
-    float AverageCreationTimeUs = 0.0f;
-
-    // Total nodes created
-    UPROPERTY()
-    int64 TotalCreated = 0;
-
-    // Nodes currently active
-    UPROPERTY()
-    int32 ActiveCount = 0;
-
-    // Cache hits when requesting from pool
-    UPROPERTY()
-    int64 CacheHits = 0;
-
-    // Cache misses when requesting from pool
-    UPROPERTY()
-    int64 CacheMisses = 0;
 };

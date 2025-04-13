@@ -4,11 +4,44 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Interfaces/IFactory.h"
-#include "Interfaces/IMaterialPropertyProvider.h" 
+#include "Factory/SVONodeFactory.h" // Include the file where IMiningFactory is now defined
 #include "MaterialSDFFactory.generated.h"
 
 class IComponentPoolManager;
+
+// Define IMaterialPropertyProvider interface directly
+UINTERFACE(MinimalAPI, meta = (CannotImplementInterfaceInBlueprint))
+class UMaterialPropertyProvider : public UInterface
+{
+    GENERATED_BODY()
+};
+
+/**
+ * Interface for providers of material property information
+ */
+class MININGSPICECOPILOT_API IMaterialPropertyProvider
+{
+    GENERATED_BODY()
+
+public:
+    /** Get material hardness property */
+    virtual float GetMaterialHardness(int32 MaterialType) const = 0;
+    
+    /** Get material density property */
+    virtual float GetMaterialDensity(int32 MaterialType) const = 0;
+    
+    /** Get material roughness property */
+    virtual float GetMaterialRoughness(int32 MaterialType) const = 0;
+    
+    /** Check if materials can blend */
+    virtual bool CanMaterialsBlend(int32 MaterialTypeA, int32 MaterialTypeB) const = 0;
+    
+    /** Get blend factor between materials */
+    virtual float GetMaterialBlendFactor(int32 MaterialTypeA, int32 MaterialTypeB) const = 0;
+    
+    /** Get material color */
+    virtual FLinearColor GetMaterialColor(int32 MaterialType) const = 0;
+};
 
 /** Material CSG operations */
 UENUM(BlueprintType)

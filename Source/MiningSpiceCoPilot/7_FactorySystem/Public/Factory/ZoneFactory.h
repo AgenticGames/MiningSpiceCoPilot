@@ -4,10 +4,66 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Interfaces/IFactory.h"
+#include "Factory/SVONodeFactory.h" // Include the file where IMiningFactory is now defined
 #include "ZoneFactory.generated.h"
 
 class IComponentPoolManager;
+
+// Define additional enum that was referenced in ZoneFactory.cpp but missing in header
+UENUM(BlueprintType)
+enum class EZoneConcurrencyMode : uint8
+{
+    Optimistic,    // Optimistic concurrency control
+    Exclusive,     // Exclusive zone access
+    ReadOnly,      // Read-only access
+    SharedWrite    // Shared write access with conflicts resolved
+};
+
+/** Mining zone types */
+UENUM(BlueprintType)
+enum class EZoneType : uint8
+{
+    HighResolution, // High resolution zone
+    LowResolution,  // Low resolution zone
+    Transition,     // Transition between resolution levels
+    Buffer,         // Buffer zone
+    Standard,       // Standard mining zone
+    Transaction,    // Transaction-focused zone with version tracking
+    Linking,        // Zone linking multiple regions
+    Boundary,       // Zone at region boundary
+    HighActivity    // Zone optimized for high activity
+};
+
+/** Zone pool configuration */
+USTRUCT()
+struct FZonePoolConfig
+{
+    GENERATED_BODY()
+
+    // Pool name
+    UPROPERTY()
+    FName PoolName;
+
+    // Zone type
+    UPROPERTY()
+    EZoneType ZoneType = EZoneType::Standard;
+
+    // Default transaction capacity
+    UPROPERTY()
+    int32 TransactionCapacity = 64;
+
+    // Default zone dimensions
+    UPROPERTY()
+    FVector DefaultDimensions = FVector(32.0f, 32.0f, 32.0f);
+
+    // Pool size
+    UPROPERTY()
+    int32 PoolSize = 32;
+
+    // Whether to enable transaction tracking by default
+    UPROPERTY()
+    bool bEnableTransactionTracking = false;
+};
 
 /**
  * Specialized factory for zone-based transaction components
@@ -145,46 +201,4 @@ protected:
      * @return True if configuration was successful
      */
     bool ConfigureZoneLinking(UObject* Zone, const TArray<int32>& RegionIds);
-};
-
-/** Mining zone types */
-UENUM(BlueprintType)
-enum class EZoneType : uint8
-{
-    Standard,       // Standard mining zone
-    Transaction,    // Transaction-focused zone with version tracking
-    Linking,        // Zone linking multiple regions
-    Boundary,       // Zone at region boundary
-    HighActivity    // Zone optimized for high activity
-};
-
-/** Zone pool configuration */
-USTRUCT()
-struct FZonePoolConfig
-{
-    GENERATED_BODY()
-
-    // Pool name
-    UPROPERTY()
-    FName PoolName;
-
-    // Zone type
-    UPROPERTY()
-    EZoneType ZoneType = EZoneType::Standard;
-
-    // Default transaction capacity
-    UPROPERTY()
-    int32 TransactionCapacity = 64;
-
-    // Default zone dimensions
-    UPROPERTY()
-    FVector DefaultDimensions = FVector(32.0f, 32.0f, 32.0f);
-
-    // Pool size
-    UPROPERTY()
-    int32 PoolSize = 32;
-
-    // Whether to enable transaction tracking by default
-    UPROPERTY()
-    bool bEnableTransactionTracking = false;
 };

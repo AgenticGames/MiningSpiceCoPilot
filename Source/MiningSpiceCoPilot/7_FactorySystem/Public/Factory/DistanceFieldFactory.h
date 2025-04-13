@@ -4,10 +4,55 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Interfaces/IFactory.h"
+#include "Factory/SVONodeFactory.h" // Include the file where IMiningFactory is now defined
 #include "DistanceFieldFactory.generated.h"
 
 class IComponentPoolManager;
+
+/** Precision levels for distance fields */
+UENUM(BlueprintType)
+enum class EFieldPrecision : uint8
+{
+    Low,      // Lowest precision, fastest performance
+    Medium,   // Medium precision, balanced
+    High,     // High precision
+    Ultra     // Ultra-precision, slowest performance
+};
+
+/** Distance field configuration struct */
+USTRUCT()
+struct FFieldPoolConfig
+{
+    GENERATED_BODY()
+
+    // Pool name
+    UPROPERTY()
+    FName PoolName;
+
+    // Field precision level
+    UPROPERTY()
+    EFieldPrecision Precision = EFieldPrecision::Medium;
+
+    // Default grid resolution (voxels)
+    UPROPERTY()
+    FIntVector DefaultResolution = FIntVector(32, 32, 32);
+
+    // Default grid cell size
+    UPROPERTY()
+    float CellSize = 1.0f;
+
+    // Default memory footprint per field (in KB)
+    UPROPERTY()
+    int32 EstimatedMemoryPerField = 512;
+
+    // Initial pool size
+    UPROPERTY()
+    int32 PoolSize = 16;
+
+    // Whether to use out-of-core paging by default
+    UPROPERTY()
+    bool bUseOutOfCorePaging = false;
+};
 
 /**
  * Specialized factory for multi-channel distance field components
@@ -137,49 +182,4 @@ protected:
         const FIntVector& Resolution,
         int32 MaterialChannels,
         EFieldPrecision Precision);
-};
-
-/** Field precision levels */
-UENUM(BlueprintType)
-enum class EFieldPrecision : uint8
-{
-    Low,            // Low precision (8-bit)
-    Medium,         // Medium precision (16-bit)
-    High,           // High precision (32-bit)
-    Double          // Double precision (64-bit)
-};
-
-/** Field pool configuration */
-USTRUCT()
-struct FFieldPoolConfig
-{
-    GENERATED_BODY()
-
-    // Pool name
-    UPROPERTY()
-    FName PoolName;
-
-    // Field resolution
-    UPROPERTY()
-    FIntVector Resolution;
-
-    // Material channel count
-    UPROPERTY()
-    int32 MaterialChannels = 1;
-
-    // Narrow band width
-    UPROPERTY()
-    float NarrowBandWidth = 4.0f;
-
-    // Field precision
-    UPROPERTY()
-    EFieldPrecision Precision = EFieldPrecision::Medium;
-
-    // Pool size
-    UPROPERTY()
-    int32 PoolSize = 16;
-
-    // Memory footprint per field in bytes
-    UPROPERTY()
-    int64 MemoryPerField = 0;
 };
