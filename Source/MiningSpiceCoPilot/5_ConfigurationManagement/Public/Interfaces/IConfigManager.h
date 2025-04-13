@@ -291,7 +291,7 @@ struct MININGSPICECOPILOT_API FConfigMetadata
  * Base interface for configuration managers in the SVO+SDF mining architecture
  */
 UINTERFACE(MinimalAPI, meta=(CannotImplementInterfaceInBlueprint))
-class UConfigManager : public UInterface
+class UConfigManagerInterface : public UInterface
 {
     GENERATED_BODY()
 };
@@ -300,7 +300,7 @@ class UConfigManager : public UInterface
  * Interface for configuration management in the SVO+SDF mining architecture
  * Provides access to hierarchical configuration with priority-based overrides
  */
-class MININGSPICECOPILOT_API IConfigManager
+class MININGSPICECOPILOT_API IConfigManagerInterface
 {
     GENERATED_BODY()
 
@@ -557,5 +557,5 @@ public:
      * Gets the singleton instance
      * @return Reference to the configuration manager
      */
-    static IConfigManager& Get();
+    static IConfigManagerInterface& Get();
 };

@@ -7,6 +7,32 @@
 #include "Interfaces/IFactoryMetrics.h"
 #include "FactoryMetricsCollector.generated.h"
 
+/** Factory metrics by component type and operation */
+USTRUCT()
+struct FFactoryTypeMetrics
+{
+    GENERATED_BODY()
+    
+    // Factory name
+    UPROPERTY()
+    FName FactoryName;
+    
+    // Component type
+    UPROPERTY()
+    UClass* ComponentType = nullptr;
+    
+    // Operation metrics by type (stored as uint8 key for EFactoryOperationType)
+    UPROPERTY()
+    TMap<uint8, FFactoryOperationMetrics> OperationMetrics;
+    
+    FFactoryTypeMetrics() {}
+    
+    FFactoryTypeMetrics(const FName& InFactoryName, UClass* InComponentType)
+        : FactoryName(InFactoryName), ComponentType(InComponentType)
+    {
+    }
+};
+
 /**
  * Implements metrics collection system for factory performance
  * Tracks creation patterns and operation performance
@@ -82,7 +108,7 @@ protected:
 
     /** Metrics by factory, component type, and operation */
     UPROPERTY()
-    TMap<FName, TMap<UClass*, TMap<EFactoryOperationType, FFactoryOperationMetrics>>> MetricsMap;
+    TArray<FFactoryTypeMetrics> MetricsCollection;
 
     /** In-progress operations */
     struct FInProgressOperation
@@ -141,6 +167,14 @@ protected:
         EFactoryOperationType OperationType,
         float DurationMs,
         bool bCacheMiss);
+
+    /**
+     * Find or create metrics entry for a factory and component type
+     * @param FactoryName Factory name
+     * @param ComponentType Component type
+     * @return Reference to the metrics entry
+     */
+    FFactoryTypeMetrics& FindOrCreateMetricsEntry(const FName& FactoryName, UClass* ComponentType);
 
     /**
      * Identify patterns in recent operations

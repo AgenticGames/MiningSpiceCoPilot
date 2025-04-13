@@ -10,6 +10,119 @@
 class IComponentPoolManager;
 
 /**
+ * Interface for providing material properties
+ * Used to retrieve and manage material-specific data
+ */
+UINTERFACE(MinimalAPI, Blueprintable)
+class UMaterialPropertyProvider : public UInterface
+{
+    GENERATED_BODY()
+};
+
+/**
+ * Interface for providing material properties
+ */
+class MININGSPICECOPILOT_API IMaterialPropertyProvider
+{
+    GENERATED_BODY()
+
+public:
+    /**
+     * Get material property value
+     * @param MaterialType Material type ID
+     * @param PropertyName Property name to retrieve
+     * @return Value of the property as a string
+     */
+    virtual FString GetMaterialProperty(int32 MaterialType, const FName& PropertyName) const = 0;
+
+    /**
+     * Check if material has a specific property
+     * @param MaterialType Material type ID
+     * @param PropertyName Property name to check
+     * @return True if the property exists
+     */
+    virtual bool HasMaterialProperty(int32 MaterialType, const FName& PropertyName) const = 0;
+};
+
+/** Material CSG operations */
+UENUM(BlueprintType)
+enum class EMiningCsgOperation : uint8
+{
+    Union,           // Union operation
+    Subtraction,     // Subtraction operation
+    Intersection,    // Intersection operation
+    SmoothUnion,     // Smooth union operation
+    SmoothSubtract,  // Smooth subtraction operation
+    Replace          // Material replacement operation
+};
+
+/** Material blending modes */
+UENUM(BlueprintType)
+enum class EMaterialBlendMode : uint8
+{
+    Hard,            // Hard transitions between materials
+    Smooth,          // Smooth transitions between materials
+    Fractional,      // Fractional transitions with material mixing
+    Layered          // Layered material transitions
+};
+
+/** Material SDF configuration */
+USTRUCT(BlueprintType)
+struct MININGSPICECOPILOT_API FMaterialSDFConfig
+{
+    GENERATED_BODY()
+
+    // Material type ID
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material Config")
+    int32 MaterialType = 0;
+
+    // Default CSG operation
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material Config")
+    EMiningCsgOperation DefaultOperation = EMiningCsgOperation::Union;
+
+    // Default blending mode
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material Config")
+    EMaterialBlendMode DefaultBlendMode = EMaterialBlendMode::Smooth;
+
+    // Default blend radius
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material Config")
+    float DefaultBlendRadius = 1.0f;
+
+    // Default field resolution
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material Config")
+    FIntVector DefaultResolution = FIntVector(32, 32, 32);
+    
+    // Default pool size
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material Config")
+    int32 DefaultPoolSize = 8;
+};
+
+/** Material configuration key (used for mapping) */
+USTRUCT(BlueprintType)
+struct MININGSPICECOPILOT_API FMaterialConfigKey
+{
+    GENERATED_BODY()
+
+    // Material type ID
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material Config")
+    int32 MaterialTypeId = 0;
+    
+    FMaterialConfigKey() : MaterialTypeId(0) {}
+    
+    FMaterialConfigKey(int32 InMaterialTypeId) : MaterialTypeId(InMaterialTypeId) {}
+    
+    bool operator==(const FMaterialConfigKey& Other) const
+    {
+        return MaterialTypeId == Other.MaterialTypeId;
+    }
+    
+    friend inline uint32 GetTypeHash(const FMaterialConfigKey& Key)
+    {
+        return GetTypeHash(Key.MaterialTypeId);
+    }
+};
+
+/**
  * Specialized factory for material-specific SDF components
  * Handles material property integration and interaction rules
  */
@@ -46,8 +159,8 @@ public:
      * @return New material SDF component
      */
     UObject* CreateMaterialSDF(
-        uint32 MaterialType,
-        ECsgOperation Operation = ECsgOperation::Union,
+        int32 MaterialType,
+        EMiningCsgOperation Operation = EMiningCsgOperation::Union,
         const FIntVector& Resolution = FIntVector(32, 32, 32),
         EMaterialBlendMode BlendMode = EMaterialBlendMode::Smooth);
 
@@ -59,7 +172,7 @@ public:
      * @return New material SDF component supporting multiple materials
      */
     UObject* CreateMultiMaterialSDF(
-        const TArray<uint32>& MaterialTypes,
+        const TArray<int32>& MaterialTypes,
         const FIntVector& Resolution = FIntVector(32, 32, 32),
         EMaterialBlendMode BlendMode = EMaterialBlendMode::Smooth);
         
@@ -102,7 +215,7 @@ protected:
 
     /** Material SDF configurations */
     UPROPERTY()
-    TMap<uint32, FMaterialSDFConfig> MaterialConfigs;
+    TMap<FMaterialConfigKey, FMaterialSDFConfig> MaterialConfigs;
 
     /**
      * Configure material properties for an SDF component
@@ -114,8 +227,8 @@ protected:
      */
     bool ConfigureMaterialProperties(
         UObject* Component, 
-        uint32 MaterialType,
-        ECsgOperation Operation,
+        int32 MaterialType,
+        EMiningCsgOperation Operation,
         EMaterialBlendMode BlendMode);
 
     /**
@@ -127,7 +240,7 @@ protected:
      */
     bool ConfigureBlending(
         UObject* Component,
-        const TArray<uint32>& MaterialTypes,
+        const TArray<int32>& MaterialTypes,
         EMaterialBlendMode BlendMode);
 
     /**
@@ -136,58 +249,5 @@ protected:
      * @param Operation CSG operation
      * @return Pool name for the specified material configuration
      */
-    FName GetMaterialPoolName(uint32 MaterialType, ECsgOperation Operation);
-};
-
-/** Material CSG operations */
-UENUM(BlueprintType)
-enum class ECsgOperation : uint8
-{
-    Union,           // Union operation
-    Subtraction,     // Subtraction operation
-    Intersection,    // Intersection operation
-    SmoothUnion,     // Smooth union operation
-    SmoothSubtract,  // Smooth subtraction operation
-    Replace          // Material replacement operation
-};
-
-/** Material blending modes */
-UENUM(BlueprintType)
-enum class EMaterialBlendMode : uint8
-{
-    Hard,            // Hard transitions between materials
-    Smooth,          // Smooth transitions between materials
-    Fractional,      // Fractional transitions with material mixing
-    Layered          // Layered material transitions
-};
-
-/** Material SDF configuration */
-USTRUCT()
-struct FMaterialSDFConfig
-{
-    GENERATED_BODY()
-
-    // Material type ID
-    UPROPERTY()
-    uint32 MaterialType = 0;
-
-    // Default CSG operation
-    UPROPERTY()
-    ECsgOperation DefaultOperation = ECsgOperation::Union;
-
-    // Default blending mode
-    UPROPERTY()
-    EMaterialBlendMode DefaultBlendMode = EMaterialBlendMode::Smooth;
-
-    // Default blend radius
-    UPROPERTY()
-    float DefaultBlendRadius = 1.0f;
-
-    // Default field resolution
-    UPROPERTY()
-    FIntVector DefaultResolution = FIntVector(32, 32, 32);
-    
-    // Default pool size
-    UPROPERTY()
-    int32 DefaultPoolSize = 8;
+    FName GetMaterialPoolName(int32 MaterialType, EMiningCsgOperation Operation);
 };

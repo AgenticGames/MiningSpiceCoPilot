@@ -6,6 +6,7 @@
 #include "UObject/Interface.h"
 #include "Json.h"
 #include "Interfaces/IEventPublisher.h"
+#include "IEventHandler.generated.h"
 
 /**
  * Event data container for passing events between components

@@ -9,6 +9,42 @@
 
 class IComponentPoolManager;
 
+/** SVO node types */
+UENUM(BlueprintType)
+enum class ENodeType : uint8
+{
+    Internal,        // Internal octree node
+    Leaf,            // Leaf node with material
+    Empty            // Empty space node
+};
+
+/** Node performance metrics */
+USTRUCT(BlueprintType)
+struct MININGSPICECOPILOT_API FNodeMetrics
+{
+    GENERATED_BODY()
+
+    // Average creation time in microseconds
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node Metrics")
+    float AverageCreationTimeUs = 0.0f;
+
+    // Total nodes created
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node Metrics")
+    int64 TotalCreated = 0;
+
+    // Nodes currently active
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node Metrics")
+    int32 ActiveCount = 0;
+
+    // Cache hits when requesting from pool
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node Metrics")
+    int64 CacheHits = 0;
+
+    // Cache misses when requesting from pool
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node Metrics")
+    int64 CacheMisses = 0;
+};
+
 /**
  * Specialized factory for SVO node creation and optimization
  * Focused on memory-efficient node creation with specialized pooling
@@ -107,40 +143,4 @@ protected:
      * @param Count Number of nodes to be created
      */
     void OptimizeMemoryLayout(ENodeType NodeType, int32 Count);
-};
-
-/** SVO node types */
-UENUM(BlueprintType)
-enum class ENodeType : uint8
-{
-    Internal,        // Internal octree node
-    Leaf,            // Leaf node with material
-    Empty            // Empty space node
-};
-
-/** Node performance metrics */
-USTRUCT()
-struct FNodeMetrics
-{
-    GENERATED_BODY()
-
-    // Average creation time in microseconds
-    UPROPERTY()
-    float AverageCreationTimeUs = 0.0f;
-
-    // Total nodes created
-    UPROPERTY()
-    int64 TotalCreated = 0;
-
-    // Nodes currently active
-    UPROPERTY()
-    int32 ActiveCount = 0;
-
-    // Cache hits when requesting from pool
-    UPROPERTY()
-    int64 CacheHits = 0;
-
-    // Cache misses when requesting from pool
-    UPROPERTY()
-    int64 CacheMisses = 0;
 };

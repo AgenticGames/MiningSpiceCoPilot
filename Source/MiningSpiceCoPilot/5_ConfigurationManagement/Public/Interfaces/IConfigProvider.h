@@ -123,7 +123,7 @@ struct MININGSPICECOPILOT_API FConfigKeyInfo
  * Base interface for configuration providers in the SVO+SDF mining architecture
  */
 UINTERFACE(MinimalAPI, meta=(CannotImplementInterfaceInBlueprint))
-class UConfigProvider : public UInterface
+class UConfigProviderInterface : public UInterface
 {
     GENERATED_BODY()
 };
@@ -132,7 +132,7 @@ class UConfigProvider : public UInterface
  * Interface for configuration providers in the SVO+SDF mining architecture
  * Provides a source of configuration values with specific priority and capabilities
  */
-class MININGSPICECOPILOT_API IConfigProvider
+class MININGSPICECOPILOT_API IConfigProviderInterface
 {
     GENERATED_BODY()
 

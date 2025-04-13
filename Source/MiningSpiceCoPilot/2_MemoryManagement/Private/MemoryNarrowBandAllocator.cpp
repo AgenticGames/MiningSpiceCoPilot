@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "2_MemoryManagement/Public/NarrowBandAllocator.h"
+#include "2_MemoryManagement/Public/MemoryNarrowBandAllocator.h"
 #include "HAL/PlatformMath.h"
 #include "Misc/ScopeLock.h"
 

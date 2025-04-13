@@ -1,7 +1,7 @@
 // ServiceLocator.cpp
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "ServiceLocator.h"
+#include "DependencyServiceLocator.h"
 #include "Interfaces/IServiceMonitor.h"
 #include "Logging/LogMacros.h"
 

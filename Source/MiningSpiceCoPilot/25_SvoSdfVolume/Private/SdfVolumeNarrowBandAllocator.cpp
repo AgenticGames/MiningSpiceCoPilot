@@ -1,9 +1,9 @@
 // NarrowBandAllocator.cpp
 // Specialized memory allocator for narrow-band SDF
 
-#include "25_SvoSdfVolume/Public/NarrowBandAllocator.h"
+#include "25_SvoSdfVolume/Public/SdfVolumeNarrowBandAllocator.h"
 #include "2_MemoryManagement/Public/IMemoryManager.h"
-#include "1_Core/Public/ServiceLocator.h"
+#include "1_CoreRegistry/Public/CoreServiceLocator.h"
 #include "HAL/PlatformMisc.h"
 #include "HAL/PlatformMath.h"
 #include "Math/Box.h"

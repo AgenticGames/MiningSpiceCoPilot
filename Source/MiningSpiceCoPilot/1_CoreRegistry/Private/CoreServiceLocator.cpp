@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "1_CoreRegistry/Public/ServiceLocator.h"
+#include "1_CoreRegistry/Public/CoreServiceLocator.h"
 
 // Initialize static members
 FServiceLocator* FServiceLocator::Singleton = nullptr;

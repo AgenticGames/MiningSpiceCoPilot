@@ -182,7 +182,7 @@ struct MININGSPICECOPILOT_API FConfigValidationSummary
  * Base interface for configuration validators in the SVO+SDF mining architecture
  */
 UINTERFACE(MinimalAPI, meta=(CannotImplementInterfaceInBlueprint))
-class UConfigValidator : public UInterface
+class UConfigValidatorInterface : public UInterface
 {
     GENERATED_BODY()
 };
@@ -191,7 +191,7 @@ class UConfigValidator : public UInterface
  * Interface for configuration validation in the SVO+SDF mining architecture
  * Provides validation capabilities for configuration values
  */
-class MININGSPICECOPILOT_API IConfigValidator
+class MININGSPICECOPILOT_API IConfigValidatorInterface
 {
     GENERATED_BODY()
 

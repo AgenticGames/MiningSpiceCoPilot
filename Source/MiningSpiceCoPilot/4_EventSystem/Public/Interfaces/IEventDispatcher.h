@@ -96,7 +96,7 @@ struct MININGSPICECOPILOT_API FEventDispatchResult
  * Base interface for event dispatchers in the SVO+SDF mining architecture
  */
 UINTERFACE(MinimalAPI, meta=(CannotImplementInterfaceInBlueprint))
-class UEventDispatcher : public UInterface
+class UEventDispatcherInterface : public UInterface
 {
     GENERATED_BODY()
 };
@@ -105,7 +105,7 @@ class UEventDispatcher : public UInterface
  * Interface for event dispatching in the SVO+SDF mining architecture
  * Provides central event dispatch capabilities with filtering and prioritization
  */
-class MININGSPICECOPILOT_API IEventDispatcher
+class MININGSPICECOPILOT_API IEventDispatcherInterface
 {
     GENERATED_BODY()
 
@@ -249,5 +249,5 @@ public:
      * Gets the singleton instance
      * @return Reference to the event dispatcher
      */
-    static IEventDispatcher& Get();
+    static IEventDispatcherInterface& Get();
 };
