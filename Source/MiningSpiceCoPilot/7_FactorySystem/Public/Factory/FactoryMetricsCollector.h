@@ -5,32 +5,35 @@
 
 #include "CoreMinimal.h"
 #include "Interfaces/IFactoryMetrics.h"
+#include "Factory/FactoryTypes.h" // Add this include
 #include "FactoryMetricsCollector.generated.h"
 
-/** Factory metrics by component type and operation */
+/**
+ * Helper struct to store operation metrics by operation type
+ * This helps avoid nested TMap serialization issues
+ */
 USTRUCT()
-struct FFactoryTypeMetrics
+struct FFactoryTypeOperationMetrics
 {
     GENERATED_BODY()
     
-    // Factory name
+    /** Operation metrics by operation type */
     UPROPERTY()
-    FName FactoryName;
+    TMap<EFactoryOperationType, FFactoryOperationMetrics> OperationMetrics;
+};
+
+/**
+ * Helper struct to store metrics by component type
+ * This helps avoid nested TMap serialization issues
+ */
+USTRUCT()
+struct FFactoryComponentMetrics
+{
+    GENERATED_BODY()
     
-    // Component type
+    /** Metrics by component type */
     UPROPERTY()
-    UClass* ComponentType = nullptr;
-    
-    // Operation metrics by type (stored as uint8 key for EFactoryOperationType)
-    UPROPERTY()
-    TMap<uint8, FFactoryOperationMetrics> OperationMetrics;
-    
-    FFactoryTypeMetrics() {}
-    
-    FFactoryTypeMetrics(const FName& InFactoryName, UClass* InComponentType)
-        : FactoryName(InFactoryName), ComponentType(InComponentType)
-    {
-    }
+    TMap<UClass*, FFactoryTypeOperationMetrics> ComponentMetrics;
 };
 
 /**
@@ -106,9 +109,9 @@ protected:
     UPROPERTY()
     int32 PatternHistorySize;
 
-    /** Metrics by factory, component type, and operation */
+    /** Metrics by factory name */
     UPROPERTY()
-    TArray<FFactoryTypeMetrics> MetricsCollection;
+    TMap<FName, FFactoryComponentMetrics> MetricsMap;
 
     /** In-progress operations */
     struct FInProgressOperation
@@ -167,14 +170,6 @@ protected:
         EFactoryOperationType OperationType,
         float DurationMs,
         bool bCacheMiss);
-
-    /**
-     * Find or create metrics entry for a factory and component type
-     * @param FactoryName Factory name
-     * @param ComponentType Component type
-     * @return Reference to the metrics entry
-     */
-    FFactoryTypeMetrics& FindOrCreateMetricsEntry(const FName& FactoryName, UClass* ComponentType);
 
     /**
      * Identify patterns in recent operations

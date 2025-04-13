@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "PriorityTaskQueue.h"
+#include "3_ThreadingTaskSystem/Public/PriorityTaskQueue.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/CriticalSection.h"
 #include "Math/UnrealMathSSE.h"

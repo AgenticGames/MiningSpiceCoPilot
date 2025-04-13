@@ -5,44 +5,10 @@
 
 #include "CoreMinimal.h"
 #include "Interfaces/IFactory.h"
+#include "Interfaces/IMaterialPropertyProvider.h" 
 #include "MaterialSDFFactory.generated.h"
 
 class IComponentPoolManager;
-
-/**
- * Interface for providing material properties
- * Used to retrieve and manage material-specific data
- */
-UINTERFACE(MinimalAPI, Blueprintable)
-class UMaterialPropertyProvider : public UInterface
-{
-    GENERATED_BODY()
-};
-
-/**
- * Interface for providing material properties
- */
-class MININGSPICECOPILOT_API IMaterialPropertyProvider
-{
-    GENERATED_BODY()
-
-public:
-    /**
-     * Get material property value
-     * @param MaterialType Material type ID
-     * @param PropertyName Property name to retrieve
-     * @return Value of the property as a string
-     */
-    virtual FString GetMaterialProperty(int32 MaterialType, const FName& PropertyName) const = 0;
-
-    /**
-     * Check if material has a specific property
-     * @param MaterialType Material type ID
-     * @param PropertyName Property name to check
-     * @return True if the property exists
-     */
-    virtual bool HasMaterialProperty(int32 MaterialType, const FName& PropertyName) const = 0;
-};
 
 /** Material CSG operations */
 UENUM(BlueprintType)
@@ -73,53 +39,28 @@ struct MININGSPICECOPILOT_API FMaterialSDFConfig
     GENERATED_BODY()
 
     // Material type ID
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material Config")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material SDF")
     int32 MaterialType = 0;
 
     // Default CSG operation
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material Config")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material SDF")
     EMiningCsgOperation DefaultOperation = EMiningCsgOperation::Union;
 
     // Default blending mode
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material Config")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material SDF")
     EMaterialBlendMode DefaultBlendMode = EMaterialBlendMode::Smooth;
 
     // Default blend radius
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material Config")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material SDF")
     float DefaultBlendRadius = 1.0f;
 
     // Default field resolution
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material Config")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material SDF")
     FIntVector DefaultResolution = FIntVector(32, 32, 32);
     
     // Default pool size
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material Config")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material SDF")
     int32 DefaultPoolSize = 8;
-};
-
-/** Material configuration key (used for mapping) */
-USTRUCT(BlueprintType)
-struct MININGSPICECOPILOT_API FMaterialConfigKey
-{
-    GENERATED_BODY()
-
-    // Material type ID
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Material Config")
-    int32 MaterialTypeId = 0;
-    
-    FMaterialConfigKey() : MaterialTypeId(0) {}
-    
-    FMaterialConfigKey(int32 InMaterialTypeId) : MaterialTypeId(InMaterialTypeId) {}
-    
-    bool operator==(const FMaterialConfigKey& Other) const
-    {
-        return MaterialTypeId == Other.MaterialTypeId;
-    }
-    
-    friend inline uint32 GetTypeHash(const FMaterialConfigKey& Key)
-    {
-        return GetTypeHash(Key.MaterialTypeId);
-    }
 };
 
 /**
@@ -215,7 +156,7 @@ protected:
 
     /** Material SDF configurations */
     UPROPERTY()
-    TMap<FMaterialConfigKey, FMaterialSDFConfig> MaterialConfigs;
+    TMap<int32, FMaterialSDFConfig> MaterialConfigs;
 
     /**
      * Configure material properties for an SDF component

@@ -1,19 +1,19 @@
 // CrossRegionProcessor.cpp - System 25: SVO+SDF Hybrid Volume Representation System
 // Handles continuity of geological features across region boundaries
 
-#include "25_SvoSdfVolume/Public/CrossRegionProcessor.h"
-#include "25_SvoSdfVolume/Public/SVOSystem/SVOHybridVolume.h"
-#include "25_SvoSdfVolume/Public/SVOSystem/MaterialSDFManager.h"
-#include "25_SvoSdfVolume/Public/SVOSystem/ZOrderCurve.h"
+#include "CrossRegionProcessor.h"
+#include "SVOSystem/SVOHybridVolume.h"
+#include "SVOSystem/MaterialSDFManager.h"
+#include "SVOSystem/ZOrderCurve.h"
 
 // Core system dependencies
-#include "1_CoreRegistry/Public/ServiceLocator.h"
-#include "2_MemoryManagement/Public/MemoryManager.h"
-#include "3_Threading/Public/TaskScheduler.h"
-#include "3_Threading/Public/TransactionManager.h"
-#include "4_EventSystem/Public/EventBus.h"
-#include "6_ServiceRegistry/Public/DependencyManager.h"
-#include "18_RegionManager/Public/RegionManager.h"
+#include "CoreServiceLocator.h"
+#include "MemoryPoolManager.h"
+#include "TaskScheduler.h"
+#include "TransactionManager.h"
+#include "EventBus.h"
+#include "DependencyManager.h"
+#include "RegionManager.h"
 
 // Network-related includes
 #include "Net/UnrealNetwork.h"

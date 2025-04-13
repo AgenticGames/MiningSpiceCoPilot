@@ -9,51 +9,6 @@
 
 class IComponentPoolManager;
 
-/** Field precision levels */
-UENUM(BlueprintType)
-enum class EFieldPrecision : uint8
-{
-    Low,            // Low precision (8-bit)
-    Medium,         // Medium precision (16-bit)
-    High,           // High precision (32-bit)
-    Double          // Double precision (64-bit)
-};
-
-/** Field pool configuration */
-USTRUCT(BlueprintType)
-struct MININGSPICECOPILOT_API FFieldPoolConfig
-{
-    GENERATED_BODY()
-
-    // Pool name
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Field Pool")
-    FName PoolName;
-
-    // Field resolution
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Field Pool")
-    FIntVector Resolution;
-
-    // Material channel count
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Field Pool")
-    int32 MaterialChannels = 1;
-
-    // Narrow band width
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Field Pool")
-    float NarrowBandWidth = 4.0f;
-
-    // Field precision
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Field Pool")
-    EFieldPrecision Precision = EFieldPrecision::Medium;
-
-    // Pool size
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Field Pool")
-    int32 PoolSize = 16;
-
-    // Memory footprint per field in bytes
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Field Pool")
-    int64 MemoryPerField = 0;
-};
-
 /**
  * Specialized factory for multi-channel distance field components
  * Optimized for memory-efficient field allocation with narrow-band focus
@@ -182,4 +137,49 @@ protected:
         const FIntVector& Resolution,
         int32 MaterialChannels,
         EFieldPrecision Precision);
+};
+
+/** Field precision levels */
+UENUM(BlueprintType)
+enum class EFieldPrecision : uint8
+{
+    Low,            // Low precision (8-bit)
+    Medium,         // Medium precision (16-bit)
+    High,           // High precision (32-bit)
+    Double          // Double precision (64-bit)
+};
+
+/** Field pool configuration */
+USTRUCT()
+struct FFieldPoolConfig
+{
+    GENERATED_BODY()
+
+    // Pool name
+    UPROPERTY()
+    FName PoolName;
+
+    // Field resolution
+    UPROPERTY()
+    FIntVector Resolution;
+
+    // Material channel count
+    UPROPERTY()
+    int32 MaterialChannels = 1;
+
+    // Narrow band width
+    UPROPERTY()
+    float NarrowBandWidth = 4.0f;
+
+    // Field precision
+    UPROPERTY()
+    EFieldPrecision Precision = EFieldPrecision::Medium;
+
+    // Pool size
+    UPROPERTY()
+    int32 PoolSize = 16;
+
+    // Memory footprint per field in bytes
+    UPROPERTY()
+    int64 MemoryPerField = 0;
 };

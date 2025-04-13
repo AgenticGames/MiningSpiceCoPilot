@@ -9,62 +9,6 @@
 
 class IComponentPoolManager;
 
-/** Mining transaction types */
-UENUM(BlueprintType)
-enum class ETransactionType : uint8
-{
-    Standard,        // Standard single-zone transaction
-    Compound,        // Compound multi-zone transaction
-    ReadOnly,        // Read-only transaction (no reads)
-    WriteOnly,       // Write-only transaction (no reads)
-    MaterialSpecific // Material-specific transaction
-};
-
-/** Transaction priorities */
-UENUM(BlueprintType)
-enum class ETransactionPriority : uint8
-{
-    Low,             // Low priority transaction
-    Normal,          // Normal priority transaction
-    High,            // High priority transaction
-    Critical         // Critical priority transaction
-};
-
-/** Transaction pool configuration */
-USTRUCT(BlueprintType)
-struct MININGSPICECOPILOT_API FTransactionPoolConfig
-{
-    GENERATED_BODY()
-
-    // Pool name
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transaction Pool")
-    FName PoolName;
-
-    // Transaction type
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transaction Pool")
-    ETransactionType TransactionType = ETransactionType::Standard;
-
-    // Default priority
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transaction Pool")
-    ETransactionPriority DefaultPriority = ETransactionPriority::Normal;
-
-    // Read set capacity
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transaction Pool")
-    int32 ReadSetCapacity = 64;
-
-    // Write set capacity
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transaction Pool")
-    int32 WriteSetCapacity = 32;
-
-    // Default pool size
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transaction Pool")
-    int32 PoolSize = 128;
-
-    // Whether to collect transaction metrics by default
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transaction Pool")
-    bool bCollectMetrics = true;
-};
-
 /**
  * Specialized factory for mining transaction contexts
  * Handles transaction configuration and state tracking
@@ -215,4 +159,60 @@ protected:
     FName GetTransactionPoolName(
         ETransactionType TransactionType,
         ETransactionPriority Priority);
+};
+
+/** Mining transaction types */
+UENUM(BlueprintType)
+enum class ETransactionType : uint8
+{
+    Standard,        // Standard single-zone transaction
+    Compound,        // Compound multi-zone transaction
+    ReadOnly,        // Read-only transaction (no writes)
+    WriteOnly,       // Write-only transaction (no reads)
+    MaterialSpecific // Material-specific transaction
+};
+
+/** Transaction priorities */
+UENUM(BlueprintType)
+enum class ETransactionPriority : uint8
+{
+    Low,             // Low priority transaction
+    Normal,          // Normal priority transaction
+    High,            // High priority transaction
+    Critical         // Critical priority transaction
+};
+
+/** Transaction pool configuration */
+USTRUCT()
+struct FTransactionPoolConfig
+{
+    GENERATED_BODY()
+
+    // Pool name
+    UPROPERTY()
+    FName PoolName;
+
+    // Transaction type
+    UPROPERTY()
+    ETransactionType TransactionType = ETransactionType::Standard;
+
+    // Default priority
+    UPROPERTY()
+    ETransactionPriority DefaultPriority = ETransactionPriority::Normal;
+
+    // Read set capacity
+    UPROPERTY()
+    int32 ReadSetCapacity = 64;
+
+    // Write set capacity
+    UPROPERTY()
+    int32 WriteSetCapacity = 32;
+
+    // Default pool size
+    UPROPERTY()
+    int32 PoolSize = 128;
+
+    // Whether to collect transaction metrics by default
+    UPROPERTY()
+    bool bCollectMetrics = true;
 };
