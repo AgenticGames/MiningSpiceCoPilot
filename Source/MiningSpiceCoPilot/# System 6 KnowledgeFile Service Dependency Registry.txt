@@ -1,0 +1,360 @@
+# SYSTEM 6: Service Registry and Dependency Management
+
+## System Overview
+The Service Registry and Dependency Management System provides a framework for registering, resolving, and managing services and their dependencies throughout the application. It enables components to locate required services, manages service lifecycle, monitors service health, and ensures proper initialization order based on dependencies.
+
+## Class Hierarchy
+
+### Interfaces
+
+- `IDependencyServiceProvider` [Interface]
+  - Purpose: Interface for service providers that create and manage service instances
+  - Implemented by: FServiceProvider, FMaterialServiceProvider, FSVOServiceProvider, FZoneServiceProvider
+  - Key methods:
+    - `virtual bool Initialize() = 0` - Initialize the service provider
+    - `virtual void Shutdown() = 0` - Shutdown the service provider
+    - `virtual bool IsInitialized() const = 0` - Check if provider is initialized
+    - `virtual FName GetProviderName() const = 0` - Get provider's name
+    - `virtual bool RegisterServices() = 0` - Register services with the system
+    - `virtual void UnregisterServices() = 0` - Unregister services
+    - `virtual bool SupportsServiceType(const UClass* InInterfaceType) const = 0` - Check if this provider supports a service type
+    - `virtual TArray<const UClass*> GetSupportedServiceTypes() const = 0` - Get all supported service types
+    - `virtual void* CreateServiceInstance(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) = 0` - Create a service instance
+    - `virtual const void* GetServiceConfiguration(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) const = 0` - Get service configuration
+
+- `IDependencyServiceLocator` [Interface]
+  - Purpose: Interface for service locator that resolves and manages service instances
+  - Implemented by: FServiceLocator
+  - Key methods:
+    - `virtual bool Initialize() = 0` - Initialize the service locator
+    - `virtual void Shutdown() = 0` - Shutdown the service locator
+    - `virtual bool IsInitialized() const = 0` - Check if locator is initialized
+    - `virtual bool RegisterService(void* InService, const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) = 0` - Register a service
+    - `virtual void* ResolveService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) = 0` - Resolve a service
+    - `virtual bool UnregisterService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) = 0` - Unregister a service
+    - `virtual bool HasService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) const = 0` - Check if a service is available
+    - `static IDependencyServiceLocator& Get()` - Get singleton instance
+
+- `IServiceMonitor` [Interface]
+  - Purpose: Interface for monitoring service health and performance
+  - Implemented by: FServiceMonitor
+  - Key methods:
+    - `virtual bool Initialize() = 0` - Initialize the service monitor
+    - `virtual void Shutdown() = 0` - Shutdown the service monitor
+    - `virtual bool IsInitialized() const = 0` - Check if monitor is initialized
+    - `virtual void Update(float DeltaTime) = 0` - Update monitoring state
+    - `virtual bool RegisterServiceForMonitoring(const UClass* InInterfaceType, float InImportance, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) = 0` - Register a service for monitoring
+    - `virtual bool GetServiceHealthMetrics(const UClass* InInterfaceType, FServiceHealthMetrics& OutMetrics, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) const = 0` - Get health metrics for a service
+    - `virtual bool RecoverService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) = 0` - Attempt to recover a failed service
+    - `virtual void ReportServiceOperation(const UClass* InInterfaceType, bool bSuccess, float ResponseTimeMs, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) = 0` - Report operation result for a service
+    - `virtual TArray<TPair<const UClass*, FServiceHealthMetrics>> GetProblematicServices() const = 0` - Get list of problematic services
+    - `static IServiceMonitor& Get()` - Get singleton instance
+
+- `IDependencyManager` [Interface]
+  - Purpose: Interface for managing service dependencies and initialization order
+  - Implemented by: FDependencyManager
+  - Key methods: Not fully implemented in the code files but likely related to FDependencyManager
+
+### Implementation Classes
+
+- `FServiceProvider` [ServiceProvider.h:~L13-90]
+  - Purpose: Base implementation of IDependencyServiceProvider interface
+  - Inherits from: IDependencyServiceProvider
+  - Key methods:
+    - `FServiceProvider(const FName& InProviderName)` [ServiceProvider.cpp:~L14-17] - Constructor
+    - `~FServiceProvider()` [ServiceProvider.cpp:~L19-25] - Destructor
+    - `bool Initialize() override` [ServiceProvider.cpp:~L27-41] - Initialize the service provider
+    - `void Shutdown() override` [ServiceProvider.cpp:~L43-72] - Shutdown the service provider
+    - `bool IsInitialized() const override` [ServiceProvider.cpp:~L74-77] - Check initialization status
+    - `FName GetProviderName() const override` [ServiceProvider.cpp:~L79-82] - Get provider name
+    - `bool RegisterServices() override` [ServiceProvider.cpp:~L84-97] - Register services
+    - `void UnregisterServices() override` [ServiceProvider.cpp:~L99-112] - Unregister services
+    - `bool SupportsServiceType(const UClass* InInterfaceType) const override` [ServiceProvider.cpp:~L114-124] - Check support for service type
+    - `TArray<const UClass*> GetSupportedServiceTypes() const override` [ServiceProvider.cpp:~L126-134] - Get supported service types
+    - `void* CreateServiceInstance(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override` [ServiceProvider.cpp:~L136-191] - Create service instance
+    - `const void* GetServiceConfiguration(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) const override` [ServiceProvider.cpp:~L193-236] - Get service configuration
+  - Key members:
+    - `FName ProviderName` [ServiceProvider.h:~L36] - Name of this provider
+    - `bool bIsInitialized` [ServiceProvider.h:~L39] - Flag indicating if provider is initialized
+    - `TMap<const UClass*, TFunction<void*(int32, int32)>> ServiceFactories` [ServiceProvider.h:~L42] - Map of service factories
+    - `TMap<const UClass*, TMap<TPair<int32, int32>, const void*>> ServiceConfigurations` [ServiceProvider.h:~L45] - Map of service configurations
+    - `TSet<void*> CreatedServices` [ServiceProvider.h:~L48] - Set of created services for cleanup
+    - `mutable FCriticalSection CriticalSection` [ServiceProvider.h:~L51] - Critical section for thread safety
+
+- `FSVOServiceProvider` [SVOServiceProvider.h]
+  - Purpose: Service provider specialization for SVO-related services
+  - Inherits from: FServiceProvider
+  - Key methods:
+    - Missing implementation details
+  - Key members:
+    - `static FSVOServiceProvider* Instance` [SVOServiceProvider.cpp:~L11] - Singleton instance
+
+- `FZoneServiceProvider` [ZoneServiceProvider.h]
+  - Purpose: Service provider specialization for Zone-related services
+  - Inherits from: FServiceProvider
+  - Key methods:
+    - Missing implementation details
+
+- `FMaterialServiceProvider` [MaterialServiceProvider.h:~L13-52]
+  - Purpose: Service provider specialization for material-specific components
+  - Inherits from: FServiceProvider
+  - Key methods:
+    - `FMaterialServiceProvider()` [MaterialServiceProvider.cpp:~L14-17] - Constructor
+    - `~FMaterialServiceProvider()` [MaterialServiceProvider.cpp:~L19-25] - Destructor
+    - `bool Initialize() override` [MaterialServiceProvider.cpp:~L27-36] - Initialize provider
+    - `void Shutdown() override` [MaterialServiceProvider.cpp:~L38-42] - Shutdown provider
+    - `bool RegisterServices() override` [MaterialServiceProvider.cpp:~L44-61] - Register services
+    - `void UnregisterServices() override` [MaterialServiceProvider.cpp:~L63-69] - Unregister services
+    - `static FMaterialServiceProvider& Get()` [MaterialServiceProvider.cpp:~L174-181] - Get singleton instance
+  - Key members:
+    - `static FMaterialServiceProvider* Instance` [MaterialServiceProvider.cpp:~L11] - Singleton instance
+
+- `FServiceLocator` [ServiceLocator.h:~L15-136]
+  - Purpose: Implementation of IDependencyServiceLocator
+  - Inherits from: IDependencyServiceLocator
+  - Key methods:
+    - `FServiceLocator()` [ServiceLocator.cpp:~L14-17] - Constructor
+    - `~FServiceLocator()` [ServiceLocator.cpp:~L19-25] - Destructor
+    - `bool Initialize() override` [ServiceLocator.cpp:~L27-41] - Initialize service locator
+    - `void Shutdown() override` [ServiceLocator.cpp:~L43-58] - Shutdown service locator
+    - `bool IsInitialized() const override` [ServiceLocator.cpp:~L60-63] - Check initialization status
+    - `bool RegisterService(void* InService, const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override` [ServiceLocator.cpp:~L65-101] - Register a service
+    - `void* ResolveService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override` [ServiceLocator.cpp:~L103-137] - Resolve a service
+    - `bool UnregisterService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override` [ServiceLocator.cpp:~L139-168] - Unregister a service
+    - `bool HasService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) const override` [ServiceLocator.cpp:~L170-191] - Check if service exists
+    - `static FServiceLocator& Get()` [ServiceLocator.cpp:~L310-318] - Get singleton instance
+  - Key members:
+    - `TMap<FServiceKey, FServiceEntry> RegisteredServices` [ServiceLocator.h:~L91] - Map of registered services
+    - `mutable TMap<FServiceKey, void*> ServiceCache` [ServiceLocator.h:~L94] - Cache of resolved services
+    - `mutable FCriticalSection CriticalSection` [ServiceLocator.h:~L97] - Critical section for thread safety
+    - `bool bIsInitialized` [ServiceLocator.h:~L100] - Flag indicating if locator is initialized
+    - `static FServiceLocator* Instance` [ServiceLocator.h:~L103] - Singleton instance
+
+- `FServiceMonitor` [ServiceMonitor.h:~L20-286]
+  - Purpose: Implementation of IServiceMonitor
+  - Inherits from: IServiceMonitor
+  - Key methods:
+    - `FServiceMonitor()` [ServiceMonitor.cpp:~L14-20] - Constructor
+    - `~FServiceMonitor()` [ServiceMonitor.cpp:~L22-28] - Destructor
+    - `bool Initialize() override` [ServiceMonitor.cpp:~L30-44] - Initialize service monitor
+    - `void Shutdown() override` [ServiceMonitor.cpp:~L46-61] - Shutdown service monitor
+    - `bool IsInitialized() const override` [ServiceMonitor.cpp:~L63-66] - Check initialization status
+    - `void Update(float DeltaTime) override` [ServiceMonitor.cpp:~L68-158] - Update monitoring state
+    - `bool RegisterServiceForMonitoring(const UClass* InInterfaceType, float InImportance, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override` [ServiceMonitor.cpp:~L160-192] - Register service for monitoring
+    - `bool GetServiceHealthMetrics(const UClass* InInterfaceType, FServiceHealthMetrics& OutMetrics, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) const override` [ServiceMonitor.cpp:~L194-223] - Get health metrics
+    - `bool RecoverService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override` [ServiceMonitor.cpp:~L225-270] - Recover a service
+    - `void ReportServiceOperation(const UClass* InInterfaceType, bool bSuccess, float ResponseTimeMs, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override` [ServiceMonitor.cpp:~L272-314] - Report operation result
+    - `TArray<TPair<const UClass*, FServiceHealthMetrics>> GetProblematicServices() const override` [ServiceMonitor.cpp:~L316-339] - Get problematic services
+    - `static FServiceMonitor& Get()` [ServiceMonitor.cpp:~L341-349] - Get singleton instance
+  - Key members:
+    - `TMap<FServiceKey, FMonitoringInfo> MonitoredServices` [ServiceMonitor.h:~L198] - Map of monitored services
+    - `mutable FCriticalSection CriticalSection` [ServiceMonitor.h:~L201] - Critical section for thread safety
+    - `bool bIsInitialized` [ServiceMonitor.h:~L204] - Flag indicating if monitor is initialized
+    - `float HealthCheckInterval` [ServiceMonitor.h:~L207] - Time between health checks
+    - `float TimeSinceLastHealthCheck` [ServiceMonitor.h:~L210] - Time since last health check
+    - `float MinTimeBetweenRecoveries` [ServiceMonitor.h:~L213] - Minimum time between recovery attempts
+    - `int32 MaxRecoveryAttempts` [ServiceMonitor.h:~L216] - Maximum recovery attempts
+    - `static FServiceMonitor* Instance` [ServiceMonitor.h:~L219] - Singleton instance
+
+- `FDependencyManager` [DependencyManager.h:~L15-174]
+  - Purpose: Manages service dependencies and initialization order
+  - Key methods:
+    - `FDependencyManager()` [DependencyManager.cpp:~L14-17] - Constructor
+    - `~FDependencyManager()` [DependencyManager.cpp:~L19-25] - Destructor
+    - `bool Initialize()` [DependencyManager.cpp:~L27-41] - Initialize dependency manager
+    - `void Shutdown()` [DependencyManager.cpp:~L43-58] - Shutdown dependency manager
+    - `bool IsInitialized() const` [DependencyManager.cpp:~L60-63] - Check initialization status
+    - `bool RegisterDependency(const UClass* InDependentType, const UClass* InDependencyType, bool bIsMandatory = true)` [DependencyManager.cpp:~L65-123] - Register a dependency
+    - `void GetDependencies(const UClass* InServiceType, TArray<const UClass*>& OutMandatoryDependencies, TArray<const UClass*>& OutOptionalDependencies) const` [DependencyManager.cpp:~L125-151] - Get dependencies for a service
+    - `bool DependsOn(const UClass* InDependentType, const UClass* InDependencyType, bool bCheckTransitive = true) const` [DependencyManager.cpp:~L153-195] - Check if one service depends on another
+    - `bool CalculateInitializationOrder(const TArray<const UClass*>& InServiceTypes, TArray<const UClass*>& OutOrderedServices, TArray<TPair<const UClass*, const UClass*>>& OutCyclicDependencies) const` [DependencyManager.cpp:~L197-234] - Calculate initialization order
+    - `bool CheckForCycles(TArray<TPair<const UClass*, const UClass*>>& OutCyclicDependencies) const` [DependencyManager.cpp:~L236-261] - Check for dependency cycles
+    - `bool ValidateDependencies(const TArray<const UClass*>& InServiceTypes, TArray<TPair<const UClass*, const UClass*>>& OutMissingDependencies) const` [DependencyManager.cpp:~L263-304] - Validate dependencies
+    - `static FDependencyManager& Get()` [DependencyManager.cpp:~L427-435] - Get singleton instance
+  - Key members:
+    - `TMap<const UClass*, FDependencyInfo> Dependencies` [DependencyManager.h:~L148] - Map of service dependencies
+    - `mutable FCriticalSection CriticalSection` [DependencyManager.h:~L151] - Critical section for thread safety
+    - `bool bIsInitialized` [DependencyManager.h:~L154] - Flag indicating if manager is initialized
+    - `static FDependencyManager* Instance` [DependencyManager.h:~L157] - Singleton instance
+
+### Helper Structs
+
+- `EServiceHealthStatus` [ServiceMonitor.h]
+  - Purpose: Enum for service health status levels
+  - Values: Unknown, Healthy, Degraded, Critical, Failed
+
+- `FServiceHealthMetrics` [ServiceMonitor.h]
+  - Purpose: Structure holding health metrics for a service
+  - Key members:
+    - `EServiceHealthStatus Status` - Current health status
+    - `float TimeSinceLastCheck` - Time since last health check
+    - `int32 SuccessfulOperations` - Count of successful operations
+    - `int32 FailedOperations` - Count of failed operations
+    - `float AverageResponseTimeMs` - Average response time
+    - `float PeakResponseTimeMs` - Peak response time
+    - `int32 RecoveryCount` - Count of recovery attempts
+    - `uint64 MemoryUsageBytes` - Memory usage in bytes
+    - `float CpuUsagePercent` - CPU usage percentage
+    - `int32 ActiveInstances` - Number of active instances
+
+- `FServiceKey` [ServiceLocator.h:~L33-65, ServiceMonitor.h:~L38-70]
+  - Purpose: Key for service lookup
+  - Key members:
+    - `const UClass* InterfaceType` - Interface type class
+    - `int32 ZoneID` - Zone ID
+    - `int32 RegionID` - Region ID
+
+- `FServiceEntry` [ServiceLocator.h:~L68-81]
+  - Purpose: Service registry entry
+  - Key members:
+    - `void* ServicePtr` - Pointer to the service instance
+    - `FDateTime RegistrationTime` - Time when the service was registered
+
+- `FMonitoringInfo` [ServiceMonitor.h:~L73-193]
+  - Purpose: Monitoring information for a service
+  - Key members:
+    - `FServiceHealthMetrics Metrics` - Health metrics for the service
+    - `float Importance` - Importance of the service (0-1)
+    - `float TimeSinceLastCheck` - Time since last health check
+    - `bool bRecoveryInProgress` - Flag indicating if recovery is in progress
+    - `int32 RecoveryAttempts` - Number of recovery attempts
+    - `FDateTime LastRecoveryTime` - Last time a recovery was attempted
+    - `float OperationWindow` - Window of time for measuring operation success rate
+    - `int32 OperationsInWindow` - Number of operations in the current window
+    - `TArray<float> ResponseTimes` - List of past response times
+
+- `FDependencyInfo` [DependencyManager.h:~L137-145]
+  - Purpose: Dependency information
+  - Key members:
+    - `TSet<const UClass*> MandatoryDependencies` - Set of mandatory dependencies
+    - `TSet<const UClass*> OptionalDependencies` - Set of optional dependencies
+
+## Dependencies
+
+### Internal Dependencies
+- Core types and containers: CoreMinimal.h, Containers/Map.h, Containers/Array.h, Containers/Set.h
+- Multi-threading support: HAL/CriticalSection.h
+- Template utilities: Templates/SharedPointer.h
+- Logging system: Logging/LogMacros.h
+
+### External Dependencies
+- UE5 Core: UClass for service interface identification
+
+## Navigation Landmarks
+
+### ServiceProvider.cpp
+- Constructor/Destructor: ~L14-25
+- Initialization/Shutdown: ~L27-72
+- Core service registration: ~L84-112
+- Service type support checks: ~L114-134
+- Service instance creation: ~L136-191
+- Service configuration: ~L193-236
+
+### ServiceLocator.cpp
+- Constructor/Destructor: ~L14-25
+- Initialization/Shutdown: ~L27-58
+- Service registration: ~L65-101
+- Service resolution: ~L103-137
+- Service unregistration: ~L139-168
+- Service availability checks: ~L170-191
+- Service fallback lookup: ~L193-309
+
+### ServiceMonitor.cpp
+- Constructor/Destructor: ~L14-28
+- Initialization/Shutdown: ~L30-61
+- Monitoring update loop: ~L68-158
+- Service registration for monitoring: ~L160-192
+- Service health metric retrieval: ~L194-223
+- Service recovery: ~L225-270
+- Operation reporting: ~L272-314
+- Problematic services retrieval: ~L316-339
+
+### DependencyManager.cpp
+- Constructor/Destructor: ~L14-25
+- Initialization/Shutdown: ~L27-58
+- Dependency registration: ~L65-123
+- Dependency retrieval: ~L125-151
+- Dependency checking: ~L153-195
+- Initialization order calculation: ~L197-234
+- Cycle detection: ~L236-261
+- Dependency validation: ~L263-304
+- Graph traversal algorithms: ~L306-425
+
+## Implementation Patterns
+
+### Service Registration and Resolution
+- Hierarchical service resolution based on zone and region IDs
+- Fallback mechanism from specific to global services
+- Service caching for improved performance
+- Thread-safe operations with critical sections
+
+### Service Health Monitoring
+- Periodic health checks
+- Automatic service recovery
+- Operation success/failure tracking
+- Response time monitoring
+- Health status classification (Healthy, Degraded, Critical, Failed)
+
+### Dependency Management
+- Explicit dependency declaration between services
+- Mandatory vs. optional dependencies
+- Cycle detection in dependency graph
+- Topological sorting for initialization order
+- Dependency validation before system startup
+
+### Thread Safety
+- All service operations protected with critical sections
+- Thread-safe singleton access
+- Atomic service registration and resolution
+
+### Singleton Pattern
+- Each manager and core service implemented as singleton
+- Static Get() methods for accessing singleton instances
+- Lazy initialization of singletons
+
+### Configuration Management
+- Hierarchical configuration resolution
+- Zone and region-specific configurations
+- Global fallback configurations
+- Typed configuration storage
+
+## Potential Conflicts
+
+### Naming Conflicts
+- `Initialize()` and `Shutdown()` methods appear in all manager classes
+- Multiple implementations of `FServiceKey` struct in different files
+- Similar naming for monitoring and recovery methods across classes
+
+### Architectural Boundaries
+- Service providers may have knowledge of both service locator and monitor
+- Potential circular dependencies between monitor and locator
+- Unclear ownership of service instances (who deletes them?)
+
+### Memory Management
+- Services stored as void* pointers with potential memory leaks
+- Warning in ServiceProvider.cpp about inability to safely delete services
+- Need for clear ownership semantics
+
+## Zone and Region Support
+
+The system provides consistent zone and region-based service resolution across all components:
+
+- Services can be registered for:
+  - Specific zone and region (`ZoneID` and `RegionID` specified)
+  - All regions in a specific zone (`ZoneID` specified, `RegionID=INDEX_NONE`)
+  - All zones in a specific region (`ZoneID=INDEX_NONE`, `RegionID` specified)
+  - Globally (`ZoneID=INDEX_NONE`, `RegionID=INDEX_NONE`)
+
+- Resolution works with fallback chain:
+  1. Try exact zone and region match
+  2. Try zone-global services (same zone, any region)
+  3. Try region-global services (any zone, same region)
+  4. Try completely global services (any zone, any region)
+
+## Known Issues & Constraints
+
+- Service instances created as void* with casting required
+- No clear ownership semantics for service cleanup
+- Potential for circular dependencies in the service graph
+- Some classes are incomplete (ZoneServiceProvider, SVOServiceProvider)
+- Warning about unsafe service cleanup in ServiceProvider::Shutdown()

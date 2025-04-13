@@ -1,0 +1,169 @@
+# Update Mining System Knowledge Base
+
+Analyze the referenced implementation files provided for the Mining System and update our corrosponding system Knowledge Base file (Example: # System 1 KnowledeFile systemname), it can be found in our Source directory, if its not there under # System xyz KnowledeFile systemname.txt, create it. Extract key information to maintain our single source of truth and prevent naming conflicts in future development, when committing the information to the document, reorganize existing data into its relevant systems, then classes within that system.
+
+## System Implementation Analysis
+
+For each implemented system, extract:
+
+### Classes & Interfaces
+- Extract all class and interface declarations (`class`, `struct`, `interface`)
+- Note inheritance relationships and template parameters
+- Format: 
+  ```
+  - `FClassName` [File.h:~L20]: Inherits from IInterface, BaseClass
+    - Purpose: Brief extracted purpose from comments
+    - Primary location: FileName.h, FileName.cpp
+  ```
+
+### Public Methods
+- Extract all public method signatures
+- Include return types, parameters, and const qualifiers
+- Format:
+  ```
+  - `ReturnType ClassName::MethodName(Type1 param1, Type2 param2) const` [File.cpp:~L150-170]
+    - Purpose: Brief description from comments
+    - Usage: Key usage patterns if apparent
+  ```
+
+### Member Variables
+- Extract public and protected member variables
+- Note naming patterns and prefixes
+- Format:
+  ```
+  - `Type m_VariableName` [File.h:~L45]
+    - Purpose: Brief description
+    - Access: public/protected/private
+  ```
+
+### Dependencies
+- Identify includes and direct dependencies on other systems
+- Note service usage and injection patterns
+- Format:
+  ```
+  - System X (via IServiceInterface) [File.h:~L10]
+  - External UE5: RHIResources.h, ComputeShaderUtils.h
+  ```
+
+### Navigation Landmarks
+- Map file sections for major implementation files
+- Include significant method start locations
+- Identify critical algorithms with both line numbers and search markers
+- Format:
+  ```
+  FileSection: [FileName.cpp]
+  - Core initialization: ~L1-100
+  - Main processing logic: ~L101-250 [MAIN_PROCESS_IMPL]
+  - Helper methods: ~L251-400
+  - Critical algorithms:
+    - Wavefront propagation: ~L325 [WAVE_PROP_ALGORITHM]
+    - Conflict resolution: ~L210 [CONFLICT_RESOLUTION]
+  ```
+
+### Naming Patterns
+- Extract naming conventions used for:
+  - Methods (verb patterns, prefixes)
+  - Variables (prefixing, casing)
+  - Constants and enums
+- Format:
+  ```
+  - Methods: GetX(), SetX(), ProcessX(), InitializeX()
+  - Variables: m_MemberVar, s_StaticVar, InParameterName
+  - Enums: EEnumName::Value
+  ```
+
+## Specific Elements to Watch
+
+### Potential Naming Conflicts
+- Identify similar method names across different classes
+- Note overloaded functions that might cause confusion
+- Format:
+  ```
+  - `Process()` appears in both FClassA and FClassB with different signatures
+  - Multiple `Initialize()` methods with varying parameters
+  ```
+
+### Architectural Boundaries
+- Identify functionality that spans system boundaries
+- Note any potential SSOT/SOC violations
+- Format:
+  ```
+  - Memory allocation appears in both System 2 and System 25
+  - Transaction handling split between System 3 and System 44
+  ```
+
+### Implementation Patterns
+- Document recurring code patterns and idioms
+- Note optimization techniques and thread safety approaches
+- Format:
+  ```
+  - Thread safety: Uses atomic operations for version counters
+  - Memory optimization: Employs narrow-band field compression
+  - Optimization: SIMD vectorization for field operations
+  ```
+
+### UE5 Integration
+- UE5 Macros: UPROPERTY(), UFUNCTION(), etc. usage patterns
+- Reflection: Property metadata, BlueprintReadWrite, etc.
+- Engine Lifecycle: How system hooks into UE5 ticking/update cycle
+- GC Integration: How system handles garbage collection
+- UObject Relationship: Which classes extend UObject vs. plain C++
+
+## Knowledge Base Entry Format
+
+```
+## SYSTEM X: System Name
+
+### Class Hierarchy
+- `FClassName` [File.h:~L20-50]: Implements IInterface1, IInterface2
+  - Purpose: Core responsibility description
+  - Key methods:
+    - `ReturnType MethodName(Type1 param1, Type2 param2)` [File.cpp:~L100-120]
+    - `void OtherMethod()` [File.cpp:~L130-150]
+  - Key members:
+    - `Type m_MemberVar` [File.h:~L35]
+
+- `IInterfaceName` [File.h:~L10-18]
+  - Implemented by: FImplementation1, FImplementation2
+  - Key methods:
+    - `virtual ReturnType MethodName(Type1 param1) = 0` [File.h:~L15]
+
+### Dependencies
+- Depends on: System 1, System 3
+- Required by: System 44, System 105
+
+### Navigation Landmarks
+FileStructure: [ClassName.cpp]
+- Initialization: ~L1-100
+- Core processing: ~L101-250 [CORE_PROCESSING]
+- Helper methods: ~L251-400
+- Critical algorithm: ~L325 [KEY_ALGORITHM]
+
+### Implementation Patterns
+- Threading model: Uses zone-based transactions with optimistic concurrency
+- Memory management: Employs custom allocators with narrow-band optimization
+- SIMD usage: AVX2 vectorization for field operations
+
+### Potential Conflicts
+- Similar method names with System 44's FOperationProcessor
+- Shared responsibility for zone management with System 3
+```
+
+### Known Issues & Constraints
+- Identified limitations: [List any implementation limitations]
+- Performance constraints: [Note performance bottlenecks]
+- Architectural debt: [Document technical debt for future refactoring]
+- Works in progress: [Note incomplete features]
+- Usage restrictions: [Document constraints on how systems should be used]
+
+## Special Instructions
+
+1. Focus on extracting information that will prevent naming collisions and architectural conflicts
+2. Include approximate line numbers with tilde (~) prefix to indicate they're reference points
+3. Add searchable comment markers for critical algorithms and implementation sections
+4. Pay special attention to interface boundaries and dependency relationships
+5. Highlight any naming patterns or conventions that should be consistently applied
+6. Use code comments to understand purpose and behavior when available
+7. Maintain consistent formatting throughout the knowledge base
+
+This knowledge base will serve as a crucial reference for future Claude Code implementations, ensuring consistent naming, proper dependencies, and architectural integrity across our 153-system mining framework.

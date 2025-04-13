@@ -1,0 +1,389 @@
+## SYSTEM 1: Core Registry and Type System
+
+### Class Hierarchy
+- `IRegistry` [1_CoreRegistry/Public/Interfaces/IRegistry.h]: Interface
+  - Purpose: Defines core functionality for type registration, lookup, and management
+  - Key methods:
+    - `bool Initialize()` - Initializes the registry
+    - `void Shutdown()` - Shuts down the registry and cleans up resources
+    - `bool IsInitialized() const` - Checks initialization status
+    - `FName GetRegistryName() const` - Gets the name of this registry
+    - `uint32 GetSchemaVersion() const` - Gets the schema version
+    - `bool Validate(TArray<FString>& OutErrors) const` - Validates registry consistency
+    - `void Clear()` - Clears all registrations and resets the registry
+
+- `IServiceLocator` [1_CoreRegistry/Public/Interfaces/IServiceLocator.h]: Interface
+  - Purpose: Provides service registration, resolution, and lifecycle management for subsystems
+  - Key methods:
+    - `bool RegisterService(void* InService, const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE)` - Registers a service implementation
+    - `void* ResolveService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE)` - Resolves a service instance
+    - `bool UnregisterService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE)` - Unregisters a service implementation
+    - `bool HasService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) const` - Checks if a service is registered
+    - Template methods for typed service operations
+    - `static IServiceLocator& Get()` - Gets the singleton instance
+
+- `IServiceProvider` [1_CoreRegistry/Public/Interfaces/IServiceProvider.h]: Interface
+  - Purpose: Interface for classes that provide services to the system
+  - Key methods:
+    - `void RegisterServices()` - Registers all services provided by this provider
+    - `void UnregisterServices()` - Unregisters all services provided by this provider
+
+- `FServiceLocator` [1_CoreRegistry/Public/ServiceLocator.h]: Implements IServiceLocator
+  - Purpose: Service registration and resolution for the mining subsystems
+  - Key methods:
+    - `bool Initialize()` - Initialize the service locator
+    - `void Shutdown()` - Shutdown and cleanup resources
+    - Implementation of IServiceLocator interface methods
+    - `static FServiceLocator& Get()` - Gets the singleton instance
+  - Key members:
+    - `TMap<FName, void*> ServiceMap` - Map of registered services with context-specific keys
+    - `FThreadSafeBool bIsInitialized` - Thread-safe initialization flag
+    - `FSpinLock ServiceMapLock` - Lock for thread-safe access to the service map
+    - `FName CreateServiceKey(const UClass* InInterfaceType, int32 InZoneID, int32 InRegionID) const` - Creates unique service lookup keys
+
+- `FZoneTypeRegistry` [1_CoreRegistry/Public/ZoneTypeRegistry.h]: Implements IRegistry
+  - Purpose: Handles transaction type registration, zone configuration, and concurrency metadata
+  - Key methods:
+    - IRegistry interface implementation
+    - `uint32 RegisterTransactionType(const FName& InTypeName, ETransactionConcurrency InConcurrencyLevel, ERetryStrategy InRetryStrategy)` - Registers a new zone transaction type
+    - `uint32 RegisterMaterialTransaction(const FName& InTypeName, int32 InMaterialChannelId)` - Registers a material-specific transaction
+    - `bool RegisterZoneGridConfig(const FName& InConfigName, float InZoneSize, uint32 InMaxConcurrentTransactions)` - Registers a zone grid configuration
+    - `const FZoneTransactionTypeInfo* GetTransactionTypeInfo(uint32 InTypeId) const` - Gets transaction type info
+    - `const FZoneTransactionTypeInfo* GetTransactionTypeInfoByName(const FName& InTypeName) const` - Gets transaction type by name
+    - `const FZoneGridConfig* GetZoneGridConfig(const FName& InConfigName) const` - Gets zone grid config
+    - `const FZoneGridConfig* GetDefaultZoneGridConfig() const` - Gets default zone grid configuration
+    - `bool SetDefaultZoneGridConfig(const FName& InConfigName)` - Sets default zone grid configuration
+    - `bool UpdateTransactionProperty(uint32 InTypeId, const FName& InPropertyName, const FString& InValue)` - Updates transaction properties
+    - `bool UpdateFastPathThreshold(uint32 InTypeId, float InConflictRate)` - Updates fast-path threshold based on conflict history
+    - `bool IsTransactionTypeRegistered(uint32 InTypeId) const` - Checks if a transaction type is registered
+    - `bool IsTransactionTypeRegistered(const FName& InTypeName) const` - Checks if a transaction type is registered by name
+    - `static FZoneTypeRegistry& Get()` - Gets the singleton instance
+  - Key members:
+    - `TMap<uint32, TSharedRef<FZoneTransactionTypeInfo>> TransactionTypeMap` - Map of registered transaction types by ID
+    - `TMap<FName, uint32> TransactionTypeNameMap` - Map of registered transaction types by name
+    - `TMap<FName, TSharedRef<FZoneGridConfig>> ZoneGridConfigMap` - Map of registered zone grid configurations
+    - `FName DefaultZoneGridConfigName` - Default zone grid configuration name
+    - `uint32 NextTypeId` - Counter for generating unique type IDs
+    - `FThreadSafeBool bIsInitialized` - Thread-safe initialization flag
+    - `uint32 SchemaVersion` - Schema version of this registry
+    - `FSpinLock RegistryLock` - Lock for thread-safe access to registry maps
+
+- `FSVOTypeRegistry` [1_CoreRegistry/Public/SVOTypeRegistry.h]: Implements IRegistry
+  - Purpose: Handles type registration, node classification, and memory layout management for SVO nodes
+  - Key methods:
+    - IRegistry interface implementation
+    - `uint32 RegisterNodeType(const FName& InTypeName, ESVONodeClass InNodeClass, uint32 InDataSize, uint32 InAlignmentRequirement, bool bInSupportsMaterialRelationships)` - Registers a new SVO node type
+    - `const FSVONodeTypeInfo* GetNodeTypeInfo(uint32 InTypeId) const` - Gets node type info
+    - `const FSVONodeTypeInfo* GetNodeTypeInfoByName(const FName& InTypeName) const` - Gets node type by name
+    - `TArray<FSVONodeTypeInfo> GetAllNodeTypes() const` - Gets all registered node types
+    - `TArray<FSVONodeTypeInfo> GetNodeTypesByClass(ESVONodeClass InNodeClass) const` - Gets nodes by class
+    - `bool IsNodeTypeRegistered(uint32 InTypeId) const` - Checks if a node type is registered
+    - `bool IsNodeTypeRegistered(const FName& InTypeName) const` - Checks if a node type is registered by name
+    - `static FSVOTypeRegistry& Get()` - Gets the singleton instance
+  - Key members:
+    - `TMap<uint32, TSharedRef<FSVONodeTypeInfo>> NodeTypeMap` - Map of registered node types by ID
+    - `TMap<FName, uint32> NodeTypeNameMap` - Map of registered node types by name for lookup
+    - `uint32 NextTypeId` - Counter for generating unique type IDs
+    - `FThreadSafeBool bIsInitialized` - Thread-safe initialization flag
+    - `uint32 SchemaVersion` - Schema version of this registry
+    - `FSpinLock RegistryLock` - Lock for thread-safe access
+
+- `FSDFTypeRegistry` [1_CoreRegistry/Public/SDFTypeRegistry.h]: Implements IRegistry
+  - Purpose: Handles field type registration, operation compatibility, and evaluation strategies
+  - Key methods:
+    - IRegistry interface implementation
+    - `uint32 RegisterFieldType(const FName& InTypeName, uint32 InChannelCount, bool bInSupportsNarrowBand)` - Registers a new SDF field type
+    - `uint32 RegisterFieldOperation(const FName& InOperationName, ESDFOperationType InOperationType, const TArray<uint32>& InCompatibleFieldTypes)` - Registers a new field operation
+    - `const FSDFFieldTypeInfo* GetFieldTypeInfo(uint32 InTypeId) const` - Gets field type info
+    - `const FSDFFieldTypeInfo* GetFieldTypeInfoByName(const FName& InTypeName) const` - Gets field type by name
+    - `const FSDFOperationInfo* GetFieldOperationInfo(uint32 InOperationId) const` - Gets operation info
+    - `const FSDFOperationInfo* GetFieldOperationInfoByName(const FName& InOperationName) const` - Gets operation by name
+    - `TArray<FSDFFieldTypeInfo> GetAllFieldTypes() const` - Gets all field types
+    - `TArray<FSDFOperationInfo> GetAllFieldOperations() const` - Gets all field operations
+    - `TArray<FSDFOperationInfo> GetCompatibleOperations(uint32 InTypeId) const` - Gets operations compatible with a field type
+    - `bool IsOperationCompatible(uint32 InOperationId, uint32 InTypeId) const` - Checks operation compatibility
+    - `bool IsFieldTypeRegistered(uint32 InTypeId) const` - Checks if field type is registered
+    - `bool IsFieldOperationRegistered(uint32 InOperationId) const` - Checks if operation is registered
+    - `static FSDFTypeRegistry& Get()` - Gets the singleton instance
+  - Key members:
+    - `TMap<uint32, TSharedRef<FSDFFieldTypeInfo>> FieldTypeMap` - Map of registered field types
+    - `TMap<FName, uint32> FieldTypeNameMap` - Map of field types by name
+    - `TMap<uint32, TSharedRef<FSDFOperationInfo>> OperationMap` - Map of registered operations
+    - `TMap<FName, uint32> OperationNameMap` - Map of operations by name
+    - `uint32 NextTypeId` - Counter for generating unique type IDs
+    - `uint32 NextOperationId` - Counter for generating unique operation IDs
+
+- `FMaterialRegistry` [1_CoreRegistry/Public/MaterialRegistry.h]: Implements IRegistry
+  - Purpose: Handles material type registration, properties, and relationships
+  - Key methods:
+    - IRegistry interface implementation
+    - `uint32 RegisterMaterialType(const FName& InTypeName, EMaterialPriority InPriority, const FName& InParentTypeName)` - Registers a new material type
+    - `uint32 RegisterMaterialRelationship(const FName& InSourceTypeName, const FName& InTargetTypeName, float InCompatibilityScore, bool bInCanBlend)` - Registers material relationships
+    - `int32 AllocateMaterialChannel(uint32 InTypeId)` - Allocates a channel ID for materials
+    - `const FMaterialTypeInfo* GetMaterialTypeInfo(uint32 InTypeId) const` - Gets material type info
+    - `const FMaterialTypeInfo* GetMaterialTypeInfoByName(const FName& InTypeName) const` - Gets material type by name
+    - `const FMaterialRelationship* GetMaterialRelationship(uint32 InRelationshipId) const` - Gets relationship info
+    - `TArray<FMaterialTypeInfo> GetAllMaterialTypes() const` - Gets all material types
+    - `TArray<FMaterialTypeInfo> GetDerivedMaterialTypes(uint32 InParentTypeId) const` - Gets derived material types
+    - `TArray<FMaterialRelationship> GetMaterialRelationships(uint32 InTypeId) const` - Gets relationships for a material
+    - `bool IsMaterialTypeRegistered(uint32 InTypeId) const` - Checks if material is registered
+    - `bool IsMaterialTypeRegistered(const FName& InTypeName) const` - Checks if material is registered by name
+    - `bool IsMaterialDerivedFrom(uint32 InDerivedTypeId, uint32 InBaseTypeId) const` - Checks material inheritance
+    - `bool UpdateMaterialProperty(uint32 InTypeId, const FName& InPropertyName, const FString& InValue)` - Updates material properties
+    - `static FMaterialRegistry& Get()` - Gets the singleton instance
+  - Key members:
+    - `TMap<uint32, TSharedRef<FMaterialTypeInfo>> MaterialTypeMap` - Map of registered material types
+    - `TMap<FName, uint32> MaterialTypeNameMap` - Map of material types by name
+    - `TMap<uint32, TSharedRef<FMaterialRelationship>> RelationshipMap` - Map of material relationships
+    - `TMultiMap<uint32, uint32> RelationshipsBySourceMap` - Relationships indexed by source type
+    - `TMultiMap<uint32, uint32> RelationshipsByTargetMap` - Relationships indexed by target type
+    - `TMap<uint32, TArray<uint32>> MaterialHierarchyMap` - Material type inheritance hierarchy
+    - `TSet<int32> AllocatedChannelIds` - Set of allocated material channel IDs
+    - `uint32 NextTypeId` - Counter for generating unique type IDs
+    - `uint32 NextRelationshipId` - Counter for generating unique relationship IDs
+    - `int32 NextChannelId` - Counter for generating unique channel IDs
+
+### Structures
+- `FZoneTransactionTypeInfo` [1_CoreRegistry/Public/ZoneTypeRegistry.h]
+  - Purpose: Metadata for zone transaction types
+  - Key members:
+    - `uint32 TypeId` - Unique ID for this transaction type
+    - `FName TypeName` - Name of this transaction type
+    - `ETransactionConcurrency ConcurrencyLevel` - Concurrency level for this transaction type
+    - `ERetryStrategy RetryStrategy` - Retry strategy for conflicts
+    - `uint32 MaxRetries` - Maximum number of retry attempts
+    - `uint32 BaseRetryIntervalMs` - Base retry interval in milliseconds
+    - `int32 MaterialChannelId` - Material channel ID for material-specific transactions
+    - `uint32 Priority` - Priority for conflict resolution
+
+- `FZoneGridConfig` [1_CoreRegistry/Public/ZoneTypeRegistry.h]
+  - Purpose: Configuration for zone grids in the mining system
+  - Key members:
+    - `float ZoneSize` - Size of a zone in world units
+    - `FName DefaultConfigName` - Default zone configuration name
+    - `uint32 MaxConcurrentTransactions` - Maximum number of concurrent transactions per zone
+    - `bool bUseMaterialSpecificVersioning` - Whether to use material-specific versioning
+    - `uint32 VersionHistoryLength` - Number of versions to track in history
+
+- `FSVONodeTypeInfo` [1_CoreRegistry/Public/SVOTypeRegistry.h]
+  - Purpose: Metadata for SVO node types
+  - Key members:
+    - `uint32 TypeId` - Unique ID for this node type
+    - `FName TypeName` - Name of this node type
+    - `ESVONodeClass NodeClass` - Class of this node type
+    - `uint32 DataSize` - Size of node data in bytes
+    - `uint32 AlignmentRequirement` - Memory alignment requirement
+    - `bool bSupportsMaterialRelationships` - Whether this node type supports material relationships
+    - `bool bSupportsCompression` - Whether this node type supports compression
+    - `bool bIsSerializable` - Whether this node type can be serialized
+    - `uint32 SchemaVersion` - Version of this node type's schema
+
+- `FSDFFieldTypeInfo` [1_CoreRegistry/Public/SDFTypeRegistry.h]
+  - Purpose: Information about SDF field types
+  - Key members:
+    - `uint32 TypeId` - Unique ID for this field type
+    - `FName TypeName` - Name of this field type
+    - `uint32 SchemaVersion` - Version of this field type's schema
+    - `uint32 ChannelCount` - Number of channels supported by this field type
+    - `bool bSupportsNarrowBand` - Whether this field type supports narrow-band optimization
+    - `bool bSupportsGPUEvaluation` - Whether this field type supports GPU evaluation
+    - `bool bSupportsSIMD` - Whether this field type supports SIMD operations
+
+- `FSDFOperationInfo` [1_CoreRegistry/Public/SDFTypeRegistry.h]
+  - Purpose: Information about SDF field operations
+  - Key members:
+    - `uint32 OperationId` - Unique ID for this operation
+    - `FName OperationName` - Name of this operation
+    - `ESDFOperationType OperationType` - Type of this operation
+    - `TArray<uint32> CompatibleFieldTypes` - Field types that this operation is compatible with
+    - `TArray<uint32> CompatibleMaterialTypes` - Material types that this operation is compatible with
+    - `bool bSupportsGPUEvaluation` - Whether this operation supports GPU evaluation
+    - `bool bSupportsSIMD` - Whether this operation supports SIMD operations
+    - `float ComputationalCost` - Approximate computational cost (normalized value)
+
+- `FMaterialTypeInfo` [1_CoreRegistry/Public/MaterialRegistry.h]
+  - Purpose: Metadata for material types
+  - Key members:
+    - `uint32 TypeId` - Unique ID for this material type
+    - `FName TypeName` - Name of this material type
+    - `uint32 ParentTypeId` - Parent material type ID, 0 if none
+    - `EMaterialPriority Priority` - Priority level for this material
+    - `float ResourceValueMultiplier` - Resource value multiplier
+    - `float BaseMiningResistance` - Base resistance to mining operations
+    - `float SoundAmplificationFactor` - Base sound amplification factor
+    - `float ParticleEmissionMultiplier` - Base particle emission rate multiplier
+    - `bool bIsMineable` - Whether this material is mineable
+    - `bool bIsResource` - Whether this material is valuable as a resource
+    - `bool bCanFracture` - Whether this material can fracture
+    - `int32 ChannelId` - Channel ID for this material in multi-channel SDF fields
+
+- `FMaterialRelationship` [1_CoreRegistry/Public/MaterialRegistry.h]
+  - Purpose: Relationship between material types
+  - Key members:
+    - `uint32 RelationshipId` - Unique ID for this relationship
+    - `uint32 SourceTypeId` - Source material type ID
+    - `uint32 TargetTypeId` - Target material type ID
+    - `float CompatibilityScore` - Relationship compatibility score (0-1)
+    - `bool bCanBlend` - Whether materials can blend at boundaries
+    - `float BlendSharpness` - Boundary sharpness when blending (0-1)
+
+### Enumerations
+- `ETransactionConcurrency` [1_CoreRegistry/Public/ZoneTypeRegistry.h]
+  - Purpose: Transaction concurrency level for zone operations
+  - Values: ReadOnly, Optimistic, Exclusive, MaterialChannel
+
+- `ERetryStrategy` [1_CoreRegistry/Public/ZoneTypeRegistry.h]
+  - Purpose: Retry strategy type for transaction conflicts
+  - Values: None, FixedInterval, ExponentialBackoff, Custom
+
+- `ESVONodeClass` [1_CoreRegistry/Public/SVOTypeRegistry.h]
+  - Purpose: SVO node class types for classification
+  - Values: Homogeneous, Interface, Empty, Custom
+
+- `ESDFOperationType` [1_CoreRegistry/Public/SDFTypeRegistry.h]
+  - Purpose: SDF field operation types for CSG operations
+  - Values: Union, Subtraction, Intersection, SmoothUnion, SmoothSubtraction, SmoothIntersection, Custom
+
+- `ESDFEvaluationContext` [1_CoreRegistry/Public/SDFTypeRegistry.h]
+  - Purpose: SDF field evaluation contexts
+  - Values: Mining, Rendering, Physics, GameLogic
+
+- `EMaterialPriority` [1_CoreRegistry/Public/MaterialRegistry.h]
+  - Purpose: Material priority levels for interaction conflicts
+  - Values: Low, Normal, High, Critical
+
+### Navigation Landmarks
+FileStructure: [1_CoreRegistry/Public/Interfaces/IRegistry.h]
+- Registry interface declaration: ~L12-56
+
+FileStructure: [1_CoreRegistry/Public/Interfaces/IServiceLocator.h]
+- Service locator interface declaration: ~L12-104
+
+FileStructure: [1_CoreRegistry/Public/Interfaces/IServiceProvider.h]
+- Service provider interface declaration: ~L12-40
+
+FileStructure: [1_CoreRegistry/Public/ServiceLocator.h]
+- Service locator implementation: ~L12-55
+
+FileStructure: [1_CoreRegistry/Public/ZoneTypeRegistry.h]
+- Transaction concurrency enum: ~L13-24
+- Retry strategy enum: ~L29-39
+- Transaction type info structure: ~L44-73
+- Zone grid config structure: ~L78-90
+- Zone type registry implementation: ~L101-256
+
+FileStructure: [1_CoreRegistry/Public/SVOTypeRegistry.h]
+- Node class enum: ~L13-23
+- Node type info structure: ~L32-51
+- SVO type registry implementation: ~L56-143
+
+FileStructure: [1_CoreRegistry/Public/SDFTypeRegistry.h]
+- Operation type enum: ~L16-28
+- Evaluation context enum: ~L33-43
+- Field type info structure: ~L58-84
+- Operation info structure: ~L89-101
+- SDF type registry implementation: ~L112-228
+
+FileStructure: [1_CoreRegistry/Public/MaterialRegistry.h]
+- Material priority enum: ~L16-26
+- Material type info structure: ~L39-77
+- Material relationship structure: ~L82-95
+- Material registry implementation: ~L97-197
+
+FileStructure: [1_CoreRegistry/Private/MaterialRegistry.cpp]
+- Constructor and destructor: ~L5-12
+- Initialization and shutdown: ~L15-25
+- Material type registration: ~L82-119
+- Material relationship registration: ~L122-163
+- Material property management: ~L166-201
+- Memory management and thread safety: ~L205-243
+
+### Implementation Patterns
+- Singleton Pattern: All registries implement a singleton pattern with thread-safe initialization
+  ```cpp
+  static FRegistryType& Get();
+  static FRegistryType* Singleton;
+  static FThreadSafeBool bSingletonInitialized;
+  ```
+
+- Thread Safety: Thread-safe access to registries using spin locks
+  ```cpp
+  mutable FSpinLock RegistryLock;
+  FThreadSafeBool bIsInitialized;
+  ```
+
+- Type Registration: Standard pattern for registering types with unique IDs
+  ```cpp
+  uint32 RegisterXXX(const FName& InTypeName, ...);
+  uint32 GenerateUniqueTypeId();
+  ```
+
+- Metadata Structures: Rich metadata associated with each registered type
+  ```cpp
+  struct FXXXTypeInfo { uint32 TypeId; FName TypeName; ... };
+  ```
+
+- Fast Lookup: Both ID-based and name-based lookup mechanisms
+  ```cpp
+  TMap<uint32, TSharedRef<FTypeInfo>> TypeMap;
+  TMap<FName, uint32> TypeNameMap;
+  ```
+
+- Schema Versioning: Registry schema versions for compatibility and migration
+  ```cpp
+  uint32 GetSchemaVersion() const override;
+  uint32 SchemaVersion;
+  ```
+
+- Validation: Registry validation to ensure data consistency
+  ```cpp
+  bool Validate(TArray<FString>& OutErrors) const override;
+  ```
+
+- Relationship Management: Two-way relationship tracking with multi-maps
+  ```cpp
+  TMultiMap<uint32, uint32> RelationshipsBySourceMap;
+  TMultiMap<uint32, uint32> RelationshipsByTargetMap;
+  ```
+
+### UE5 Integration
+- UINTERFACE and GENERATED_BODY macros for UE5 reflection
+- MININGSPICECOPILOT_API macro for proper DLL export
+- UObject integration for interface reflection and blueprint exposure
+- UE5 containers (TMap, TArray, TSet, TSharedRef) used throughout
+- UE5 thread safety primitives (FThreadSafeBool, FSpinLock) for concurrency
+
+### Naming Patterns
+- Registry classes: Prefix with 'F' (FZoneTypeRegistry, FMaterialRegistry)
+- Registry interfaces: Prefix with 'I' (IRegistry, IServiceLocator)
+- Type information structs: Suffix with 'TypeInfo' (FZoneTransactionTypeInfo)
+- Enumerations: Prefix with 'E' (ETransactionConcurrency)
+- Registration methods: Prefix with 'Register' (RegisterTransactionType)
+- Getter methods: Prefix with 'Get' (GetTransactionTypeInfo)
+- Boolean check methods: Prefix with 'Is' (IsTransactionTypeRegistered)
+- Method parameters: Prefix with 'In' for inputs (InTypeName, InTypeId)
+
+### Potential Conflicts
+- Multiple `Register` methods with similar signatures across different registries
+  - `RegisterXXXType` appears in multiple registries with different parameter patterns
+  - `RegisterYYYRelationship` appears in multiple registries with different parameter patterns
+
+- Similar getter methods that return slightly different info types
+  - `GetXXXTypeInfo` in different registries return different struct types
+  - `GetXXXTypeInfoByName` in different registries with identical signatures
+
+- Boolean check methods with similar names
+  - `IsXXXTypeRegistered(uint32)` and `IsXXXTypeRegistered(FName)` overloaded in multiple registries
+
+- Multiple singleton Get() methods with the same name but different return types
+
+### Architectural Boundaries
+- Core Registry System provides type registration and lookup services for other systems
+- Service Locator allows for dependency injection and system decoupling
+- Registry types (Material, Zone, SVO, SDF) connect to their respective subsystems
+- Clear separation between registration concerns and implementation concerns
+
+### Dependencies
+- Depends on UE5 Core (CoreMinimal.h, UObject)
+- Required by most other systems for type resolution and service location
+- Provides foundational type system for SVO+SDF mining architecture

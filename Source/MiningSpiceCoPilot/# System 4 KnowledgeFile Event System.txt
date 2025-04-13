@@ -1,0 +1,282 @@
+# SYSTEM 4: Event System
+
+## Overview
+The Event System provides a robust, flexible mechanism for communication between different components in the MiningSpiceCoPilot project. It implements a publisher/subscriber pattern with support for event filtering, prioritization, and asynchronous delivery. The system allows for region-based event dispatching and optimizes event delivery paths between regions.
+
+## Class Hierarchy
+
+### Core Event Classes
+
+- `UEventBus` [EventBus.cpp:~L5-600]:
+  - Purpose: Singleton that acts as the central hub for event publishing and subscription management
+  - Primary location: EventBus.h, EventBus.cpp
+  - Key methods:
+    - `UEventBus* Get()` [EventBus.cpp:~L8-16]: Static singleton accessor
+    - `bool Initialize()` [EventBus.cpp:~L18-32]: Sets up the event bus instance
+    - `void Shutdown()` [EventBus.cpp:~L34-61]: Cleans up resources and state
+    - `bool PublishEvent(const FEventContext&, const TSharedRef<FJsonObject>&)` [EventBus.cpp:~L85-110]: Publishes an event with context and JSON payload
+    - `bool PublishEvent(const FName&, const TSharedRef<FJsonObject>&, EEventPriority, EEventScope)` [EventBus.cpp:~L112-116]: Overload for simple event publishing
+    - `bool PublishCancellableEvent(...)` [EventBus.cpp:~L118-129]: Publishes events that can be cancelled by handlers
+    - `bool PublishRegionEvent(int32, const FName&, const TSharedRef<FJsonObject>&, EEventPriority)` [EventBus.cpp:~L131-136]: Region-specific event publishing
+    - `bool PublishZoneEvent(int32, int32, const FName&, const TSharedRef<FJsonObject>&, EEventPriority)` [EventBus.cpp:~L138-143]: Zone-specific event publishing
+    - `FGuid SubscribeToEvent(const FName&, const FEventHandlerDelegate&, const FSubscriptionOptions&)` [EventBus.cpp:~L173-202]: Creates a subscription to a specific event type
+    - `TMap<FName, FGuid> SubscribeToEvents(...)` [EventBus.cpp:~L204-221]: Subscribes to multiple event types
+    - `FGuid SubscribeToNamespace(const FString&, const FEventHandlerDelegate&, const FSubscriptionOptions&)` [EventBus.cpp:~L223-246]: Subscribes to all events within a namespace
+    - `bool Unsubscribe(const FGuid&)` [EventBus.cpp:~L264-311]: Removes a subscription
+
+- `UEventDispatcher` [EventDispatcher.cpp:~L5-525]:
+  - Purpose: Handles the actual delivery of events to subscribers
+  - Primary location: EventDispatcher.h, EventDispatcher.cpp
+  - Key methods:
+    - `UEventDispatcher* Get()` [EventDispatcher.cpp:~L8-16]: Static singleton accessor
+    - `bool Initialize()` [EventDispatcher.cpp:~L18-27]: Sets up the dispatcher instance
+    - `bool RegisterPublisher(IEventPublisher*)` [EventDispatcher.cpp:~L45-58]: Registers an event publisher
+    - `bool RegisterSubscriber(IEventSubscriber*)` [EventDispatcher.cpp:~L74-87]: Registers an event subscriber
+    - `FEventDispatchResult DispatchEvent(const FName&, const FEventData&, const FEventDispatchOptions&)` [EventDispatcher.cpp:~L107-187]: Dispatches an event to registered subscribers
+    - `int32 ProcessDeferredEvents(float, int32)` [EventDispatcher.cpp:~L235-286]: Processes events in the deferred event queue
+    - `void SuspendEventDispatching()` [EventDispatcher.cpp:~L402-410]: Temporarily suspends event dispatching
+    - `int32 ResumeEventDispatching(bool)` [EventDispatcher.cpp:~L412-435]: Resumes event dispatching
+
+- `UEventPathOptimizer` [EventPathOptimizer.cpp:~L5-701]:
+  - Purpose: Optimizes event delivery paths between regions for efficient event routing
+  - Primary location: EventPathOptimizer.h, EventPathOptimizer.cpp
+  - Key methods:
+    - `UEventPathOptimizer* Get()` [EventPathOptimizer.cpp:~L8-16]: Static singleton accessor
+    - `bool AddRegionConnection(int32, int32, float)` [EventPathOptimizer.cpp:~L44-88]: Adds a bidirectional connection between regions
+    - `bool RemoveRegionConnection(int32, int32)` [EventPathOptimizer.cpp:~L90-129]: Removes a connection between regions
+    - `bool UpdateConnectionCost(int32, int32, float)` [EventPathOptimizer.cpp:~L131-180]: Updates the cost of a region connection
+    - `const FEventDeliveryPath* GetOptimalPath(int32, int32)` [EventPathOptimizer.cpp:~L182-246]: Gets the optimal delivery path between regions
+    - `void RegisterSubscriber(IEventSubscriber*)` [EventPathOptimizer.cpp:~L248-262]: Registers a subscriber for path optimization
+    - `void RebuildPaths()` [EventPathOptimizer.cpp:~L375-388]: Rebuilds all cached paths
+    - `FEventDeliveryPath CalculateOptimalPath(int32, int32) const` [EventPathOptimizer.cpp:~L390-495]: Calculates optimal path using Dijkstra's algorithm
+
+- `UStateChangeLogger` [StateChangeLogger.cpp:~L5-690]:
+  - Purpose: Records and analyzes event flow for debugging and performance optimization
+  - Primary location: StateChangeLogger.h, StateChangeLogger.cpp
+  - Key methods:
+    - `UStateChangeLogger* Get()` [StateChangeLogger.cpp:~L66-75]: Static singleton accessor
+    - `bool Initialize()` [StateChangeLogger.cpp:~L77-93]: Sets up the logger instance
+    - `void Shutdown()` [StateChangeLogger.cpp:~L95-116]: Cleans up resources and state
+    - `void StartLogging(int32, bool)` [StateChangeLogger.cpp:~L233-258]: Begins logging events
+    - `void StopLogging()` [StateChangeLogger.cpp:~L260-279]: Stops logging events
+    - `TArray<FLoggedEvent> GetRecentEvents(int32, const FEventLogFilter&) const` [StateChangeLogger.cpp:~L306-329]: Retrieves recently logged events
+    - `TArray<FLoggedEvent> GetEventsInTimeRange(double, double, const FEventLogFilter&) const` [StateChangeLogger.cpp:~L331-359]: Gets events within a time range
+    - `FEventStatistics GetEventStatistics(double, const FEventLogFilter&) const` [StateChangeLogger.cpp:~L385-410]: Generates statistics about logged events
+    - `TArray<FEventSequencePattern> AnalyzeEventPatterns(int32, int32, float) const` [StateChangeLogger.cpp:~L412-466]: Analyzes event sequences for patterns
+
+### Event Data Structures
+
+- `FEventContext` [Inferred from implementation]:
+  - Purpose: Contains metadata about an event
+  - Key members:
+    - `FName EventType`: Type identifier for the event
+    - `EEventPriority Priority`: Event processing priority
+    - `EEventScope Scope`: Scope of the event (Global, Region, etc.)
+    - `int32 RegionId`: Region identifier (if applicable)
+    - `int32 ZoneId`: Zone identifier (if applicable)
+    - `FGuid CorrelationId`: For correlating related events
+    - `bool bCancellable`: Whether the event can be cancelled
+    - `bool bCancelled`: Whether the event has been cancelled
+    - `double PublishTimeSeconds`: Time when event was published
+
+- `FEventData` [Inferred from implementation]:
+  - Purpose: Container for event context and payload
+  - Key members:
+    - `FEventContext Context`: Event context information
+    - `TSharedRef<FJsonObject> Payload`: JSON payload of the event
+
+- `FSubscriptionOptions` [Inferred from implementation]:
+  - Purpose: Configuration options for event subscriptions
+  - Key members:
+    - `TArray<EEventScope> Scopes`: Event scopes to subscribe to
+    - `EEventPriority MinPriorityLevel`: Minimum priority to handle
+    - `EEventPriority MaxPriorityLevel`: Maximum priority to handle
+    - `int32 RegionIdFilter`: Region filter (if applicable)
+    - `int32 ZoneIdFilter`: Zone filter (if applicable)
+    - `bool bTemporary`: Whether subscription is temporary
+    - `int32 MaxEvents`: Maximum events before expiration (if temporary)
+
+- `FEventDeliveryPath` [EventPathOptimizer.cpp:~L390-495]:
+  - Purpose: Represents an optimal path for event delivery between regions
+  - Key members:
+    - `FGuid PathId`: Unique identifier for the path
+    - `int32 SourceRegionId`: Source region
+    - `int32 TargetRegionId`: Target region
+    - `TArray<int32> IntermediateRegions`: Regions to pass through
+    - `float DeliveryCost`: Path cost metric
+    - `bool bIsDirect`: Whether it's a direct path
+    - `double LastUsedTimeSeconds`: When the path was last used
+
+### Interfaces
+
+- `IEventPublisher` [Inferred from EventBus.cpp]:
+  - Purpose: Interface for components that publish events
+  - Implemented by: UEventBus
+  - Key methods:
+    - `bool PublishEvent(const FEventContext&, const TSharedRef<FJsonObject>&)`: Publishes an event
+
+- `IEventSubscriber` [Inferred from EventBus.cpp]:
+  - Purpose: Interface for components that subscribe to events
+  - Implemented by: UEventBus, UStateChangeLogger
+  - Key methods:
+    - `FGuid SubscribeToEvent(const FName&, const FEventHandlerDelegate&, const FSubscriptionOptions&)`: Subscribes to an event
+
+- `IEventHandler` [Inferred from implementation]:
+  - Purpose: Interface for components that handle events
+  - Key methods:
+    - `void HandleEvent(const FEventContext&, const TSharedRef<FJsonObject>&)`: Handles an event
+
+- `IEventDispatcher` [Inferred from EventDispatcher.cpp]:
+  - Purpose: Interface for event dispatching services
+  - Implemented by: UEventDispatcher
+  - Key methods:
+    - `FEventDispatchResult DispatchEvent(const FName&, const FEventData&, const FEventDispatchOptions&)`: Dispatches an event
+
+### Event Type Definitions
+
+- `EMaterialBoundaryOperation` [MaterialBoundaryEvents.h:~L11-18]:
+  - Purpose: Enum for material boundary operation types
+  - Values: Created, Modified, Removed, MaterialsChanged, PropertiesChanged
+
+### Event Helper Classes
+
+- `FSubscriptionRecord` [Inferred from EventBus.cpp]:
+  - Purpose: Internal record of event subscription
+  - Key members:
+    - `FGuid SubscriptionId`: Unique ID for the subscription
+    - `FName EventType`: Event type to subscribe to
+    - `FEventHandlerDelegate HandlerDelegate`: Delegate to call
+    - `FSubscriptionOptions Options`: Subscription options
+    - `bool bIsNamespaceSubscription`: Whether it's a namespace subscription
+    - `bool bIsCorrelationSubscription`: Whether it's a correlation subscription
+
+- `FQueuedEvent` [Inferred from EventDispatcher.cpp]:
+  - Purpose: Event queued for deferred processing
+  - Key members:
+    - `FName EventName`: Name of the event
+    - `FEventData EventData`: Event data
+    - `FEventDispatchOptions Options`: Dispatch options
+
+## Dependencies
+
+- Core UE5:
+  - CoreMinimal.h
+  - JsonObjectConverter.h
+  - HAL/PlatformTime.h
+  - Async/ParallelFor.h
+  - Algo/Sort.h
+  - Algo/Reverse.h
+
+- Event System:
+  - System 4 ⟷ System 6 (Service Registry): The Event System likely integrates with the Service Registry for dependency resolution
+  - System 4 ⟷ System 3 (Threading/Async): Uses threading for async event handling
+  - System 4 ⟷ System 2 (Memory Management): Likely integrates for efficient memory usage in event queues
+  - System 4 ⟷ System 18 (Region Manager): Integrates for region-based event routing
+
+## Navigation Landmarks
+
+### EventBus.cpp:
+- Singleton access and initialization: ~L8-32
+- Event publishing: ~L85-143
+- Subscription management: ~L173-311
+- Event dispatch: ~L546-599
+- Subscription matching: ~L600-650
+
+### EventDispatcher.cpp:
+- Dispatcher initialization: ~L8-27
+- Publisher/Subscriber registration: ~L45-87
+- Event dispatch: ~L107-187
+- Parallel event dispatch: ~L189-233
+- Deferred event processing: ~L235-286
+- Event dispatching control: ~L402-435
+
+### EventPathOptimizer.cpp:
+- Region connection management: ~L44-180
+- Path calculation (Dijkstra's algorithm): ~L390-495 [PATH_CALCULATION_ALGORITHM]
+- Subscriber clustering: ~L496-547
+- Path optimization: ~L548-599
+
+### StateChangeLogger.cpp:
+- Event logging: ~L233-279
+- Event filtering and retrieval: ~L306-359
+- Event statistics: ~L385-410
+- Event pattern analysis: ~L412-466 [PATTERN_ANALYSIS_ALGORITHM]
+- Event log filtering: ~L649-686 [EVENT_FILTERING_LOGIC]
+
+## Implementation Patterns
+
+### Threading Model
+- Uses both immediate and deferred event dispatching
+- Supports parallel dispatch of events to multiple subscribers
+- Thread safety through critical sections and lock-based synchronization
+
+### Performance Optimization
+- Path caching for optimized event delivery between regions
+- Dijkstra's algorithm for optimal path calculation
+- Adaptive path cost updates based on actual delivery performance
+- Circular buffer option for event logging to control memory usage
+
+### Event Routing
+- Hierarchical event routing based on regions and zones
+- Region connectivity-based event delivery optimization
+- Subscriber clustering for efficient event dispatch
+
+### Subscription Management
+- Multiple subscription mechanisms:
+  - Direct event type subscription
+  - Namespace-based subscription (prefix matching)
+  - Correlation-based subscription
+- Temporary subscriptions with auto-expiration
+- Priority-based event handling
+
+## Naming Patterns
+
+- Classes:
+  - `UEventBus`, `UEventDispatcher`, `UEventPathOptimizer`: Core service classes
+  - `FEventContext`, `FEventData`: Data container structs
+  - `IEventPublisher`, `IEventSubscriber`, `IEventDispatcher`: Interface definitions
+  - `EEventPriority`, `EEventScope`: Enum types
+
+- Methods:
+  - Publishing: `PublishEvent`, `PublishRegionEvent`, `PublishCorrelatedEvent`
+  - Subscription: `SubscribeToEvent`, `SubscribeToNamespace`, `SubscribeToCorrelation`
+  - Registration: `RegisterPublisher`, `RegisterSubscriber`
+  - Lifecycle: `Initialize`, `Shutdown`, `Start*`, `Stop*`
+
+- Variables:
+  - `b` prefix for booleans: `bIsInitialized`, `bDispatchingSuspended`
+  - Member maps: `SubscriptionRecords`, `EventTypeToSubscriptions`
+
+## Potential Conflicts
+
+- Multiple event handling interfaces that might be confusing:
+  - `IEventHandler`, `IEventSubscriber`, `IEventDispatcher`
+  
+- Singleton patterns that might create initialization order dependencies:
+  - `UEventBus::Get()`, `UEventDispatcher::Get()`, `UEventPathOptimizer::Get()`
+
+- Similar method names with different signatures:
+  - Multiple `PublishEvent()` overloads with different parameter sets
+  - `SubscribeToEvent()` vs `SubscribeToEvents()`
+
+## Architectural Boundaries
+
+- Event System serves as a communication backbone for other systems
+- Has dependencies on the Region Manager for region-based routing
+- Likely integrates with threading system for async event processing
+- StateChangeLogger provides debugging capabilities that span multiple systems
+
+## Known Issues & Constraints
+
+- Event delivery is not guaranteed in case of system shutdown
+- Circular dependencies could potentially form between publishers and subscribers
+- Event pattern analysis is simplistic and may not detect complex patterns
+- Region-based routing requires proper region setup to work efficiently
+
+## Usage Notes
+
+- Always check `bIsInitialized` before using event system components
+- Use appropriate event priorities to balance responsiveness and system load
+- For high-frequency events, consider using direct connections instead of the event system
+- Properly unsubscribe temporary subscribers to prevent memory leaks
+- Use correlation IDs to track related events across the system

@@ -1,17 +1,22 @@
 // NarrowBandAllocator.h
-// Specialized memory allocator for narrow band SDF representation
+// Specialized memory allocator for narrow-band SDF field data around material interfaces
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Containers/BinaryHeap.h"
-#include "HAL/ThreadSafeCounter.h"
+#include "Math/Box.h"
+#include "Containers/Map.h"
+#include "Containers/Array.h"
 #include "HAL/ThreadSafeBool.h"
+#include "HAL/ThreadSafeCounter.h"
+
+// Forward declarations
+class FMemoryTelemetry;
 
 /**
- * Specialized memory allocator for narrow band SDF representation
- * Provides efficient memory management for the active region around material interfaces
- * Uses block-based allocation to reduce fragmentation and overhead
+ * Specialized memory allocator for narrow-band SDF field data around material interfaces
+ * Provides efficient memory management with block-based allocation to reduce fragmentation
+ * and support adaptive precision around material boundaries
  */
 class MININGSPICECOPILOT_API FNarrowBandAllocator
 {
@@ -19,69 +24,140 @@ public:
     FNarrowBandAllocator();
     ~FNarrowBandAllocator();
 
-    // Allocation strategies
-    enum class EAllocationStrategy : uint8
+    /**
+     * Configurable allocation block size and priority levels
+     * Each block is divided into chunks for different precision levels
+     */
+    struct FAllocatorConfig
     {
-        Fixed,      // Fixed block size
-        Variable,   // Variable block sizing based on distance
-        Adaptive,   // Adaptive sizing based on usage patterns
-        Pooled      // Pre-allocated pools of common sizes
+        uint32 BlockSize;         // Size of memory blocks in bytes
+        uint32 MinChunkSize;      // Minimum allocation chunk size
+        uint32 MaxChunkSize;      // Maximum allocation chunk size
+        uint32 PriorityLevels;    // Number of priority levels
+        uint32 MaxBlocks;         // Maximum number of blocks to allocate
+
+        // Constructor with default values
+        FAllocatorConfig()
+            : BlockSize(1024 * 1024)     // 1MB blocks
+            , MinChunkSize(64)           // 64-byte minimum chunks
+            , MaxChunkSize(4096)         // 4KB maximum chunks
+            , PriorityLevels(8)          // 8 priority levels
+            , MaxBlocks(64)              // 64 blocks maximum
+        {}
     };
 
-    // Initialization
-    void Initialize(uint32 InitialCapacity, uint32 BlockSize, EAllocationStrategy Strategy);
-    
-    // Memory allocation
-    void* AllocateBlock(uint32 Size);
-    void* AllocateAlignedBlock(uint32 Size, uint32 Alignment);
-    void* AllocateInNarrowBand(const FVector& Position, float Distance, uint32 Size);
-    void ReleaseBlock(void* Block);
-    
     // Block management
-    bool ResizeBlock(void* Block, uint32 NewSize);
-    bool IsInNarrowBand(const FVector& Position, float Distance) const;
-    uint32 GetBlockSize(void* Block) const;
-    
-    // Narrow band management
-    void SetNarrowBandThickness(float Thickness);
-    float GetNarrowBandThickness() const;
-    void UpdateNarrowBand(const FVector& Center, float Radius);
-    void OptimizeNarrowBandCoverage();
-    
-    // Memory management
-    void Defragment();
+    void Initialize(uint32 BlockSizeInBytes = 1048576, uint32 MaxBlockCount = 64);
+    void SetMemoryTelemetry(FMemoryTelemetry* InTelemetry);
+    void SetAllocatorConfig(const FAllocatorConfig& Config);
+
+    // Allocation and deallocation
+    void* Allocate(uint32 SizeInBytes, uint8 PriorityLevel = 4);
+    void* AllocateWithAlignment(uint32 SizeInBytes, uint32 Alignment, uint8 PriorityLevel = 4);
+    void Free(void* Ptr);
+    void* Reallocate(void* Ptr, uint32 NewSizeInBytes);
+
+    // Region-based management
+    void PrioritizeRegion(const FBox& Region, uint8 Priority);
+    void DeprioritizeRegion(const FBox& Region);
+    uint8 GetRegionPriority(const FBox& Region) const;
+
+    // Memory optimization
+    void CompactMemory();
     void ReleaseUnusedMemory();
-    uint64 GetAllocatedMemory() const;
-    uint64 GetUsedMemory() const;
+    void DefragmentMemory();
+    void OptimizeMemoryLayout();
+
+    // Statistics and monitoring
     float GetFragmentationRatio() const;
+    uint64 GetTotalAllocatedMemory() const;
+    uint64 GetTotalUsedMemory() const;
+    uint32 GetBlockCount() const;
+    uint32 GetTotalAllocationCount() const;
+    uint32 GetFreeChunkCount() const;
     
-    // Thread safety
-    void LockAllocator();
-    void UnlockAllocator();
-    bool TryLockAllocator();
+    // Debugging helpers
+    void DumpAllocationMap() const;
+    void ValidateMemoryBlocks() const;
+    bool ContainsAddress(const void* Ptr) const;
 
 private:
-    // Internal data structures
-    struct FMemoryBlock;
-    struct FMemoryChunk;
-    struct FNarrowBandRegion;
+    // Memory block structure
+    struct FMemoryBlock
+    {
+        uint8* Data;
+        uint32 Size;
+        uint32 Used;
+        FThreadSafeBool InUse;
+
+        FMemoryBlock()
+            : Data(nullptr)
+            , Size(0)
+            , Used(0)
+            , InUse(false)
+        {}
+    };
+
+    // Memory chunk structure (subdivision of blocks)
+    struct FMemoryChunk
+    {
+        uint32 BlockIndex;
+        uint32 Offset;
+        uint32 Size;
+        uint8 Priority;
+        bool IsAllocated;
+
+        FMemoryChunk()
+            : BlockIndex(UINT32_MAX)
+            , Offset(0)
+            , Size(0)
+            , Priority(0)
+            , IsAllocated(false)
+        {}
+    };
+
+    // Region priority tracking
+    struct FRegionPriority
+    {
+        FBox Region;
+        uint8 Priority;
+        double Timestamp;
+
+        FRegionPriority()
+            : Region(ForceInit)
+            , Priority(0)
+            , Timestamp(0)
+        {}
+
+        FRegionPriority(const FBox& InRegion, uint8 InPriority)
+            : Region(InRegion)
+            , Priority(InPriority)
+            , Timestamp(FPlatformTime::Seconds())
+        {}
+    };
+
+    // Internal state
+    TArray<FMemoryBlock> Blocks;
+    TMap<void*, FMemoryChunk> AllocatedChunks;
+    TArray<FMemoryChunk> FreeChunks;
+    TArray<FRegionPriority> PriorityRegions;
+    FAllocatorConfig Config;
+    FThreadSafeCounter TotalAllocations;
+    FMemoryTelemetry* MemoryTelemetry;
+
+    // Internal helpers
+    FMemoryBlock* AllocateNewBlock();
+    void ReleaseBlock(uint32 BlockIndex);
+    void SplitChunk(uint32 ChunkIndex, uint32 SizeNeeded);
+    void MergeAdjacentChunks();
+    uint8 GetPriorityForLocation(const FBox& LocationBox) const;
+    bool IsChunkInRegion(const FMemoryChunk& Chunk, const FBox& Region) const;
+    int32 FindSuitableChunk(uint32 SizeInBytes, uint32 Alignment, uint8 Priority) const;
     
-    // Implementation details
-    TArray<FMemoryChunk> MemoryChunks;
-    TBinaryHeap<FMemoryBlock*, TLess<FMemoryBlock*>> FreeBlocks;
-    TArray<FNarrowBandRegion> ActiveRegions;
-    EAllocationStrategy AllocationStrategy;
-    uint32 DefaultBlockSize;
-    float NarrowBandThickness;
+    // Memory tracking
+    void TrackAllocation(uint32 Size);
+    void TrackDeallocation(uint32 Size);
+    
+    // Thread safety
     FCriticalSection AllocationLock;
-    FThreadSafeCounter AllocatedBlockCount;
-    FThreadSafeCounter AllocatedMemorySize;
-    
-    // Helper methods
-    FMemoryChunk* AllocateNewChunk(uint32 ChunkSize);
-    void SplitBlock(FMemoryBlock& Block, uint32 Size);
-    void MergeAdjacentBlocks();
-    bool IsBlockInNarrowBand(const FMemoryBlock& Block) const;
-    void UpdateAllocationStrategy(float UsageRatio);
-    uint32 CalculateOptimalBlockSize(uint32 RequestedSize) const;
 };

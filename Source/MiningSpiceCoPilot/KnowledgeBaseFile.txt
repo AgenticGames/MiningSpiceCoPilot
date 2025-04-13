@@ -4,688 +4,10 @@ This document serves as a comprehensive reference for the Mining System architec
 
 IMPORTANT: How to make new files? USE THIS COMMAND -> powershell -Command "Set-Content -Path 'c:\MiningSpiceCoPilot\Source\MiningSpiceCoPilot\filename' -Value '// filename'"
 
-## SYSTEM 1: Memory Management System
+## SYSTEM 1: Core Registry and Type System
 
 ### Class Hierarchy
-- `IMemoryManager` [Memory/Public/Interfaces/IMemoryManager.h]: Interface
-  - Purpose: Provides comprehensive memory management capabilities optimized for mining operations
-  - Key methods:
-    - `bool Initialize()` - Initializes the memory manager
-    - `void Shutdown()` - Shuts down the memory manager and cleans up resources
-    - `bool IsInitialized() const` - Checks initialization status
-    - `IPoolAllocator* CreatePool(...)` - Creates a memory pool with specified characteristics
-    - `IPoolAllocator* GetPool(const FName& PoolName) const` - Gets a pool allocator by name
-    - `IBufferProvider* CreateBuffer(...)` - Creates a shared buffer for CPU/GPU operations
-    - `IBufferProvider* GetBuffer(const FName& BufferName) const` - Gets a buffer provider by name
-    - `IMemoryTracker* GetMemoryTracker() const` - Gets the memory tracker for telemetry
-    - `bool DefragmentMemory(float MaxTimeMs, EMemoryPriority Priority)` - Performs memory defragmentation
-    - `void* Allocate(uint64 SizeInBytes, uint32 Alignment = 16)` - Allocates memory from the general heap
-    - `void Free(void* Ptr)` - Frees memory previously allocated with Allocate
-    - `static IMemoryManager& Get()` - Gets the singleton instance
-
-- `IMemoryTracker` [Memory/Public/Interfaces/IMemoryTracker.h]: Interface
-  - Purpose: Provides memory telemetry and monitoring functionality
-  - Key methods:
-    - `bool Initialize()` - Initializes the memory tracker
-    - `void Shutdown()` - Shuts down the memory tracker and cleans up resources
-    - `bool IsInitialized() const` - Checks initialization status
-    - `bool TrackAllocation(...)` - Tracks a memory allocation with the system
-    - `bool UntrackAllocation(void* Ptr)` - Untracks a memory allocation
-    - `const FMemoryAllocationInfo* GetAllocationInfo(void* Ptr) const` - Gets allocation info
-    - `FMemoryStats GetMemoryStats() const` - Gets current memory statistics
-    - `FSVOSDFMemoryMetrics GetSVOSDFMemoryMetrics() const` - Gets SVO+SDF specific memory metrics
-    - `void SetMemoryBudget(const FName& CategoryName, uint64 BudgetInBytes)` - Sets memory budget
-    - `uint64 GetMemoryBudget(const FName& CategoryName) const` - Gets memory budget
-    - `uint64 GetMemoryUsage(const FName& CategoryName) const` - Gets memory usage
-
-- `IPoolAllocator` [Memory/Public/Interfaces/IPoolAllocator.h]: Interface
-  - Purpose: Provides block-based memory allocation optimized for specific use cases
-  - Key methods:
-    - `bool Initialize()` - Initializes the pool allocator
-    - `void Shutdown()` - Shuts down the pool allocator
-    - `bool IsInitialized() const` - Checks initialization status
-    - `FName GetPoolName() const` - Gets the name of this pool
-    - `uint32 GetBlockSize() const` - Gets the block size for this pool
-    - `void* Allocate(const UObject* RequestingObject = nullptr, FName AllocationTag = NAME_None)` - Allocates a block
-    - `bool Free(void* Ptr)` - Frees a previously allocated block
-    - `bool Grow(uint32 AdditionalBlockCount, bool bForceGrowth = false)` - Attempts to grow the pool
-    - `uint32 Shrink(uint32 MaxBlocksToRemove = UINT32_MAX)` - Attempts to shrink the pool
-    - `bool OwnsPointer(const void* Ptr) const` - Checks if a pointer belongs to this pool
-    - `FPoolStats GetStats() const` - Gets current pool statistics
-    - `bool Defragment(float MaxTimeMs = 5.0f)` - Performs defragmentation on the pool
-
-- `IBufferProvider` [Memory/Public/Interfaces/IBufferProvider.h]: Interface
-  - Purpose: Provides buffer sharing between CPU and GPU components with efficient synchronization
-  - Key methods:
-    - `bool Initialize()` - Initializes the buffer provider
-    - `void Shutdown()` - Shuts down the buffer provider 
-    - `bool IsInitialized() const` - Checks initialization status
-    - `FName GetBufferName() const` - Gets the name of this buffer
-    - `uint64 GetSizeInBytes() const` - Gets the size of this buffer
-    - `void* Map(EBufferAccessMode AccessMode = EBufferAccessMode::ReadWrite)` - Maps buffer for CPU access
-    - `bool Unmap()` - Unmaps the buffer, making changes visible to GPU
-    - `bool IsMapped() const` - Checks if the buffer is currently mapped
-    - `bool Resize(uint64 NewSizeInBytes, bool bPreserveContent = true)` - Resizes the buffer
-    - `void* GetGPUResource() const` - Gets underlying GPU resource
-    - `void AddRef()` - Adds a reference to this buffer
-    - `uint32 Release()` - Releases a reference to this buffer
-    - `FBufferStats GetStats() const` - Gets current buffer statistics
-
-### Structures
-- `FMemoryAllocationInfo` [Memory/Public/Interfaces/IMemoryTracker.h]
-  - Purpose: Memory allocation tracker entry for detailed monitoring
-  - Key members:
-    - `void* Ptr` - Pointer to allocated memory
-    - `uint64 SizeInBytes` - Size of allocation in bytes
-    - `FName CategoryName` - Category for budget tracking
-    - `FName AllocationName` - Name for the allocation (optional)
-    - `double TimeStamp` - Time when allocation was made
-    - `TArray<FString> CallStack` - Call stack for the allocation if tracking enabled
-    - `EMemoryTier MemoryTier` - Memory tier classification
-
-- `FMemoryStats` [Memory/Public/Interfaces/IMemoryTracker.h]
-  - Purpose: Structure containing memory usage statistics
-  - Key members:
-    - `uint64 TotalAllocatedBytes` - Total allocated memory in bytes
-    - `uint64 AllocationCount` - Total number of allocations
-    - `uint64 PeakMemoryUsage` - Peak memory usage in bytes
-    - `TMap<FName, uint64> UsageByCategory` - Map of memory usage by category
-    - `TMap<FName, uint64> BudgetByCategory` - Map of memory budgets by category
-    - `TMap<EMemoryTier, uint64> UsageByTier` - Map of memory usage by tier
-
-- `FSVOSDFMemoryMetrics` [Memory/Public/Interfaces/IMemoryTracker.h]
-  - Purpose: Structure containing SVO+SDF specific memory metrics
-  - Key members:
-    - `uint64 SVONodeMemory` - Memory used by SVO octree nodes in bytes
-    - `uint64 SDFFieldMemory` - Memory used by SDF field data in bytes
-    - `uint64 NarrowBandMemory` - Memory used by narrow-band high precision data
-    - `uint64 MeshDataMemory` - Memory used by mesh data derived from SVO+SDF
-    - `uint64 StructureOverheadMemory` - Memory overhead for spatial data structures
-    - `float CompressionRatio` - Compression ratio (uncompressed/compressed)
-
-- `FPoolStats` [Memory/Public/Interfaces/IPoolAllocator.h]
-  - Purpose: Structure containing information about a memory pool's current state
-  - Key members:
-    - `FName PoolName` - Name of the pool
-    - `uint32 BlockSize` - Size of each block in bytes
-    - `uint32 BlockCount` - Number of blocks in the pool
-    - `uint32 AllocatedBlocks` - Number of allocated blocks
-    - `uint32 FreeBlocks` - Number of free blocks
-    - `uint64 TotalAllocations` - Total number of allocation requests
-    - `float FragmentationPercent` - Fragmentation percentage (0-100)
-
-- `FBufferStats` [Memory/Public/Interfaces/IBufferProvider.h]
-  - Purpose: Structure containing information about a buffer's current state
-  - Key members:
-    - `FName BufferName` - Name of the buffer
-    - `uint64 SizeInBytes` - Size of the buffer in bytes
-    - `uint32 ReferenceCount` - Number of active references to the buffer
-    - `bool bIsMapped` - Whether buffer is currently mapped for CPU access
-    - `bool bIsZeroCopy` - Whether buffer allows zero-copy access
-    - `uint64 VersionNumber` - Current version number of the buffer
-    - `EBufferUsage UsageHint` - Usage hint for the buffer
-
-### Enumerations
-- `EMemoryAccessPattern` [Memory/Public/Interfaces/IMemoryManager.h]
-  - Purpose: Memory access patterns for optimizing allocation strategies
-  - Values: General, Sequential, Random, Mining, SDFOperation, OctreeTraversal
-
-- `EMemoryPriority` [Memory/Public/Interfaces/IMemoryManager.h]
-  - Purpose: Memory allocation priority levels for resource management
-  - Values: Critical, High, Normal, Low, Cacheable
-
-- `EMemoryTier` [Memory/Public/Interfaces/IMemoryManager.h]
-  - Purpose: Memory tier classifications for hierarchical memory management
-  - Values: Hot, Warm, Cold, Archive
-
-- `EBufferAccessMode` [Memory/Public/Interfaces/IBufferProvider.h]
-  - Purpose: Buffer access modes for determining memory visibility
-  - Values: ReadOnly, WriteOnly, ReadWrite
-
-- `EBufferUsage` [Memory/Public/Interfaces/IBufferProvider.h]
-  - Purpose: Buffer usage hints for optimizing memory layout and access patterns
-  - Values: General, SDFField, SVONodes, MaterialChannels, VertexData, IndexData
-
-### Navigation Landmarks
-FileStructure: [Memory/Public/Interfaces/IMemoryManager.h]
-- Memory tier and priority enums: ~L20-52
-- Memory Manager interface declaration: ~L60-157
-
-FileStructure: [Memory/Public/Interfaces/IMemoryTracker.h]
-- Memory allocation tracker structures: ~L12-96
-- Memory Tracker interface declaration: ~L105-206
-
-FileStructure: [Memory/Public/Interfaces/IBufferProvider.h]
-- Buffer access enums: ~L12-47
-- Buffer stats structure: ~L52-82
-- Buffer provider interface: ~L91-185
-
-FileStructure: [Memory/Public/Interfaces/IPoolAllocator.h]
-- Pool stats structure: ~L12-39
-- Pool allocator interface: ~L48-141
-
-### Implementation Patterns
-- Memory Management: Hierarchical memory tiers (Hot, Warm, Cold, Archive)
-- Reference Counting: Used for buffer management with AddRef/Release pattern
-- Defragmentation: Time-bounded defragmentation operations with priority levels
-- Statistics Tracking: Comprehensive metrics for memory usage by category and type
-- Zero-Copy Buffers: Support for efficient CPU/GPU data sharing
-- Memory Pools: Block-based allocation for specialized use cases
-- Thread Safety: Validation methods and stats collection
-
-### Potential Conflicts
-- Multiple Initialize/Shutdown methods across different interfaces
-- Multiple GetStats() methods with different return types
-- Similar naming conventions for memory-related methods across different interfaces
-
-## SYSTEM 2: Compression System
-
-### Class Hierarchy
-- `ICompressionManager` [Memory/Public/Interfaces/Compression/ICompressionManager.h]: Interface
-  - Purpose: Provides multi-level compression tailored for different precision zones and activity states
-  - Key methods:
-    - `bool Initialize()` - Initializes the compression manager
-    - `void Shutdown()` - Shuts down the compression manager
-    - `bool IsInitialized() const` - Checks initialization status
-    - `bool CompressData(...)` - Compresses data using the specified tier
-    - `bool DecompressData(...)` - Decompresses data previously compressed
-    - `ECompressionTier GetOptimalTier(...)` - Gets optimal compression tier for a region
-    - `uint64 EstimateCompressedSize(...)` - Estimates compressed size
-    - `void SetTierQuality(ECompressionTier Tier, ECompressionQuality Quality)` - Sets compression quality
-    - `ECompressionQuality GetTierQuality(ECompressionTier Tier) const` - Gets compression quality
-    - `static ICompressionManager& Get()` - Gets the singleton instance
-
-- `ISDFCompressionSystem` [Memory/Public/Interfaces/Compression/ISDFCompressionSystem.h]: Interface
-  - Purpose: Provides SDF-specific compression techniques optimized for distance field data
-  - Key methods:
-    - `bool Initialize()` - Initializes the SDF compression system
-    - `void Shutdown()` - Shuts down the SDF compression system
-    - `bool IsInitialized() const` - Checks initialization status
-    - `bool CompressSDFField(...)` - Compresses an SDF field using specified parameters
-    - `bool DecompressSDFField(...)` - Decompresses an SDF field
-    - `bool CompressMultiChannelField(...)` - Compresses a multi-channel SDF field
-    - `bool DecompressMultiChannelField(...)` - Decompresses a multi-channel SDF field
-    - `bool CompressDeltaModification(...)` - Compresses a delta modification to an SDF field
-    - `bool ApplyCompressedDelta(...)` - Applies a compressed delta to an SDF field
-    - `ESDFEncodingMethod GetOptimalEncodingMethod(...)` - Gets optimal encoding method
-    - `static ISDFCompressionSystem& Get()` - Gets the singleton instance
-
-- `IOctreeCompressionSystem` [Memory/Public/Interfaces/Compression/IOctreeCompressionSystem.h]: Interface
-  - Purpose: Provides octree-specific compression techniques optimized for SVO structures
-  - Key methods:
-    - `bool Initialize()` - Initializes the octree compression system
-    - `void Shutdown()` - Shuts down the octree compression system
-    - `bool IsInitialized() const` - Checks initialization status
-    - `bool CompressOctree(...)` - Compresses an octree structure
-    - `bool DecompressOctree(...)` - Decompresses an octree structure
-    - `bool CompressNodeType(...)` - Compresses a specific octree node type
-    - `bool DecompressNodeType(...)` - Decompresses a specific octree node type
-    - `bool CompressDeltaModification(...)` - Compresses a delta modification to an octree
-    - `bool ApplyCompressedDelta(...)` - Applies a compressed delta to an octree
-    - `EOctreeEncodingMethod GetOptimalEncodingMethod(...)` - Gets optimal encoding method
-    - `static IOctreeCompressionSystem& Get()` - Gets the singleton instance
-
-### Structures
-- `FCompressionStats` [Memory/Public/Interfaces/Compression/ICompressionManager.h]
-  - Purpose: Structure containing compression statistics
-  - Key members:
-    - `uint64 UncompressedSize` - Uncompressed data size in bytes
-    - `uint64 CompressedSize` - Compressed data size in bytes
-    - `float CompressionRatio` - Compression ratio (uncompressed / compressed)
-    - `float CompressionTimeMs` - Time taken to compress in milliseconds
-    - `float DecompressionTimeMs` - Time taken to decompress in milliseconds
-    - `uint64 CompressionCount` - Number of compression operations performed
-
-- `FSDFCompressionParams` [Memory/Public/Interfaces/Compression/ISDFCompressionSystem.h]
-  - Purpose: Structure containing SDF-specific compression parameters
-  - Key members:
-    - `ESDFEncodingMethod EncodingMethod` - Encoding method to use
-    - `uint8 FixedPointPrecision` - Precision in bits for fixed-point encoding
-    - `float NarrowBandWidth` - Narrow band width in voxel units
-    - `float ErrorTolerance` - Error tolerance for lossy compression
-    - `float BoundaryPreservationWeight` - Material boundary preservation weight (0-1)
-    - `bool bPreserveGradients` - Whether to preserve gradients at material interfaces
-
-- `FSDFCompressionMetrics` [Memory/Public/Interfaces/Compression/ISDFCompressionSystem.h]
-  - Purpose: Structure containing SDF field compression metrics
-  - Key members:
-    - `float MeanAbsoluteError` - Mean absolute error after compression
-    - `float MaxAbsoluteError` - Maximum absolute error after compression
-    - `float PSNR` - Peak signal-to-noise ratio
-    - `float BoundaryError` - Error at material boundaries
-    - `float BoundaryPreservationRate` - Percentage of material boundaries preserved accurately
-    - `float BitsPerValue` - Effective bits per value after compression
-
-- `FOctreeCompressionParams` [Memory/Public/Interfaces/Compression/IOctreeCompressionSystem.h]
-  - Purpose: Structure containing octree-specific compression parameters
-  - Key members:
-    - `EOctreeEncodingMethod EncodingMethod` - Encoding method to use
-    - `uint8 MaxDepth` - Maximum octree depth to encode
-    - `bool bUseInstancing` - Whether to use node instancing for repeating patterns
-    - `bool bPruneEmpty` - Whether to prune empty regions
-    - `bool bMergeSimilar` - Whether to merge similar nodes
-    - `float SimilarityThreshold` - Similarity threshold for node merging (0-1)
-
-- `FOctreeCompressionMetrics` [Memory/Public/Interfaces/Compression/IOctreeCompressionSystem.h]
-  - Purpose: Structure containing octree compression metrics
-  - Key members:
-    - `uint32 OriginalNodeCount` - Number of nodes in the original octree
-    - `uint32 CompressedNodeCount` - Number of nodes after compression
-    - `float NodeCountReduction` - Node count reduction percentage
-    - `uint32 InstancedNodeCount` - Number of instanced nodes
-    - `float MeanNodeSizeBits` - Mean node size in bits
-    - `float BitsPerNode` - Effective bits per node after compression
-
-### Enumerations
-- `ECompressionTier` [Memory/Public/Interfaces/Compression/ICompressionManager.h]
-  - Purpose: Compression tier levels for SVO+SDF data
-  - Values: None, Light, Standard, High, Ultra, Hibernated
-
-- `ECompressionQuality` [Memory/Public/Interfaces/Compression/ICompressionManager.h]
-  - Purpose: Compression quality settings for different data types
-  - Values: Fastest, Fast, Balanced, Quality, Maximum
-
-- `ECompressionDataType` [Memory/Public/Interfaces/Compression/ICompressionManager.h]
-  - Purpose: Types of data to be compressed
-  - Values: Generic, SDFField, SVOStructure, MaterialChannel, HomogeneousVolume
-
-- `ESDFEncodingMethod` [Memory/Public/Interfaces/Compression/ISDFCompressionSystem.h]
-  - Purpose: SDF field encoding methods for specialized compression
-  - Values: FloatingPoint, FixedPoint, AdaptivePrecision, WaveletEncoding, GradientBased, RunLength, Hierarchical
-
-- `ESVONodeType` [Memory/Public/Interfaces/Compression/IOctreeCompressionSystem.h]
-  - Purpose: SVO node types for octree compression
-  - Values: Empty, Homogeneous, Interface, Mixed, Branch
-
-- `EOctreeEncodingMethod` [Memory/Public/Interfaces/Compression/IOctreeCompressionSystem.h]
-  - Purpose: Octree encoding methods for specialized compression
-  - Values: Basic, RunLength, Hierarchical, Dictionary, Instancing, Entropy, TypeSpecialized
-
-### Navigation Landmarks
-FileStructure: [Memory/Public/Interfaces/Compression/ICompressionManager.h]
-- Compression tier and quality enums: ~L12-66
-- Compression manager interface: ~L80-125
-
-FileStructure: [Memory/Public/Interfaces/Compression/ISDFCompressionSystem.h]
-- SDF encoding methods enum: ~L12-28
-- SDF compression parameters: ~L33-72
-- SDF compression metrics: ~L77-106
-- SDF compression system interface: ~L115-238
-
-FileStructure: [Memory/Public/Interfaces/Compression/IOctreeCompressionSystem.h]
-- SVO node types enum: ~L12-26
-- Octree encoding methods enum: ~L31-47
-- Octree compression parameters: ~L52-93
-- Octree compression metrics: ~L98-133
-- Octree compression system interface: ~L142-261
-
-### Implementation Patterns
-- Tiered Compression: Multiple compression levels based on region activity
-- Delta Compression: Efficient encoding of incremental changes
-- Parameter Tuning: Configurable compression parameters for different data types
-- Quality/Speed Tradeoffs: Multiple quality settings with performance implications
-- Specialized Encodings: Different encoding methods for different data structures
-- Metrics Collection: Comprehensive compression statistics and quality metrics
-
-### Potential Conflicts
-- Similar method signatures for Compress/Decompress operations across different interfaces
-- Similar parameter structures with slightly different fields and defaults
-- Multiple GetOptimalX methods with different return types
-
-## SYSTEM 2.2: Region Hibernation System
-
-### Class Hierarchy
-- `IHibernationManager` [Memory/Public/Interfaces/Hibernation/IHibernationManager.h]: Interface
-  - Purpose: Provides memory reclamation through serialization of inactive regions
-  - Key methods:
-    - `bool Initialize()` - Initializes the hibernation manager
-    - `void Shutdown()` - Shuts down the hibernation manager and cleans up resources
-    - `bool IsInitialized() const` - Checks initialization status
-    - `void Update(float DeltaTime, float FrameBudgetMs = 2.0f)` - Updates the hibernation system
-    - `bool HibernateRegion(...)` - Hibernates a region to reclaim memory
-    - `bool ReactivateRegion(...)` - Reactivates a hibernated region
-    - `bool UpdateRegionActivityState(...)` - Updates the activity state of a region
-    - `FHibernationStatus GetRegionHibernationStatus(int32 RegionId) const` - Gets region hibernation status
-    - `FHibernationMetrics GetHibernationMetrics() const` - Gets hibernation system metrics
-    - `void SetHibernationConfig(const FHibernationConfig& Config)` - Sets hibernation configuration
-    - `FHibernationConfig GetHibernationConfig() const` - Gets hibernation configuration
-    - `bool IsRegionHibernated(int32 RegionId) const` - Checks if a region is hibernated
-    - `uint64 ForceMemoryReclamation(uint64 RequiredMemoryBytes, bool bEmergency)` - Forces memory reclamation
-    - `static IHibernationManager& Get()` - Gets the singleton instance
-
-- `IHibernationCache` [Memory/Public/Interfaces/Hibernation/IHibernationCache.h]: Interface
-  - Purpose: Provides efficient caching of hibernated regions with priority-based retention
-  - Key methods:
-    - `bool Initialize()` - Initializes the hibernation cache
-    - `void Shutdown()` - Shuts down the hibernation cache
-    - `bool IsInitialized() const` - Checks initialization status
-    - `bool AddRegion(...)` - Adds a region to the cache
-    - `bool GetRegion(...)` - Retrieves a region from the cache
-    - `bool RemoveRegion(int32 RegionId)` - Removes a region from the cache
-    - `bool PinRegion(int32 RegionId, bool bPin = true)` - Pins a region in the cache to prevent eviction
-    - `bool HasRegion(int32 RegionId) const` - Checks if a region is in the cache
-    - `const FCacheEntryInfo* GetEntryInfo(int32 RegionId) const` - Gets information about a cached region
-    - `bool UpdatePriority(int32 RegionId, EReactivationPriority Priority)` - Updates the priority of a cached region
-    - `FCacheStats GetCacheStats() const` - Gets cache statistics
-    - `uint64 EvictEntries(uint64 BytesToFree, bool bEmergency = false)` - Evicts entries to free up memory
-    - `static IHibernationCache& Get()` - Gets the singleton instance
-
-- `IHibernationSerializer` [Memory/Public/Interfaces/Hibernation/IHibernationSerializer.h]: Interface
-  - Purpose: Provides serialization and deserialization of hibernated regions, optimized for SVO+SDF data
-  - Key methods:
-    - `bool Initialize()` - Initializes the serializer
-    - `void Shutdown()` - Shuts down the serializer
-    - `bool IsInitialized() const` - Checks if the serializer is initialized
-    - `bool SerializeRegion(...)` - Serializes region data to disk
-    - `bool DeserializeRegion(...)` - Deserializes region data from disk
-    - `bool BeginIncrementalSerialization(...)` - Begins incremental serialization of a region
-    - `bool ProcessIncrementalSerializationStep(...)` - Processes a step of incremental serialization
-    - `EHibernationSerializationFormat GetSerializationFormat(int32 RegionId) const` - Gets the serialization format
-    - `FSerializationMetrics GetSerializationMetrics(int32 RegionId) const` - Gets serialization metrics
-    - `bool ValidateSerializedData(int32 RegionId)` - Validates serialized data for a region
-    - `static IHibernationSerializer& Get()` - Gets the singleton instance
-
-- `ITopologicalPredictor` [Memory/Public/Interfaces/Hibernation/ITopologicalPredictor.h]: Interface
-  - Purpose: Provides topology-based prediction for seamless cave exploration
-  - Key methods:
-    - `bool Initialize()` - Initializes the topological predictor
-    - `void Shutdown()` - Shuts down the topological predictor
-    - `bool IsInitialized() const` - Checks initialization status
-    - `void UpdatePlayerState(...)` - Updates player position and velocity for prediction
-    - `void UpdateMiningTool(int32 ToolType, float ToolRange)` - Updates the currently equipped mining tool
-    - `TArray<int32> PredictRegionsForReactivation(...)` - Predicts regions that will need to be reactivated
-    - `FMovementPrediction GetMovementPrediction(float TimeHorizonSeconds = 15.0f)` - Gets detailed prediction info
-    - `bool RegisterPortal(const FPortalInfo& PortalInfo)` - Registers a portal between two regions
-    - `FPredictionMetrics GetPredictionMetrics() const` - Gets prediction performance metrics
-    - `static ITopologicalPredictor& Get()` - Gets the singleton instance
-
-- `IReactivationCoordinator` [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]: Interface
-  - Purpose: Manages multi-tier reactivation with progressive loading and background processing
-  - Key methods:
-    - `bool Initialize()` - Initializes the reactivation coordinator
-    - `void Shutdown()` - Shuts down the reactivation coordinator
-    - `bool IsInitialized() const` - Checks initialization status
-    - `bool QueueReactivation(...)` - Queues a region for reactivation
-    - `uint32 ProcessReactivations(float FrameBudgetMs = 2.0f)` - Processes pending reactivation tasks
-    - `bool IsRegionReactivating(int32 RegionId) const` - Checks if a region is being reactivated
-    - `const FReactivationTask* GetReactivationTask(int32 RegionId) const` - Gets reactivation task information
-    - `bool CancelReactivation(int32 RegionId)` - Cancels a reactivation task
-    - `FReactivationStats GetReactivationStats() const` - Gets reactivation performance statistics
-    - `static IReactivationCoordinator& Get()` - Gets the singleton instance
-
-### Structures
-- `FHibernationParameters` [Memory/Public/Interfaces/Hibernation/IHibernationManager.h]
-  - Purpose: Structure containing hibernation parameters
-  - Key members:
-    - `ECompressionTier CompressionTier` - Compression tier to use for hibernation
-    - `bool bUseIncrementalSerialization` - Whether to use incremental serialization
-    - `bool bPreserveNarrowBand` - Whether to preserve narrow-band precision around interfaces
-    - `float NarrowBandWidth` - Width of narrow band to preserve (in voxel units)
-    - `bool bUseDeltaSerialization` - Whether to use delta serialization if available
-    - `bool bUseMemoryMapping` - Whether to memory map the serialized data
-
-- `FHibernationStatus` [Memory/Public/Interfaces/Hibernation/IHibernationManager.h]
-  - Purpose: Structure containing hibernation status information
-  - Key members:
-    - `int32 RegionId` - ID of the hibernated region
-    - `ERegionActivityState ActivityState` - Current activity state of the region
-    - `FDateTime LastActiveTime` - Timestamp when the region was last active
-    - `FDateTime HibernationTime` - Timestamp when the region was hibernated
-    - `EHibernationTrigger HibernationTrigger` - Trigger that caused hibernation
-    - `uint64 OriginalMemoryUsageBytes` - Original memory usage before hibernation
-    - `uint64 SerializedSizeBytes` - Serialized size after hibernation in bytes
-    - `float CompressionRatio` - Compression ratio achieved (original/serialized)
-
-- `FHibernationMetrics` [Memory/Public/Interfaces/Hibernation/IHibernationManager.h]
-  - Purpose: Structure containing hibernation system metrics
-  - Key members:
-    - `uint32 HibernatedRegionCount` - Total number of hibernated regions
-    - `uint64 TotalReclaimedMemoryBytes` - Total memory reclaimed through hibernation
-    - `float AverageCompressionRatio` - Average compression ratio across all hibernated regions
-    - `uint64 TotalDiskSpaceUsedBytes` - Total disk space used for hibernated regions
-    - `TMap<ERegionActivityState, uint32> RegionCountByActivityState` - Number of regions in each activity state
-    - `float AverageHibernationTimeMs` - Average hibernation time in milliseconds
-    - `float AverageReactivationTimeMs` - Average reactivation time in milliseconds
-
-- `FHibernationConfig` [Memory/Public/Interfaces/Hibernation/IHibernationManager.h]
-  - Purpose: Structure containing hibernation system configuration
-  - Key members:
-    - `bool bEnabled` - Whether the hibernation system is enabled
-    - `uint64 MaxMemoryBudgetBytes` - Maximum memory budget before hibernation triggers
-    - `float EmergencyMemoryThreshold` - Emergency memory threshold as percentage of budget
-    - `float MinInactiveTimeBeforeHibernationSeconds` - Minimum inactive time before hibernation
-    - `ECompressionTier DefaultCompressionTier` - Default compression tier for hibernation
-    - `bool bUseIncrementalHibernation` - Whether to use incremental hibernation by default
-
-- `FCacheEntryInfo` [Memory/Public/Interfaces/Hibernation/IHibernationCache.h]
-  - Purpose: Structure containing cache entry information
-  - Key members:
-    - `int32 RegionId` - ID of the cached region
-    - `ECacheEntryType EntryType` - Cache entry type
-    - `uint64 CachedSizeBytes` - Size of the cached data in bytes
-    - `uint64 OriginalSizeBytes` - Original size of the region data in bytes
-    - `EReactivationPriority Priority` - Priority level of the cache entry
-    - `bool bIsPinned` - Whether the entry is pinned in cache
-    - `float TopologicalImportance` - Topological importance score
-    - `bool bHasMiningModifications` - Whether this entry contains mining modifications
-
-- `FCacheStats` [Memory/Public/Interfaces/Hibernation/IHibernationCache.h]
-  - Purpose: Structure containing hibernation cache statistics
-  - Key members:
-    - `uint32 EntryCount` - Total number of entries in the cache
-    - `uint64 TotalCachedSizeBytes` - Total size of cached data in bytes
-    - `uint64 MemoryUsageBytes` - Current memory usage in bytes
-    - `uint64 MaxCapacityBytes` - Maximum capacity of the cache in bytes
-    - `uint64 HitCount` - Cache hit count
-    - `uint64 MissCount` - Cache miss count
-    - `float HitRate` - Cache hit rate (0-1)
-    - `TMap<ECacheEntryType, uint32> EntryCountByType` - Number of entries by type
-    - `uint32 PinnedEntryCount` - Number of pinned entries
-
-- `FCacheConfig` [Memory/Public/Interfaces/Hibernation/IHibernationCache.h]
-  - Purpose: Structure containing cache configuration parameters
-  - Key members:
-    - `uint64 MaxMemoryBudgetBytes` - Maximum memory budget for the cache in bytes
-    - `float PriorityReservationPercent` - Percentage of memory to reserve for priority entries
-    - `bool bAutoAdjustSize` - Whether to automatically adjust cache size based on system memory
-    - `float EmergencyEvictionThreshold` - Threshold for emergency cache eviction (0-1)
-    - `float MinCacheTimeSeconds` - Minimum time to keep entries in cache in seconds
-    - `uint32 MaxEntryCount` - Maximum number of entries regardless of memory usage
-
-- `FSerializationMetrics` [Memory/Public/Interfaces/Hibernation/IHibernationSerializer.h]
-  - Purpose: Structure containing serialization metrics
-  - Key members:
-    - `uint64 OriginalMemoryBytes` - Original region memory usage in bytes
-    - `uint64 SerializedSizeBytes` - Serialized size in bytes
-    - `float CompressionRatio` - Compression ratio achieved
-    - `float SerializationTimeMs` - Time spent on serialization in milliseconds
-    - `uint32 SVONodeCount` - Number of SVO nodes serialized
-    - `uint64 SVOStructureSizeBytes` - Memory size of SVO structure in bytes
-    - `uint64 SDFFieldsSizeBytes` - Memory size of SDF fields in bytes
-
-- `FIncrementalSerializationProgress` [Memory/Public/Interfaces/Hibernation/IHibernationSerializer.h]
-  - Purpose: Structure containing incremental serialization progress
-  - Key members:
-    - `int32 RegionId` - Region ID being serialized
-    - `EHibernationSerializationStage CurrentStage` - Current stage of serialization
-    - `float StageProgress` - Progress within current stage (0.0-1.0)
-    - `float TotalProgress` - Overall progress (0.0-1.0)
-    - `float CurrentStageTimeMs` - Time spent in current stage in milliseconds
-    - `float TotalTimeMs` - Total time spent serializing in milliseconds
-    - `bool bIsCompleted` - Whether serialization is completed
-
-- `FPortalInfo` [Memory/Public/Interfaces/Hibernation/ITopologicalPredictor.h]
-  - Purpose: Structure containing portal information for topological prediction
-  - Key members:
-    - `int32 PortalId` - Unique ID of the portal
-    - `int32 SourceRegionId` - ID of the source region
-    - `int32 DestinationRegionId` - ID of the destination region
-    - `FVector Position` - Portal position in world space
-    - `FVector Normal` - Portal normal direction (facing into destination region)
-    - `FVector2D Dimensions` - Portal dimensions (width, height)
-    - `bool bIsVisible` - Whether the portal is currently visible to the player
-    - `float ImportanceScore` - Importance score for the portal
-
-- `FMovementPrediction` [Memory/Public/Interfaces/Hibernation/ITopologicalPredictor.h]
-  - Purpose: Structure containing player movement prediction data
-  - Key members:
-    - `FVector CurrentPosition` - Current player position
-    - `FVector CurrentVelocity` - Current player velocity
-    - `FVector PredictedPosition` - Predicted position after time horizon
-    - `float Confidence` - Confidence in the prediction (0-1)
-    - `float TimeHorizonSeconds` - Time horizon of the prediction in seconds
-    - `int32 CurrentRegionId` - ID of the current region containing the player
-    - `TArray<int32> PredictedRegionPath` - Array of predicted region IDs in order of traversal
-
-- `FPredictionMetrics` [Memory/Public/Interfaces/Hibernation/ITopologicalPredictor.h]
-  - Purpose: Structure containing prediction performance metrics
-  - Key members:
-    - `uint64 TotalPredictions` - Total number of predictions made
-    - `uint64 AccuratePredictions` - Number of accurate predictions (region was actually traversed)
-    - `uint64 InaccuratePredictions` - Number of inaccurate predictions (region was not traversed)
-    - `float AccuracyRate` - Prediction accuracy rate (0-1)
-    - `float AveragePredictionLeadTimeSeconds` - Average time between prediction and actual traversal
-    - `uint32 EmergencyReactivationCount` - Number of emergency reactivations needed
-
-- `FReactivationTask` [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]
-  - Purpose: Structure containing reactivation task information
-  - Key members:
-    - `int32 RegionId` - ID of the region being reactivated
-    - `EReactivationPriority Priority` - Priority level for the reactivation
-    - `EReactivationStage CurrentStage` - Current stage of reactivation
-    - `FDateTime CreationTimestamp` - Timestamp when the task was created
-    - `float ElapsedTimeMs` - Time spent on reactivation so far in milliseconds
-    - `float CompletionPercentage` - Percentage of reactivation completed (0-1)
-    - `bool bWasPredicted` - Whether this was a predicted reactivation
-
-- `FReactivationStats` [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]
-  - Purpose: Structure containing reactivation performance statistics
-  - Key members:
-    - `uint32 TotalReactivations` - Total number of reactivations performed
-    - `uint32 ConcurrentReactivations` - Number of concurrent reactivations (current)
-    - `uint32 PeakConcurrentReactivations` - Peak number of concurrent reactivations
-    - `float AverageReactivationTimeMs` - Average reactivation time in milliseconds
-    - `TMap<EReactivationStage, float> AverageTimePerStageMs` - Average time per reactivation stage
-    - `TMap<EReactivationPriority, uint32> ReactivationsByPriority` - Number of reactivations by priority level
-
-- `FReactivationConfig` [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]
-  - Purpose: Structure containing reactivation configuration
-  - Key members:
-    - `uint32 MaxConcurrentReactivations` - Maximum concurrent reactivations
-    - `float FrameBudgetMs` - Frame time budget for reactivation in milliseconds
-    - `bool bUseIncrementalReactivation` - Whether to use incremental reactivation
-    - `bool bPrioritizeVisibleRegions` - Whether to prioritize visible regions
-    - `bool bBoostEmergencyPriority` - Whether to boost priority of emergency reactivations
-    - `bool bUseMemoryMapping` - Whether to use memory mapping for large regions
-
-### Enumerations
-- `EReactivationPriority` [Memory/Public/Interfaces/Hibernation/IHibernationManager.h]
-  - Purpose: Reactivation priority levels for hibernated regions
-  - Values: Critical, High, Normal, Low, Optional
-
-- `ERegionActivityState` [Memory/Public/Interfaces/Hibernation/IHibernationManager.h]
-  - Purpose: Region activity state for hibernation decisions
-  - Values: Active, RecentlyActive, VisibleInactive, NearbyInactive, DistantInactive, Hibernated
-
-- `EHibernationTrigger` [Memory/Public/Interfaces/Hibernation/IHibernationManager.h]
-  - Purpose: Hibernation trigger condition
-  - Values: MemoryPressure, Distance, InactivityTime, NoVisiblePortals, Manual, Emergency
-
-- `ECacheEntryType` [Memory/Public/Interfaces/Hibernation/IHibernationCache.h]
-  - Purpose: Region cache entry type
-  - Values: Full, Essential, Partial, Compressed, Reference
-
-- `EHibernationSerializationFormat` [Memory/Public/Interfaces/Hibernation/IHibernationSerializer.h]
-  - Purpose: Serialization format for hibernated regions
-  - Values: StandardBinary, HomogeneousOptimized, MiningModificationOptimized, MaterialSpecific, MaxCompression, FastLoading, Differential
-
-- `EHibernationSerializationStage` [Memory/Public/Interfaces/Hibernation/IHibernationSerializer.h]
-  - Purpose: Serialization stage for incremental hibernation
-  - Values: Preparation, SVOStructure, SDFFields, MaterialData, MiningModifications, PortalConnections, Compression, DiskWrite, Completed, Failed
-
-- `EReactivationComponent` [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]
-  - Purpose: Reactivation component type for prioritized loading
-  - Values: SVOStructure, SDFField, MaterialProperties, RenderingData, PhysicsData, ResourceProperties, NavigationData, PortalConnections, CaveTopology, MiningHistory
-
-- `EReactivationStage` [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]
-  - Purpose: Reactivation stage for progressive loading
-  - Values: Queued, MetadataLoaded, EssentialsLoaded, GeometryLoaded, MaterialsLoaded, DetailsLoaded, Complete, Failed
-
-### Navigation Landmarks
-FileStructure: [Memory/Public/Interfaces/Hibernation/IHibernationManager.h]
-- Reactivation priority enum: ~L12-28
-- Region activity state enum: ~L33-49
-- Hibernation trigger enum: ~L54-70
-- Hibernation parameters structure: ~L75-128
-- Hibernation status structure: ~L133-213
-- Hibernation metrics structure: ~L218-297
-- Hibernation config structure: ~L302-373
-- Hibernation manager interface: ~L384-512
-
-FileStructure: [Memory/Public/Interfaces/Hibernation/IHibernationCache.h]
-- Cache entry type enum: ~L12-25
-- Cache entry info structure: ~L30-85
-- Cache stats structure: ~L90-155
-- Cache config structure: ~L160-208
-- Hibernation cache interface: ~L222-325
-
-FileStructure: [Memory/Public/Interfaces/Hibernation/IHibernationSerializer.h]
-- Serialization format enum: ~L12-30
-- Serialization stage enum: ~L35-59
-- Serialization metrics structure: ~L64-141
-- Incremental serialization progress structure: ~L146-191
-- Hibernation serializer interface: ~L203-324
-
-FileStructure: [Memory/Public/Interfaces/Hibernation/ITopologicalPredictor.h]
-- Portal info structure: ~L12-47
-- Movement prediction structure: ~L52-87
-- Prediction metrics structure: ~L92-140
-- Prediction config structure: ~L145-188
-- Topological predictor interface: ~L199-331
-
-FileStructure: [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]
-- Reactivation component enum: ~L12-35
-- Reactivation stage enum: ~L40-62
-- Reactivation task structure: ~L67-123
-- Reactivation stats structure: ~L128-186
-- Reactivation config structure: ~L191-239
-- Reactivation coordinator interface: ~L250-359
-
-### Implementation Patterns
-- Singleton Pattern: All hibernation interfaces implement a Get() static method for singleton access
-- State Management: Clear initialization, shutdown, and state checking methods
-- Frame Budgeting: Time-bounded operations with frame budget parameters for smooth performance
-- Incremental Processing: Support for step-by-step operations that can be distributed across frames
-- Priority-Based Processing: Prioritization systems for critical vs. optional operations
-- Metrics Collection: Comprehensive statistics gathering for performance analysis
-- Configuration Management: Explicit config structures with reasonable defaults
-- Progressive Loading: Multi-stage loading process with essential components first
-- Prediction Systems: Forward-looking systems that anticipate player movement and resource needs
-- Cache Management: Sophisticated caching with priority-based eviction policies
-- Memory Mapping: Support for memory mapping large regions for efficient access
-
-### Architectural Boundaries
-- Region Hibernation System handles memory reclamation but depends on Compression System for serialization
-- Clear separation between hibernation management, caching, serialization, prediction, and reactivation
-- Topological prediction relies on cave network information but is focused on hibernation concerns
-
-### UE5 Integration
-- All interfaces use UINTERFACE and GENERATED_BODY macros for UE5 reflection
-- Most hibernation structures use MININGSPICECOPILOT_API macro for proper DLL export
-- Vector types from UE5 used for position and direction data
-- DateTime from UE5 used for timestamps
-
-### Known Issues & Constraints
-- Memory mapping might not be available on all platforms with same performance characteristics
-- Prediction accuracy depends on the quality of the cave network topology information
-- Frame budgeting must be carefully tuned to avoid hitches during hibernation/reactivation
-- Incremental operations might leave the system in temporary inconsistent states between frames
-- Complex interdependencies between hibernation, compression, and streaming systems
-
-## SYSTEM 3: Registry System
-
-### Class Hierarchy
-- `IRegistry` [Core/Public/Interfaces/IRegistry.h:~L12-56]: Interface
+- `IRegistry` [1_CoreRegistry/Public/Interfaces/IRegistry.h]: Interface
   - Purpose: Defines core functionality for type registration, lookup, and management
   - Key methods:
     - `bool Initialize()` - Initializes the registry
@@ -696,69 +18,74 @@ FileStructure: [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]
     - `bool Validate(TArray<FString>& OutErrors) const` - Validates registry consistency
     - `void Clear()` - Clears all registrations and resets the registry
 
-- `IServiceLocator` [Core/Public/Interfaces/IServiceLocator.h:~L12-104]: Interface
+- `IServiceLocator` [1_CoreRegistry/Public/Interfaces/IServiceLocator.h]: Interface
   - Purpose: Provides service registration, resolution, and lifecycle management for subsystems
-  - Implemented by: FServiceLocator
   - Key methods:
-    - `bool RegisterService(void* InService, const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE)` [L41] - Registers a service implementation
-    - `void* ResolveService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE)` [L57] - Resolves a service instance
-    - `bool UnregisterService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE)` [L73] - Unregisters a service implementation
-    - `bool HasService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) const` [L89] - Checks if a service is registered
-    - Template methods for typed service operations [L49-91]
-    - `static IServiceLocator& Get()` [L98] - Gets the singleton instance
+    - `bool RegisterService(void* InService, const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE)` - Registers a service implementation
+    - `void* ResolveService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE)` - Resolves a service instance
+    - `bool UnregisterService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE)` - Unregisters a service implementation
+    - `bool HasService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) const` - Checks if a service is registered
+    - Template methods for typed service operations
+    - `static IServiceLocator& Get()` - Gets the singleton instance
 
-- `FServiceLocator` [Core/Public/Registry/ServiceLocator.h:~L12-55]: Implements IServiceLocator
+- `IServiceProvider` [1_CoreRegistry/Public/Interfaces/IServiceProvider.h]: Interface
+  - Purpose: Interface for classes that provide services to the system
+  - Key methods:
+    - `void RegisterServices()` - Registers all services provided by this provider
+    - `void UnregisterServices()` - Unregisters all services provided by this provider
+
+- `FServiceLocator` [1_CoreRegistry/Public/ServiceLocator.h]: Implements IServiceLocator
   - Purpose: Service registration and resolution for the mining subsystems
   - Key methods:
-    - `bool Initialize()` [L21] - Initialize the service locator
-    - `void Shutdown()` [L24] - Shutdown and cleanup resources
-    - Implementation of IServiceLocator interface methods [L27-33]
-    - `static FServiceLocator& Get()` [L36] - Gets the singleton instance
+    - `bool Initialize()` - Initialize the service locator
+    - `void Shutdown()` - Shutdown and cleanup resources
+    - Implementation of IServiceLocator interface methods
+    - `static FServiceLocator& Get()` - Gets the singleton instance
   - Key members:
-    - `TMap<FName, void*> ServiceMap` [L42] - Map of registered services with context-specific keys
-    - `FThreadSafeBool bIsInitialized` [L45] - Thread-safe initialization flag
-    - `FSpinLock ServiceMapLock` [L48] - Lock for thread-safe access to the service map
-    - `FName CreateServiceKey(const UClass* InInterfaceType, int32 InZoneID, int32 InRegionID) const` [L39] - Creates unique service lookup keys
+    - `TMap<FName, void*> ServiceMap` - Map of registered services with context-specific keys
+    - `FThreadSafeBool bIsInitialized` - Thread-safe initialization flag
+    - `FSpinLock ServiceMapLock` - Lock for thread-safe access to the service map
+    - `FName CreateServiceKey(const UClass* InInterfaceType, int32 InZoneID, int32 InRegionID) const` - Creates unique service lookup keys
 
-- `FZoneTypeRegistry` [Core/Public/Registry/ZoneTypeRegistry.h:~L101-256]: Implements IRegistry
+- `FZoneTypeRegistry` [1_CoreRegistry/Public/ZoneTypeRegistry.h]: Implements IRegistry
   - Purpose: Handles transaction type registration, zone configuration, and concurrency metadata
   - Key methods:
-    - IRegistry interface implementation [L106-113]
-    - `uint32 RegisterTransactionType(const FName& InTypeName, ETransactionConcurrency InConcurrencyLevel, ERetryStrategy InRetryStrategy)` [L121-124] - Registers a new zone transaction type
-    - `uint32 RegisterMaterialTransaction(const FName& InTypeName, int32 InMaterialChannelId)` [L132-134] - Registers a material-specific transaction
-    - `bool RegisterZoneGridConfig(const FName& InConfigName, float InZoneSize, uint32 InMaxConcurrentTransactions)` [L142-145] - Registers a zone grid configuration
-    - `const FZoneTransactionTypeInfo* GetTransactionTypeInfo(uint32 InTypeId) const` [L153] - Gets transaction type info
-    - `const FZoneTransactionTypeInfo* GetTransactionTypeInfoByName(const FName& InTypeName) const` [L161] - Gets transaction type by name
-    - `const FZoneGridConfig* GetZoneGridConfig(const FName& InConfigName) const` [L169] - Gets zone grid config
-    - `const FZoneGridConfig* GetDefaultZoneGridConfig() const` [L177] - Gets default zone grid configuration
-    - `bool SetDefaultZoneGridConfig(const FName& InConfigName)` [L185] - Sets default zone grid configuration
-    - `bool UpdateTransactionProperty(uint32 InTypeId, const FName& InPropertyName, const FString& InValue)` [L193] - Updates transaction properties
-    - `bool UpdateFastPathThreshold(uint32 InTypeId, float InConflictRate)` [L201] - Updates fast-path threshold based on conflict history
-    - `bool IsTransactionTypeRegistered(uint32 InTypeId) const` [L209] - Checks if a transaction type is registered
-    - `bool IsTransactionTypeRegistered(const FName& InTypeName) const` [L217] - Checks if a transaction type is registered by name
-    - `static FZoneTypeRegistry& Get()` [L223] - Gets the singleton instance
+    - IRegistry interface implementation
+    - `uint32 RegisterTransactionType(const FName& InTypeName, ETransactionConcurrency InConcurrencyLevel, ERetryStrategy InRetryStrategy)` - Registers a new zone transaction type
+    - `uint32 RegisterMaterialTransaction(const FName& InTypeName, int32 InMaterialChannelId)` - Registers a material-specific transaction
+    - `bool RegisterZoneGridConfig(const FName& InConfigName, float InZoneSize, uint32 InMaxConcurrentTransactions)` - Registers a zone grid configuration
+    - `const FZoneTransactionTypeInfo* GetTransactionTypeInfo(uint32 InTypeId) const` - Gets transaction type info
+    - `const FZoneTransactionTypeInfo* GetTransactionTypeInfoByName(const FName& InTypeName) const` - Gets transaction type by name
+    - `const FZoneGridConfig* GetZoneGridConfig(const FName& InConfigName) const` - Gets zone grid config
+    - `const FZoneGridConfig* GetDefaultZoneGridConfig() const` - Gets default zone grid configuration
+    - `bool SetDefaultZoneGridConfig(const FName& InConfigName)` - Sets default zone grid configuration
+    - `bool UpdateTransactionProperty(uint32 InTypeId, const FName& InPropertyName, const FString& InValue)` - Updates transaction properties
+    - `bool UpdateFastPathThreshold(uint32 InTypeId, float InConflictRate)` - Updates fast-path threshold based on conflict history
+    - `bool IsTransactionTypeRegistered(uint32 InTypeId) const` - Checks if a transaction type is registered
+    - `bool IsTransactionTypeRegistered(const FName& InTypeName) const` - Checks if a transaction type is registered by name
+    - `static FZoneTypeRegistry& Get()` - Gets the singleton instance
   - Key members:
-    - `TMap<uint32, TSharedRef<FZoneTransactionTypeInfo>> TransactionTypeMap` [L229] - Map of registered transaction types by ID
-    - `TMap<FName, uint32> TransactionTypeNameMap` [L232] - Map of registered transaction types by name
-    - `TMap<FName, TSharedRef<FZoneGridConfig>> ZoneGridConfigMap` [L235] - Map of registered zone grid configurations
-    - `FName DefaultZoneGridConfigName` [L238] - Default zone grid configuration name
-    - `uint32 NextTypeId` [L241] - Counter for generating unique type IDs
-    - `FThreadSafeBool bIsInitialized` [L244] - Thread-safe initialization flag
-    - `uint32 SchemaVersion` [L247] - Schema version of this registry
-    - `FSpinLock RegistryLock` [L250] - Lock for thread-safe access to registry maps
+    - `TMap<uint32, TSharedRef<FZoneTransactionTypeInfo>> TransactionTypeMap` - Map of registered transaction types by ID
+    - `TMap<FName, uint32> TransactionTypeNameMap` - Map of registered transaction types by name
+    - `TMap<FName, TSharedRef<FZoneGridConfig>> ZoneGridConfigMap` - Map of registered zone grid configurations
+    - `FName DefaultZoneGridConfigName` - Default zone grid configuration name
+    - `uint32 NextTypeId` - Counter for generating unique type IDs
+    - `FThreadSafeBool bIsInitialized` - Thread-safe initialization flag
+    - `uint32 SchemaVersion` - Schema version of this registry
+    - `FSpinLock RegistryLock` - Lock for thread-safe access to registry maps
 
-- `FSVOTypeRegistry` [Core/Public/Registry/SVOTypeRegistry.h:~L56-143]: Implements IRegistry
+- `FSVOTypeRegistry` [1_CoreRegistry/Public/SVOTypeRegistry.h]: Implements IRegistry
   - Purpose: Handles type registration, node classification, and memory layout management for SVO nodes
   - Key methods:
-    - IRegistry interface implementation [L61-68]
-    - `uint32 RegisterNodeType(const FName& InTypeName, ESVONodeClass InNodeClass, uint32 InDataSize, uint32 InAlignmentRequirement, bool bInSupportsMaterialRelationships)` [L76-81] - Registers a new SVO node type
-    - `const FSVONodeTypeInfo* GetNodeTypeInfo(uint32 InTypeId) const` [L89] - Gets node type info
-    - `const FSVONodeTypeInfo* GetNodeTypeInfoByName(const FName& InTypeName) const` [L97] - Gets node type by name
-    - `TArray<FSVONodeTypeInfo> GetAllNodeTypes() const` [L105] - Gets all registered node types
-    - `TArray<FSVONodeTypeInfo> GetNodeTypesByClass(ESVONodeClass InNodeClass) const` [L113] - Gets nodes by class
-    - `bool IsNodeTypeRegistered(uint32 InTypeId) const` [L121] - Checks if a node type is registered
-    - `bool IsNodeTypeRegistered(const FName& InTypeName) const` [L129] - Checks if a node type is registered by name
-    - `static FSVOTypeRegistry& Get()` [L135] - Gets the singleton instance
+    - IRegistry interface implementation
+    - `uint32 RegisterNodeType(const FName& InTypeName, ESVONodeClass InNodeClass, uint32 InDataSize, uint32 InAlignmentRequirement, bool bInSupportsMaterialRelationships)` - Registers a new SVO node type
+    - `const FSVONodeTypeInfo* GetNodeTypeInfo(uint32 InTypeId) const` - Gets node type info
+    - `const FSVONodeTypeInfo* GetNodeTypeInfoByName(const FName& InTypeName) const` - Gets node type by name
+    - `TArray<FSVONodeTypeInfo> GetAllNodeTypes() const` - Gets all registered node types
+    - `TArray<FSVONodeTypeInfo> GetNodeTypesByClass(ESVONodeClass InNodeClass) const` - Gets nodes by class
+    - `bool IsNodeTypeRegistered(uint32 InTypeId) const` - Checks if a node type is registered
+    - `bool IsNodeTypeRegistered(const FName& InTypeName) const` - Checks if a node type is registered by name
+    - `static FSVOTypeRegistry& Get()` - Gets the singleton instance
   - Key members:
     - `TMap<uint32, TSharedRef<FSVONodeTypeInfo>> NodeTypeMap` - Map of registered node types by ID
     - `TMap<FName, uint32> NodeTypeNameMap` - Map of registered node types by name for lookup
@@ -767,23 +94,23 @@ FileStructure: [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]
     - `uint32 SchemaVersion` - Schema version of this registry
     - `FSpinLock RegistryLock` - Lock for thread-safe access
 
-- `FSDFTypeRegistry` [Core/Public/Registry/SDFTypeRegistry.h:~L112-228]: Implements IRegistry
+- `FSDFTypeRegistry` [1_CoreRegistry/Public/SDFTypeRegistry.h]: Implements IRegistry
   - Purpose: Handles field type registration, operation compatibility, and evaluation strategies
   - Key methods:
-    - IRegistry interface implementation [L117-124]
-    - `uint32 RegisterFieldType(const FName& InTypeName, uint32 InChannelCount, bool bInSupportsNarrowBand)` [L132-135] - Registers a new SDF field type
-    - `uint32 RegisterFieldOperation(const FName& InOperationName, ESDFOperationType InOperationType, const TArray<uint32>& InCompatibleFieldTypes)` [L143-146] - Registers a new field operation
-    - `const FSDFFieldTypeInfo* GetFieldTypeInfo(uint32 InTypeId) const` [L154] - Gets field type info
-    - `const FSDFFieldTypeInfo* GetFieldTypeInfoByName(const FName& InTypeName) const` [L162] - Gets field type by name
-    - `const FSDFOperationInfo* GetFieldOperationInfo(uint32 InOperationId) const` [L170] - Gets operation info
-    - `const FSDFOperationInfo* GetFieldOperationInfoByName(const FName& InOperationName) const` [L178] - Gets operation by name
-    - `TArray<FSDFFieldTypeInfo> GetAllFieldTypes() const` [L186] - Gets all field types
-    - `TArray<FSDFOperationInfo> GetAllFieldOperations() const` [L194] - Gets all field operations
-    - `TArray<FSDFOperationInfo> GetCompatibleOperations(uint32 InTypeId) const` [L202] - Gets operations compatible with a field type
-    - `bool IsOperationCompatible(uint32 InOperationId, uint32 InTypeId) const` [L210] - Checks operation compatibility
-    - `bool IsFieldTypeRegistered(uint32 InTypeId) const` [L218] - Checks if field type is registered
-    - `bool IsFieldOperationRegistered(uint32 InOperationId) const` [L226] - Checks if operation is registered
-    - `static FSDFTypeRegistry& Get()` [L233] - Gets the singleton instance
+    - IRegistry interface implementation
+    - `uint32 RegisterFieldType(const FName& InTypeName, uint32 InChannelCount, bool bInSupportsNarrowBand)` - Registers a new SDF field type
+    - `uint32 RegisterFieldOperation(const FName& InOperationName, ESDFOperationType InOperationType, const TArray<uint32>& InCompatibleFieldTypes)` - Registers a new field operation
+    - `const FSDFFieldTypeInfo* GetFieldTypeInfo(uint32 InTypeId) const` - Gets field type info
+    - `const FSDFFieldTypeInfo* GetFieldTypeInfoByName(const FName& InTypeName) const` - Gets field type by name
+    - `const FSDFOperationInfo* GetFieldOperationInfo(uint32 InOperationId) const` - Gets operation info
+    - `const FSDFOperationInfo* GetFieldOperationInfoByName(const FName& InOperationName) const` - Gets operation by name
+    - `TArray<FSDFFieldTypeInfo> GetAllFieldTypes() const` - Gets all field types
+    - `TArray<FSDFOperationInfo> GetAllFieldOperations() const` - Gets all field operations
+    - `TArray<FSDFOperationInfo> GetCompatibleOperations(uint32 InTypeId) const` - Gets operations compatible with a field type
+    - `bool IsOperationCompatible(uint32 InOperationId, uint32 InTypeId) const` - Checks operation compatibility
+    - `bool IsFieldTypeRegistered(uint32 InTypeId) const` - Checks if field type is registered
+    - `bool IsFieldOperationRegistered(uint32 InOperationId) const` - Checks if operation is registered
+    - `static FSDFTypeRegistry& Get()` - Gets the singleton instance
   - Key members:
     - `TMap<uint32, TSharedRef<FSDFFieldTypeInfo>> FieldTypeMap` - Map of registered field types
     - `TMap<FName, uint32> FieldTypeNameMap` - Map of field types by name
@@ -792,25 +119,38 @@ FileStructure: [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]
     - `uint32 NextTypeId` - Counter for generating unique type IDs
     - `uint32 NextOperationId` - Counter for generating unique operation IDs
 
-- `FMaterialRegistry` [Core/Public/Registry/MaterialRegistry.h:~L97-197]: Implements IRegistry
+- `FMaterialRegistry` [1_CoreRegistry/Public/MaterialRegistry.h]: Implements IRegistry
   - Purpose: Handles material type registration, properties, and relationships
   - Key methods:
-    - IRegistry interface implementation [L102-109]
-    - `uint32 RegisterMaterialType(const FName& InTypeName, EMaterialPriority InPriority, const FName& InParentTypeName)` [L117-120] - Registers a new material type
-    - `uint32 RegisterMaterialRelationship(const FName& InSourceTypeName, const FName& InTargetTypeName, float InCompatibilityScore, bool bInCanBlend)` [L128-132] - Registers material relationships
-    - `int32 AllocateMaterialChannel(uint32 InTypeId)` [L140] - Allocates a channel ID for materials
-    - `const FMaterialTypeInfo* GetMaterialTypeInfo(uint32 InTypeId) const` [L148] - Gets material type info
-    - `const FMaterialTypeInfo* GetMaterialTypeInfoByName(const FName& InTypeName) const` [L156] - Gets material type by name
-    - `const FMaterialRelationship* GetMaterialRelationship(uint32 InRelationshipId) const` [L164] - Gets relationship info
-    - `TArray<FMaterialTypeInfo> GetAllMaterialTypes() const` [L172] - Gets all material types
-    - `TArray<FMaterialTypeInfo> GetDerivedMaterialTypes(uint32 InParentTypeId) const` [L180] - Gets derived material types
-    - `TArray<FMaterialRelationship> GetMaterialRelationships(uint32 InTypeId) const` [L188] - Gets relationships for a material
-    - `bool IsMaterialTypeRegistered(uint32 InTypeId) const` [L196] - Checks if material is registered
-    - `bool IsMaterialTypeRegistered(const FName& InTypeName) const` [L204] - Checks if material is registered by name
-    - `bool IsMaterialDerivedFrom(uint32 InDerivedTypeId, uint32 InBaseTypeId) const` [L212] - Checks material inheritance
+    - IRegistry interface implementation
+    - `uint32 RegisterMaterialType(const FName& InTypeName, EMaterialPriority InPriority, const FName& InParentTypeName)` - Registers a new material type
+    - `uint32 RegisterMaterialRelationship(const FName& InSourceTypeName, const FName& InTargetTypeName, float InCompatibilityScore, bool bInCanBlend)` - Registers material relationships
+    - `int32 AllocateMaterialChannel(uint32 InTypeId)` - Allocates a channel ID for materials
+    - `const FMaterialTypeInfo* GetMaterialTypeInfo(uint32 InTypeId) const` - Gets material type info
+    - `const FMaterialTypeInfo* GetMaterialTypeInfoByName(const FName& InTypeName) const` - Gets material type by name
+    - `const FMaterialRelationship* GetMaterialRelationship(uint32 InRelationshipId) const` - Gets relationship info
+    - `TArray<FMaterialTypeInfo> GetAllMaterialTypes() const` - Gets all material types
+    - `TArray<FMaterialTypeInfo> GetDerivedMaterialTypes(uint32 InParentTypeId) const` - Gets derived material types
+    - `TArray<FMaterialRelationship> GetMaterialRelationships(uint32 InTypeId) const` - Gets relationships for a material
+    - `bool IsMaterialTypeRegistered(uint32 InTypeId) const` - Checks if material is registered
+    - `bool IsMaterialTypeRegistered(const FName& InTypeName) const` - Checks if material is registered by name
+    - `bool IsMaterialDerivedFrom(uint32 InDerivedTypeId, uint32 InBaseTypeId) const` - Checks material inheritance
+    - `bool UpdateMaterialProperty(uint32 InTypeId, const FName& InPropertyName, const FString& InValue)` - Updates material properties
+    - `static FMaterialRegistry& Get()` - Gets the singleton instance
+  - Key members:
+    - `TMap<uint32, TSharedRef<FMaterialTypeInfo>> MaterialTypeMap` - Map of registered material types
+    - `TMap<FName, uint32> MaterialTypeNameMap` - Map of material types by name
+    - `TMap<uint32, TSharedRef<FMaterialRelationship>> RelationshipMap` - Map of material relationships
+    - `TMultiMap<uint32, uint32> RelationshipsBySourceMap` - Relationships indexed by source type
+    - `TMultiMap<uint32, uint32> RelationshipsByTargetMap` - Relationships indexed by target type
+    - `TMap<uint32, TArray<uint32>> MaterialHierarchyMap` - Material type inheritance hierarchy
+    - `TSet<int32> AllocatedChannelIds` - Set of allocated material channel IDs
+    - `uint32 NextTypeId` - Counter for generating unique type IDs
+    - `uint32 NextRelationshipId` - Counter for generating unique relationship IDs
+    - `int32 NextChannelId` - Counter for generating unique channel IDs
 
 ### Structures
-- `FZoneTransactionTypeInfo` [Core/Public/Registry/ZoneTypeRegistry.h:~L44-73]
+- `FZoneTransactionTypeInfo` [1_CoreRegistry/Public/ZoneTypeRegistry.h]
   - Purpose: Metadata for zone transaction types
   - Key members:
     - `uint32 TypeId` - Unique ID for this transaction type
@@ -822,7 +162,7 @@ FileStructure: [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]
     - `int32 MaterialChannelId` - Material channel ID for material-specific transactions
     - `uint32 Priority` - Priority for conflict resolution
 
-- `FZoneGridConfig` [Core/Public/Registry/ZoneTypeRegistry.h:~L78-90]
+- `FZoneGridConfig` [1_CoreRegistry/Public/ZoneTypeRegistry.h]
   - Purpose: Configuration for zone grids in the mining system
   - Key members:
     - `float ZoneSize` - Size of a zone in world units
@@ -831,28 +171,31 @@ FileStructure: [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]
     - `bool bUseMaterialSpecificVersioning` - Whether to use material-specific versioning
     - `uint32 VersionHistoryLength` - Number of versions to track in history
 
-- `FSVONodeTypeInfo` [Core/Public/Registry/SVOTypeRegistry.h:~L32-51]
+- `FSVONodeTypeInfo` [1_CoreRegistry/Public/SVOTypeRegistry.h]
   - Purpose: Metadata for SVO node types
   - Key members:
-    - `uint64 TotalPredictions` - Total number of predictions made
-    - `uint64 AccuratePredictions` - Number of accurate predictions (region was actually traversed)
-    - `uint64 InaccuratePredictions` - Number of inaccurate predictions (region was not traversed)
-    - `float AccuracyRate` - Prediction accuracy rate (0-1)
-    - `float AveragePredictionLeadTimeSeconds` - Average time between prediction and actual traversal
-    - `uint32 EmergencyReactivationCount` - Number of emergency reactivations needed
+    - `uint32 TypeId` - Unique ID for this node type
+    - `FName TypeName` - Name of this node type
+    - `ESVONodeClass NodeClass` - Class of this node type
+    - `uint32 DataSize` - Size of node data in bytes
+    - `uint32 AlignmentRequirement` - Memory alignment requirement
+    - `bool bSupportsMaterialRelationships` - Whether this node type supports material relationships
+    - `bool bSupportsCompression` - Whether this node type supports compression
+    - `bool bIsSerializable` - Whether this node type can be serialized
+    - `uint32 SchemaVersion` - Version of this node type's schema
 
-- `FPredictionConfig` [Memory/Public/Interfaces/Hibernation/ITopologicalPredictor.h]
-  - Purpose: Structure containing prediction configuration parameters
+- `FSDFFieldTypeInfo` [1_CoreRegistry/Public/SDFTypeRegistry.h]
+  - Purpose: Information about SDF field types
   - Key members:
-    - `uint32 TypeId` [~L60] - Unique ID for this field type
-    - `FName TypeName` [~L63] - Name of this field type
-    - `uint32 SchemaVersion` [~L66] - Version of this field type's schema
-    - `uint32 ChannelCount` [~L69] - Number of channels supported by this field type
-    - `bool bSupportsNarrowBand` [~L72] - Whether this field type supports narrow-band optimization
-    - `bool bSupportsGPUEvaluation` [~L75] - Whether this field type supports GPU evaluation
-    - `bool bSupportsSIMD` [~L78] - Whether this field type supports SIMD operations
+    - `uint32 TypeId` - Unique ID for this field type
+    - `FName TypeName` - Name of this field type
+    - `uint32 SchemaVersion` - Version of this field type's schema
+    - `uint32 ChannelCount` - Number of channels supported by this field type
+    - `bool bSupportsNarrowBand` - Whether this field type supports narrow-band optimization
+    - `bool bSupportsGPUEvaluation` - Whether this field type supports GPU evaluation
+    - `bool bSupportsSIMD` - Whether this field type supports SIMD operations
 
-- `FSDFOperationInfo` [Core/Public/Registry/SDFTypeRegistry.h:~L72-92]
+- `FSDFOperationInfo` [1_CoreRegistry/Public/SDFTypeRegistry.h]
   - Purpose: Information about SDF field operations
   - Key members:
     - `uint32 OperationId` - Unique ID for this operation
@@ -864,7 +207,7 @@ FileStructure: [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]
     - `bool bSupportsSIMD` - Whether this operation supports SIMD operations
     - `float ComputationalCost` - Approximate computational cost (normalized value)
 
-- `FMaterialTypeInfo` [Core/Public/Registry/MaterialRegistry.h:~L39-77]
+- `FMaterialTypeInfo` [1_CoreRegistry/Public/MaterialRegistry.h]
   - Purpose: Metadata for material types
   - Key members:
     - `uint32 TypeId` - Unique ID for this material type
@@ -880,7 +223,7 @@ FileStructure: [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]
     - `bool bCanFracture` - Whether this material can fracture
     - `int32 ChannelId` - Channel ID for this material in multi-channel SDF fields
 
-- `FMaterialRelationship` [Core/Public/Registry/MaterialRegistry.h:~L82-95]
+- `FMaterialRelationship` [1_CoreRegistry/Public/MaterialRegistry.h]
   - Purpose: Relationship between material types
   - Key members:
     - `uint32 RelationshipId` - Unique ID for this relationship
@@ -891,64 +234,75 @@ FileStructure: [Memory/Public/Interfaces/Hibernation/IReactivationCoordinator.h]
     - `float BlendSharpness` - Boundary sharpness when blending (0-1)
 
 ### Enumerations
-- `ETransactionConcurrency` [Core/Public/Registry/ZoneTypeRegistry.h:~L13-24]
+- `ETransactionConcurrency` [1_CoreRegistry/Public/ZoneTypeRegistry.h]
   - Purpose: Transaction concurrency level for zone operations
   - Values: ReadOnly, Optimistic, Exclusive, MaterialChannel
 
-- `ERetryStrategy` [Core/Public/Registry/ZoneTypeRegistry.h:~L29-39]
+- `ERetryStrategy` [1_CoreRegistry/Public/ZoneTypeRegistry.h]
   - Purpose: Retry strategy type for transaction conflicts
   - Values: None, FixedInterval, ExponentialBackoff, Custom
 
-- `ESVONodeClass` [Core/Public/Registry/SVOTypeRegistry.h:~L13-23]
+- `ESVONodeClass` [1_CoreRegistry/Public/SVOTypeRegistry.h]
   - Purpose: SVO node class types for classification
   - Values: Homogeneous, Interface, Empty, Custom
 
-- `ESDFOperationType` [Core/Public/Registry/SDFTypeRegistry.h:~L16-28]
+- `ESDFOperationType` [1_CoreRegistry/Public/SDFTypeRegistry.h]
   - Purpose: SDF field operation types for CSG operations
   - Values: Union, Subtraction, Intersection, SmoothUnion, SmoothSubtraction, SmoothIntersection, Custom
 
-- `ESDFEvaluationContext` [Core/Public/Registry/SDFTypeRegistry.h:~L33-43]
+- `ESDFEvaluationContext` [1_CoreRegistry/Public/SDFTypeRegistry.h]
   - Purpose: SDF field evaluation contexts
   - Values: Mining, Rendering, Physics, GameLogic
 
-- `EMaterialPriority` [Core/Public/Registry/MaterialRegistry.h:~L16-26]
+- `EMaterialPriority` [1_CoreRegistry/Public/MaterialRegistry.h]
   - Purpose: Material priority levels for interaction conflicts
   - Values: Low, Normal, High, Critical
 
 ### Navigation Landmarks
-FileStructure: [Core/Public/Interfaces/IRegistry.h]
+FileStructure: [1_CoreRegistry/Public/Interfaces/IRegistry.h]
 - Registry interface declaration: ~L12-56
 
-FileStructure: [Core/Public/Interfaces/IServiceLocator.h]
+FileStructure: [1_CoreRegistry/Public/Interfaces/IServiceLocator.h]
 - Service locator interface declaration: ~L12-104
 
-FileStructure: [Core/Public/Registry/ServiceLocator.h]
+FileStructure: [1_CoreRegistry/Public/Interfaces/IServiceProvider.h]
+- Service provider interface declaration: ~L12-40
+
+FileStructure: [1_CoreRegistry/Public/ServiceLocator.h]
 - Service locator implementation: ~L12-55
 
-FileStructure: [Core/Public/Registry/ZoneTypeRegistry.h]
+FileStructure: [1_CoreRegistry/Public/ZoneTypeRegistry.h]
 - Transaction concurrency enum: ~L13-24
 - Retry strategy enum: ~L29-39
 - Transaction type info structure: ~L44-73
 - Zone grid config structure: ~L78-90
 - Zone type registry implementation: ~L101-256
 
-FileStructure: [Core/Public/Registry/SVOTypeRegistry.h]
+FileStructure: [1_CoreRegistry/Public/SVOTypeRegistry.h]
 - Node class enum: ~L13-23
 - Node type info structure: ~L32-51
 - SVO type registry implementation: ~L56-143
 
-FileStructure: [Core/Public/Registry/SDFTypeRegistry.h]
+FileStructure: [1_CoreRegistry/Public/SDFTypeRegistry.h]
 - Operation type enum: ~L16-28
 - Evaluation context enum: ~L33-43
 - Field type info structure: ~L58-84
 - Operation info structure: ~L89-101
 - SDF type registry implementation: ~L112-228
 
-FileStructure: [Core/Public/Registry/MaterialRegistry.h]
+FileStructure: [1_CoreRegistry/Public/MaterialRegistry.h]
 - Material priority enum: ~L16-26
 - Material type info structure: ~L39-77
 - Material relationship structure: ~L82-95
 - Material registry implementation: ~L97-197
+
+FileStructure: [1_CoreRegistry/Private/MaterialRegistry.cpp]
+- Constructor and destructor: ~L5-12
+- Initialization and shutdown: ~L15-25
+- Material type registration: ~L82-119
+- Material relationship registration: ~L122-163
+- Material property management: ~L166-201
+- Memory management and thread safety: ~L205-243
 
 ### Implementation Patterns
 - Singleton Pattern: All registries implement a singleton pattern with thread-safe initialization
@@ -972,7 +326,7 @@ FileStructure: [Core/Public/Registry/MaterialRegistry.h]
 
 - Metadata Structures: Rich metadata associated with each registered type
   ```cpp
-  FXXXTypeInfo { uint32 TypeId; FName TypeName; ... };
+  struct FXXXTypeInfo { uint32 TypeId; FName TypeName; ... };
   ```
 
 - Fast Lookup: Both ID-based and name-based lookup mechanisms
@@ -987,6 +341,24 @@ FileStructure: [Core/Public/Registry/MaterialRegistry.h]
   uint32 SchemaVersion;
   ```
 
+- Validation: Registry validation to ensure data consistency
+  ```cpp
+  bool Validate(TArray<FString>& OutErrors) const override;
+  ```
+
+- Relationship Management: Two-way relationship tracking with multi-maps
+  ```cpp
+  TMultiMap<uint32, uint32> RelationshipsBySourceMap;
+  TMultiMap<uint32, uint32> RelationshipsByTargetMap;
+  ```
+
+### UE5 Integration
+- UINTERFACE and GENERATED_BODY macros for UE5 reflection
+- MININGSPICECOPILOT_API macro for proper DLL export
+- UObject integration for interface reflection and blueprint exposure
+- UE5 containers (TMap, TArray, TSet, TSharedRef) used throughout
+- UE5 thread safety primitives (FThreadSafeBool, FSpinLock) for concurrency
+
 ### Naming Patterns
 - Registry classes: Prefix with 'F' (FZoneTypeRegistry, FMaterialRegistry)
 - Registry interfaces: Prefix with 'I' (IRegistry, IServiceLocator)
@@ -997,7 +369,7 @@ FileStructure: [Core/Public/Registry/MaterialRegistry.h]
 - Boolean check methods: Prefix with 'Is' (IsTransactionTypeRegistered)
 - Method parameters: Prefix with 'In' for inputs (InTypeName, InTypeId)
 
-### Potential Naming Conflicts
+### Potential Conflicts
 - Multiple `Register` methods with similar signatures across different registries
   - `RegisterXXXType` appears in multiple registries with different parameter patterns
   - `RegisterYYYRelationship` appears in multiple registries with different parameter patterns
@@ -1008,3 +380,822 @@ FileStructure: [Core/Public/Registry/MaterialRegistry.h]
 
 - Boolean check methods with similar names
   - `IsXXXTypeRegistered(uint32)` and `IsXXXTypeRegistered(FName)` overloaded in multiple registries
+
+- Multiple singleton Get() methods with the same name but different return types
+
+### Architectural Boundaries
+- Core Registry System provides type registration and lookup services for other systems
+- Service Locator allows for dependency injection and system decoupling
+- Registry types (Material, Zone, SVO, SDF) connect to their respective subsystems
+- Clear separation between registration concerns and implementation concerns
+
+### Dependencies
+- Depends on UE5 Core (CoreMinimal.h, UObject)
+- Required by most other systems for type resolution and service location
+- Provides foundational type system for SVO+SDF mining architecture
+
+## SYSTEM 2: Memory Management System
+
+### Class Hierarchy
+- `IMemoryManager` [2_MemoryManagement/Public/Interfaces/IMemoryManager.h]: Interface
+  - Purpose: Provides comprehensive memory management capabilities optimized for mining operations
+  - Key methods:
+    - `bool Initialize()` - Initializes the memory manager
+    - `void Shutdown()` - Shuts down the memory manager and cleans up resources
+    - `bool IsInitialized() const` - Checks initialization status
+    - `IPoolAllocator* CreatePool(const FName& PoolName, uint32 BlockSize, uint32 BlockCount, EMemoryAccessPattern AccessPattern, bool bAllowGrowth)` - Creates a memory pool with specified characteristics
+    - `IPoolAllocator* GetPool(const FName& PoolName) const` - Gets a pool allocator by name
+    - `IBufferProvider* CreateBuffer(const FName& BufferName, uint64 SizeInBytes, bool bZeroCopy, bool bGPUWritable)` - Creates a shared buffer for CPU/GPU operations
+    - `IBufferProvider* GetBuffer(const FName& BufferName) const` - Gets a buffer provider by name
+    - `IMemoryTracker* GetMemoryTracker() const` - Gets the memory tracker for telemetry
+    - `bool DefragmentMemory(float MaxTimeMs, EMemoryPriority Priority)` - Performs memory defragmentation
+    - `void* Allocate(uint64 SizeInBytes, uint32 Alignment = 16)` - Allocates memory from the general heap
+    - `void Free(void* Ptr)` - Frees memory previously allocated with Allocate
+    - `void SetMemoryBudget(const FName& CategoryName, uint64 BudgetInBytes)` - Sets memory budget for a category
+    - `uint64 GetMemoryBudget(const FName& CategoryName) const` - Gets memory budget for a category
+    - `uint64 GetMemoryUsage(const FName& CategoryName) const` - Gets memory usage for a category
+    - `void RegisterAllocation(void* Ptr, uint64 SizeInBytes, const FName& CategoryName, const FName& AllocationName)` - Registers a memory allocation for tracking
+    - `void UnregisterAllocation(void* Ptr, const FName& CategoryName)` - Unregisters a memory allocation
+    - `bool SetNUMAPolicy(bool bUseNUMAAwareness, int32 PreferredNode)` - Sets NUMA policy for memory allocations
+    - `bool IsSupported() const` - Checks if the memory manager is supported on the current platform
+    - `static IMemoryManager& Get()` - Gets the singleton instance
+
+- `FMemoryPoolManager` [2_MemoryManagement/Public/MemoryPoolManager.h]: Implements IMemoryManager
+  - Purpose: Concrete implementation of the memory manager with specialized allocators for mining operations
+  - Key methods:
+    - Implementation of IMemoryManager interface
+    - `IPoolAllocator* CreateSVONodePool(const FName& PoolName, uint32 NodeSize, uint32 NodeCount)` - Creates a specialized pool for SVO nodes
+    - Static memory budget constants:
+      - `DEFAULT_BUDGET_SVO_NODES = 256 * 1024 * 1024` - 256 MB for SVO nodes
+      - `DEFAULT_BUDGET_SDF_FIELDS = 512 * 1024 * 1024` - 512 MB for SDF fields
+      - `DEFAULT_BUDGET_NARROW_BAND = 128 * 1024 * 1024` - 128 MB for narrow band
+      - `DEFAULT_BUDGET_MATERIAL_CHANNELS = 256 * 1024 * 1024` - 256 MB for material channels
+      - `DEFAULT_BUDGET_MESH_DATA = 128 * 1024 * 1024` - 128 MB for mesh data
+      - `DEFAULT_BUDGET_GENERAL = 64 * 1024 * 1024` - 64 MB for general purpose
+    - Memory pressure thresholds:
+      - `MEMORY_PRESSURE_THRESHOLD = 0.15f` - 15% free memory triggers pressure warning
+      - `MEMORY_CRITICAL_THRESHOLD = 0.05f` - 5% free memory triggers critical pressure
+  - Key members:
+    - `IMemoryTracker* MemoryTracker` - Memory tracking component
+    - `IMemoryDefragmenter* Defragmenter` - Memory defragmentation component
+    - `TMap<FName, TSharedPtr<IPoolAllocator>> Pools` - Map of memory pools
+    - `TMap<FName, TSharedPtr<IBufferProvider>> Buffers` - Map of buffer providers
+    - `FRWLock PoolsLock` - Read-write lock for thread-safe pool access
+    - `FRWLock BuffersLock` - Read-write lock for thread-safe buffer access
+    - `bool bIsInitialized` - Initialization flag
+    - `bool bNUMAAwarenessEnabled` - Whether NUMA policy is enabled
+    - `int32 NUMAPreferredNode` - Preferred NUMA node when enabled
+    - `FCriticalSection SingletonLock` - Lock for singleton access
+    - `static FMemoryPoolManager* ManagerInstance` - Singleton instance
+
+- `IMemoryTracker` [2_MemoryManagement/Public/Interfaces/IMemoryTracker.h]: Interface
+  - Purpose: Provides memory telemetry and monitoring functionality
+  - Key methods:
+    - `bool Initialize()` - Initializes the memory tracker
+    - `void Shutdown()` - Shuts down the memory tracker and cleans up resources
+    - `bool IsInitialized() const` - Checks initialization status
+    - `bool TrackAllocation(void* Ptr, uint64 SizeInBytes, const FName& CategoryName, const FName& AllocationName)` - Tracks a memory allocation
+    - `bool UntrackAllocation(void* Ptr)` - Untracks a memory allocation
+    - `const FMemoryAllocationInfo* GetAllocationInfo(void* Ptr) const` - Gets allocation info
+    - `FMemoryStats GetMemoryStats() const` - Gets current memory statistics
+    - `FSVOSDFMemoryMetrics GetSVOSDFMemoryMetrics() const` - Gets SVO+SDF specific memory metrics
+    - `void SetMemoryBudget(const FName& CategoryName, uint64 BudgetInBytes)` - Sets memory budget
+    - `uint64 GetMemoryBudget(const FName& CategoryName) const` - Gets memory budget
+    - `uint64 GetMemoryUsage(const FName& CategoryName) const` - Gets memory usage
+
+- `FMemoryTelemetry` [2_MemoryManagement/Public/MemoryTelemetry.h]: Implements IMemoryTracker
+  - Purpose: Concrete implementation of memory tracking and telemetry
+  - Key methods:
+    - Implementation of IMemoryTracker interface
+    - Memory usage visualization and reporting functions
+    - Memory leak detection and tracking
+  - Key members:
+    - `TMap<void*, FMemoryAllocationInfo> AllocationsMap` - Map of tracked allocations
+    - `TMap<FName, uint64> CategoryBudgets` - Budget for each memory category
+    - `TMap<FName, uint64> CategoryUsage` - Current usage for each category
+    - `FCriticalSection AllocationLock` - Thread safety for allocation tracking
+
+- `IMemoryDefragmenter` [2_MemoryManagement/Public/Interfaces/IMemoryDefragmenter.h]: Interface
+  - Purpose: Provides memory defragmentation functionality to optimize memory layout
+  - Key methods:
+    - `bool Initialize()` - Initializes the defragmenter
+    - `void Shutdown()` - Shuts down the defragmenter
+    - `bool IsInitialized() const` - Checks initialization status
+    - `bool DefragmentMemory(float MaxTimeMs, EMemoryPriority Priority)` - Performs defragmentation within time budget
+    - `bool RegisterPool(IPoolAllocator* Pool)` - Registers a pool for defragmentation
+    - `bool UnregisterPool(const FName& PoolName)` - Unregisters a pool
+    - `float GetFragmentationPercent() const` - Gets current fragmentation percentage
+
+- `FMemoryDefragmenter` [2_MemoryManagement/Public/MemoryDefragmenter.h]: Implements IMemoryDefragmenter
+  - Purpose: Concrete implementation of memory defragmentation
+  - Key methods:
+    - Implementation of IMemoryDefragmenter interface
+    - Time-sliced defragmentation algorithms
+    - Priority-based defragmentation scheduling
+  - Key members:
+    - `TMap<FName, IPoolAllocator*> RegisteredPools` - Map of pools registered for defragmentation
+    - `bool bIsDefragmenting` - Whether defragmentation is in progress
+    - `FCriticalSection DefragmentationLock` - Thread safety for defragmentation operations
+
+- `IPoolAllocator` [2_MemoryManagement/Public/Interfaces/IPoolAllocator.h]: Interface
+  - Purpose: Provides block-based memory allocation optimized for specific use cases
+  - Key methods:
+    - `bool Initialize()` - Initializes the pool allocator
+    - `void Shutdown()` - Shuts down the pool allocator
+    - `bool IsInitialized() const` - Checks initialization status
+    - `FName GetPoolName() const` - Gets the name of this pool
+    - `uint32 GetBlockSize() const` - Gets the block size for this pool
+    - `void* Allocate(const UObject* RequestingObject = nullptr, FName AllocationTag = NAME_None)` - Allocates a block
+    - `bool Free(void* Ptr)` - Frees a previously allocated block
+    - `bool Grow(uint32 AdditionalBlockCount, bool bForceGrowth = false)` - Attempts to grow the pool
+    - `uint32 Shrink(uint32 MaxBlocksToRemove = UINT32_MAX)` - Attempts to shrink the pool
+    - `bool OwnsPointer(const void* Ptr) const` - Checks if a pointer belongs to this pool
+    - `FPoolStats GetStats() const` - Gets current pool statistics
+    - `bool Defragment(float MaxTimeMs = 5.0f)` - Performs defragmentation on the pool
+
+- `FSVOAllocator` [2_MemoryManagement/Public/SVOAllocator.h]: Implements IPoolAllocator
+  - Purpose: Specialized allocator for SVO (Sparse Voxel Octree) nodes
+  - Key methods:
+    - Implementation of IPoolAllocator interface
+    - Octree-specific allocation optimizations
+    - Spatial locality improvements for traversal
+  - Key members:
+    - `TArray<uint8*> MemoryBlocks` - Array of memory block pointers
+    - `TArray<uint32> FreeIndices` - Free block indices for fast allocation
+    - `TBitArray<> AllocationMap` - Bitmap of allocated blocks
+
+- `INarrowBandAllocator` [2_MemoryManagement/Public/Interfaces/INarrowBandAllocator.h]: Interface
+  - Purpose: Specialized allocator for narrow band SDF data with high precision
+  - Key methods:
+    - IPoolAllocator interface implementation
+    - Narrow band specific allocation methods
+
+- `FNarrowBandAllocator` [2_MemoryManagement/Public/NarrowBandAllocator.h]: Implements INarrowBandAllocator
+  - Purpose: Concrete implementation of narrow band allocator for high-precision SDF
+  - Key methods:
+    - Implementation of INarrowBandAllocator interface
+    - Narrow band optimization algorithms
+  - Key members:
+    - Narrow band width and precision configuration
+    - Spatial hashing for efficient lookup
+
+- `IBufferProvider` [2_MemoryManagement/Public/Interfaces/IBufferProvider.h]: Interface
+  - Purpose: Provides buffer sharing between CPU and GPU components with efficient synchronization
+  - Key methods:
+    - `bool Initialize()` - Initializes the buffer provider
+    - `void Shutdown()` - Shuts down the buffer provider 
+    - `bool IsInitialized() const` - Checks initialization status
+    - `FName GetBufferName() const` - Gets the name of this buffer
+    - `uint64 GetSizeInBytes() const` - Gets the size of this buffer
+    - `void* Map(EBufferAccessMode AccessMode = EBufferAccessMode::ReadWrite)` - Maps buffer for CPU access
+    - `bool Unmap()` - Unmaps the buffer, making changes visible to GPU
+    - `bool IsMapped() const` - Checks if the buffer is currently mapped
+    - `bool Resize(uint64 NewSizeInBytes, bool bPreserveContent = true)` - Resizes the buffer
+    - `void* GetGPUResource() const` - Gets underlying GPU resource
+    - `void AddRef()` - Adds a reference to this buffer
+    - `uint32 Release()` - Releases a reference to this buffer
+    - `FBufferStats GetStats() const` - Gets current buffer statistics
+    - `void SetUsageHint(EBufferUsage UsageHint)` - Sets usage hint for optimization
+    - `EBufferUsage GetUsageHint() const` - Gets current usage hint
+    - `bool SupportsZeroCopy() const` - Checks if zero-copy is supported
+    - `bool IsGPUWritable() const` - Checks if GPU can write to buffer
+    - `uint64 GetVersionNumber() const` - Gets buffer version number
+
+- `FZeroCopyBuffer` [2_MemoryManagement/Public/ZeroCopyBuffer.h]: Implements IBufferProvider
+  - Purpose: Zero-copy buffer implementation for GPU/CPU data sharing with minimal synchronization overhead
+  - Key methods:
+    - Implementation of IBufferProvider interface
+    - `FStructuredBufferRHIRef GetRHIBuffer() const` - Gets the RHI structured buffer resource
+    - `FShaderResourceViewRHIRef GetShaderResourceView() const` - Gets SRV for this buffer
+    - `void SyncToGPU()` - Explicitly syncs CPU changes to GPU
+    - `void SyncFromGPU()` - Explicitly syncs GPU changes to CPU
+  - Key members:
+    - `FStructuredBufferRHIRef GPUBuffer` - GPU buffer resource
+    - `FShaderResourceViewRHIRef SRV` - Shader resource view
+    - `void* CPUBuffer` - CPU accessible buffer pointer
+    - `FName BufferName` - Name of the buffer
+    - `uint64 SizeInBytes` - Size of the buffer in bytes
+    - `bool bIsGPUWritable` - Whether GPU can write to this buffer
+    - `bool bIsMapped` - Whether buffer is currently mapped
+    - `uint32 ReferenceCount` - Reference counter
+    - `uint64 VersionNumber` - Version counter
+
+- `FSharedBufferManager` [2_MemoryManagement/Public/SharedBufferManager.h]: Implements IBufferProvider
+  - Purpose: Manages shared buffers between CPU and GPU with explicit synchronization
+  - Key methods:
+    - Implementation of IBufferProvider interface
+    - Double-buffering for asynchronous updates
+    - Versioning for change detection
+  - Key members:
+    - Buffer version tracking
+    - Synchronization primitives
+
+- `ICompressionUtility` [2_MemoryManagement/Public/Interfaces/ICompressionUtility.h]: Interface
+  - Purpose: Provides compression and decompression utilities for memory optimization
+  - Key methods:
+    - `bool Compress(const void* UncompressedData, uint64 UncompressedSize, void* CompressedBuffer, uint64& CompressedSize, ECompressionLevel CompressionLevel)` - Compresses data
+    - `bool Decompress(const void* CompressedData, uint64 CompressedSize, void* UncompressedBuffer, uint64 UncompressedSize)` - Decompresses data
+    - `uint64 GetMaxCompressedSize(uint64 UncompressedSize)` - Gets max compression buffer size needed
+
+- `FCompressionUtility` [2_MemoryManagement/Public/CompressionUtility.h]: Implements ICompressionUtility
+  - Purpose: Concrete implementation of compression utilities
+  - Key methods:
+    - Implementation of ICompressionUtility interface
+    - Various compression algorithm implementations
+
+### Structures
+- `FMemoryAllocationInfo` [2_MemoryManagement/Public/Interfaces/IMemoryTracker.h]
+  - Purpose: Memory allocation tracker entry for detailed monitoring
+  - Key members:
+    - `void* Ptr` - Pointer to allocated memory
+    - `uint64 SizeInBytes` - Size of allocation in bytes
+    - `FName CategoryName` - Category for budget tracking
+    - `FName AllocationName` - Name for the allocation (optional)
+    - `double TimeStamp` - Time when allocation was made
+    - `TArray<FString> CallStack` - Call stack for the allocation if tracking enabled
+    - `EMemoryTier MemoryTier` - Memory tier classification
+
+- `FMemoryStats` [2_MemoryManagement/Public/Interfaces/IMemoryTracker.h]
+  - Purpose: Structure containing memory usage statistics
+  - Key members:
+    - `uint64 TotalAllocatedBytes` - Total allocated memory in bytes
+    - `uint64 AllocationCount` - Total number of allocations
+    - `uint64 PeakMemoryUsage` - Peak memory usage in bytes
+    - `TMap<FName, uint64> UsageByCategory` - Map of memory usage by category
+    - `TMap<FName, uint64> BudgetByCategory` - Map of memory budgets by category
+    - `TMap<EMemoryTier, uint64> UsageByTier` - Map of memory usage by tier
+
+- `FSVOSDFMemoryMetrics` [2_MemoryManagement/Public/Interfaces/IMemoryTracker.h]
+  - Purpose: Structure containing SVO+SDF specific memory metrics
+  - Key members:
+    - `uint64 SVONodeMemory` - Memory used by SVO octree nodes in bytes
+    - `uint64 SDFFieldMemory` - Memory used by SDF field data in bytes
+    - `uint64 NarrowBandMemory` - Memory used by narrow-band high precision data
+    - `uint64 MeshDataMemory` - Memory used by mesh data derived from SVO+SDF
+    - `uint64 StructureOverheadMemory` - Memory overhead for spatial data structures
+    - `float CompressionRatio` - Compression ratio (uncompressed/compressed)
+
+- `FPoolStats` [2_MemoryManagement/Public/Interfaces/IPoolAllocator.h]
+  - Purpose: Structure containing information about a memory pool's current state
+  - Key members:
+    - `FName PoolName` - Name of the pool
+    - `uint32 BlockSize` - Size of each block in bytes
+    - `uint32 BlockCount` - Number of blocks in the pool
+    - `uint32 AllocatedBlocks` - Number of allocated blocks
+    - `uint32 FreeBlocks` - Number of free blocks
+    - `uint64 TotalAllocations` - Total number of allocation requests
+    - `float FragmentationPercent` - Fragmentation percentage (0-100)
+
+- `FBufferStats` [2_MemoryManagement/Public/Interfaces/IBufferProvider.h]
+  - Purpose: Structure containing information about a buffer's current state
+  - Key members:
+    - `FName BufferName` - Name of the buffer
+    - `uint64 SizeInBytes` - Size of the buffer in bytes
+    - `uint32 ReferenceCount` - Number of active references to the buffer
+    - `bool bIsMapped` - Whether buffer is currently mapped for CPU access
+    - `bool bIsZeroCopy` - Whether buffer allows zero-copy access
+    - `bool bIsGPUWritable` - Whether the buffer can be written to from GPU
+    - `uint64 VersionNumber` - Current version number of the buffer
+    - `uint64 MapCount` - Number of map operations performed
+    - `uint64 UnmapCount` - Number of unmap operations performed
+    - `EBufferAccessMode LastAccessMode` - Last access mode used for mapping
+    - `EBufferUsage UsageHint` - Usage hint for the buffer
+
+### Enumerations
+- `EMemoryAccessPattern` [2_MemoryManagement/Public/Interfaces/IMemoryManager.h]
+  - Purpose: Memory access patterns for optimizing allocation strategies
+  - Values:
+    - `General` - General purpose memory access pattern
+    - `Sequential` - Sequential memory access pattern
+    - `Random` - Random memory access pattern
+    - `Mining` - Mining operation specific access pattern
+    - `SDFOperation` - SDF operation specific access pattern
+    - `OctreeTraversal` - Octree traversal specific access pattern
+
+- `EMemoryPriority` [2_MemoryManagement/Public/Interfaces/IMemoryManager.h]
+  - Purpose: Memory allocation priority levels for resource management
+  - Values:
+    - `Critical` - Critical priority, must not fail
+    - `High` - High priority, important for system operation
+    - `Normal` - Normal priority, standard allocations
+    - `Low` - Low priority, can be sacrificed under pressure
+    - `Cacheable` - Cacheable memory, can be freed and regenerated
+
+- `EMemoryTier` [2_MemoryManagement/Public/Interfaces/IMemoryManager.h]
+  - Purpose: Memory tier classifications for hierarchical memory management
+  - Values:
+    - `Hot` - Frequently accessed memory (highest performance)
+    - `Warm` - Moderately accessed memory
+    - `Cold` - Infrequently accessed memory
+    - `Archive` - Rarely accessed memory (lowest performance)
+
+- `EBufferAccessMode` [2_MemoryManagement/Public/Interfaces/IBufferProvider.h]
+  - Purpose: Buffer access modes for determining memory visibility
+  - Values:
+    - `ReadOnly` - Read-only access to the buffer
+    - `WriteOnly` - Write-only access to the buffer
+    - `ReadWrite` - Read-write access to the buffer
+
+- `EBufferUsage` [2_MemoryManagement/Public/Interfaces/IBufferProvider.h]
+  - Purpose: Buffer usage hints for optimizing memory layout and access patterns
+  - Values:
+    - `General` - General purpose buffer with balanced characteristics
+    - `SDFField` - Buffer optimized for SDF field data storage
+    - `SVONodes` - Buffer optimized for SVO octree node storage
+    - `MaterialChannels` - Buffer optimized for material channel data
+    - `VertexData` - Buffer optimized for vertex data
+    - `IndexData` - Buffer optimized for index data
+
+- `ECompressionLevel` [2_MemoryManagement/Public/Interfaces/ICompressionUtility.h]
+  - Purpose: Compression level settings for balancing speed vs. size
+  - Values:
+    - `None` - No compression
+    - `Fast` - Fast compression with moderate ratio
+    - `Default` - Balanced compression
+    - `Maximum` - Maximum compression ratio at cost of speed
+
+### Navigation Landmarks
+FileStructure: [2_MemoryManagement/Public/MemoryPoolManager.h]
+- Memory pool manager class declaration: ~L15-150
+- Default memory budgets: ~L45-50
+- Memory pressure thresholds: ~L52-53
+
+FileStructure: [2_MemoryManagement/Private/MemoryPoolManager.cpp]
+- Constructor and destructor: ~L23-50
+- Initialization and shutdown: ~L52-109
+- Pool creation and management: ~L111-189
+- Buffer management: ~L191-250
+- Memory allocation/deallocation: ~L252-290
+- Memory budget management: ~L292-350
+- Memory tracking: ~L352-400
+
+FileStructure: [2_MemoryManagement/Public/Interfaces/IMemoryManager.h]
+- Memory access pattern enum: ~L15-35
+- Memory priority enum: ~L40-60
+- Memory tier enum: ~L65-85
+- Memory manager interface declaration: ~L90-200
+
+FileStructure: [2_MemoryManagement/Public/Interfaces/IMemoryTracker.h]
+- Memory allocation info structure: ~L15-60
+- Memory stats structure: ~L65-120
+- SVO+SDF memory metrics structure: ~L125-170
+- Memory tracker interface: ~L175-250
+
+FileStructure: [2_MemoryManagement/Public/Interfaces/IBufferProvider.h]
+- Buffer access mode enum: ~L15-30
+- Buffer usage enum: ~L35-60
+- Buffer stats structure: ~L65-100
+- Buffer provider interface: ~L105-220
+
+FileStructure: [2_MemoryManagement/Public/Interfaces/IPoolAllocator.h]
+- Pool stats structure: ~L15-50
+- Pool allocator interface: ~L55-175
+
+FileStructure: [2_MemoryManagement/Public/ZeroCopyBuffer.h]
+- Zero-copy buffer class declaration: ~L15-120
+- GPU buffer integration: ~L125-175
+
+FileStructure: [2_MemoryManagement/Public/SVOAllocator.h]
+- SVO allocator class declaration: ~L15-90
+- SVO-specific allocation optimizations: ~L95-150
+
+### Implementation Patterns
+- Memory Management: Hierarchical memory tiers (Hot, Warm, Cold, Archive) for performance optimization
+- Reference Counting: Used for buffer management with AddRef/Release pattern to track usage
+- Defragmentation: Time-bounded defragmentation operations with priority levels
+- Statistics Tracking: Comprehensive metrics for memory usage by category, tier, and type
+- Zero-Copy Buffers: Support for efficient CPU/GPU data sharing with minimal synchronization
+- Memory Pools: Block-based allocation for specialized use cases with type-specific optimization
+- Thread Safety: Read-write locks, critical sections, and atomic operations for thread-safe memory management
+- Memory Budgets: Category-specific memory budgets to prevent resource exhaustion
+- Memory Pressure: Progressive response to memory pressure conditions
+- NUMA Awareness: Support for NUMA-aware memory allocation on platforms that support it
+
+### UE5 Integration
+- Uses UE5 RHI (Rendering Hardware Interface) for GPU buffer management
+- Integrates with UE5 memory management primitives like FMalloc
+- Utilizes UE5 threading primitives (FRWLock, FCriticalSection) for thread safety
+- Leverages UE5 smart pointers (TSharedPtr, TSharedRef) for resource management
+- Follows UE5 naming conventions and API patterns
+
+### Potential Conflicts
+- Multiple Initialize/Shutdown methods across different interfaces with similar signatures
+- Multiple GetStats() methods returning different structure types depending on context
+- Similar naming conventions for memory-related methods across different interfaces
+- Potential confusion between general memory allocation and pool-based allocation
+- Overlapping responsibility between IMemoryManager and more specialized allocators
+- Multiple buffer provider implementations with different performance characteristics
+
+### Known Issues & Constraints
+- Memory mapping might not be available on all platforms with same performance characteristics
+- Prediction accuracy depends on the quality of the cave network topology information
+- Frame budgeting must be carefully tuned to avoid hitches during hibernation/reactivation
+- Incremental operations might leave the system in temporary inconsistent states between frames
+- Complex interdependencies between hibernation, compression, and streaming systems
+
+## SYSTEM 3: Threading and Async Task System
+
+### Class Hierarchy
+- `IAsyncOperation` [3_ThreadingTaskSystem/Public/Interfaces/IAsyncOperation.h]: Interface
+  - Purpose: Base interface for asynchronous operations in the mining architecture
+  - Key methods:
+    - `bool Initialize()` - Initializes the async operation manager
+    - `void Shutdown()` - Shuts down the async operation manager
+    - `bool IsInitialized() const` - Checks initialization status
+    - `uint64 CreateOperation(const FString& OperationType, const FString& OperationName = TEXT(""))` - Creates a new async operation
+    - `bool StartOperation(uint64 OperationId, const TMap<FString, FString>& Parameters = TMap<FString, FString>())` - Starts an async operation
+    - `bool CancelOperation(uint64 OperationId, bool bWaitForCancellation = false)` - Cancels an async operation
+    - `EAsyncStatus GetOperationStatus(uint64 OperationId) const` - Gets operation status
+    - `FAsyncProgress GetOperationProgress(uint64 OperationId) const` - Gets progress information
+    - `FAsyncResult GetOperationResult(uint64 OperationId) const` - Gets operation result
+    - `bool WaitForCompletion(uint64 OperationId, uint32 TimeoutMs = 0)` - Waits for completion
+    - `bool RegisterProgressCallback(uint64 OperationId, const FAsyncProgressDelegate& Callback, uint32 UpdateIntervalMs = 100)` - Registers progress callback
+    - `bool RegisterCompletionCallback(uint64 OperationId, const FAsyncCompletionDelegate& Callback)` - Registers completion callback
+    - `uint32 GetActiveOperationCount() const` - Gets count of active operations
+    - `TArray<uint64> GetActiveOperations() const` - Gets IDs of all active operations
+    - `TArray<uint64> GetOperationsOfType(const FString& OperationType) const` - Gets operations of specific type
+    - `uint32 CleanupCompletedOperations(double MaxAgeSeconds = 300.0)` - Cleans up completed operations
+    - `static IAsyncOperation& Get()` - Gets singleton instance
+
+- `FAsyncOperationImpl` [3_ThreadingTaskSystem/Public/AsyncTaskManager.h]: Implements IAsyncOperation
+  - Purpose: Concrete implementation of an asynchronous operation
+  - Key methods:
+    - Constructor and destructor
+    - Getters for operation properties (ID, type, name)
+    - Status and progress management
+    - Callback registration and notification
+  - Key members:
+    - `uint64 Id` - Unique operation identifier
+    - `FString Type` - Operation type name
+    - `FString Name` - Operation name
+    - `EAsyncStatus Status` - Current operation status
+    - `FAsyncProgress Progress` - Progress information
+    - `FAsyncResult Result` - Operation result
+    - `TMap<FString, FString> Parameters` - Operation parameters
+    - `TArray<FAsyncProgressDelegate> ProgressCallbacks` - Progress callbacks
+    - `TArray<FAsyncCompletionDelegate> CompletionCallbacks` - Completion callbacks
+    - Time tracking for creation, start, completion
+
+- `FAsyncTaskManager` [3_ThreadingTaskSystem/Public/AsyncTaskManager.h]: Manager class
+  - Purpose: Manages asynchronous operations and their lifecycles
+  - Key methods:
+    - Implementation of IAsyncOperation interface
+    - Operation creation, tracking, and cleanup
+  - Key members:
+    - `TMap<uint64, TSharedPtr<FAsyncOperationImpl>> Operations` - Map of active operations
+    - `TMap<FString, TArray<uint64>> OperationsByType` - Operations organized by type
+    - `FCriticalSection OperationsLock` - Thread safety lock
+    - `FThreadSafeBool bIsInitialized` - Initialization flag
+    - `uint64 NextOperationId` - Counter for generating unique IDs
+    - `static FAsyncTaskManager* Instance` - Singleton instance
+
+- `ITaskScheduler` [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]: Interface
+  - Purpose: Provides task scheduling capabilities optimized for mining operations
+  - Key methods:
+    - `bool Initialize()` - Initializes the task scheduler
+    - `void Shutdown()` - Shuts down the task scheduler
+    - `bool IsInitialized() const` - Checks initialization status
+    - `uint64 ScheduleTask(TFunction<void()> TaskFunc, const FTaskConfig& Config, const FString& Desc = TEXT(""))` - Schedules task
+    - `uint64 ScheduleTaskWithCallback(TFunction<void()> TaskFunc, TFunction<void(bool)> OnComplete, const FTaskConfig& Config, const FString& Desc = TEXT(""))` - Schedules task with callback
+    - `bool CancelTask(uint64 TaskId)` - Cancels task
+    - `ETaskStatus GetTaskStatus(uint64 TaskId) const` - Gets task status
+    - `FTaskStats GetTaskStats(uint64 TaskId) const` - Gets task statistics
+    - `bool GetTaskProgress(uint64 TaskId, float& OutProgress) const` - Gets task progress
+    - `bool WaitForTask(uint64 TaskId, uint32 TimeoutMs = 0)` - Waits for task completion
+    - `bool WaitForTasks(const TArray<uint64>& TaskIds, bool bWaitForAll = true, uint32 TimeoutMs = 0)` - Waits for multiple tasks
+    - `uint32 GetWorkerThreadCount() const` - Gets worker thread count
+    - `int32 GetCurrentThreadId() const` - Gets current thread ID
+    - `bool IsTaskThread() const` - Checks if current thread is a task system thread
+    - `bool SetThreadPriority(int32 ThreadId, EThreadPriority Priority)` - Sets thread priority
+    - `bool SetThreadAffinity(int32 ThreadId, uint64 CoreMask)` - Sets thread affinity
+    - `TMap<ETaskStatus, int32> GetTaskCounts() const` - Gets task counts by status
+    - `static ITaskScheduler& Get()` - Gets singleton instance
+
+- `FTaskScheduler` [3_ThreadingTaskSystem/Public/TaskScheduler.h]: Implements ITaskScheduler
+  - Purpose: Concrete implementation of task scheduling for mining operations
+  - Key methods:
+    - Implementation of ITaskScheduler interface
+    - Task creation, execution, and lifecycle management
+  - Key members:
+    - Task tracking and management structures
+    - Thread pool and worker management
+    - Priority queue integration
+
+- `IThreadSafeQueue` [3_ThreadingTaskSystem/Public/Interfaces/IThreadSafeQueue.h]: Interface
+  - Purpose: Provides thread-safe queue operations for concurrent access
+  - Key methods:
+    - `bool Initialize(int32 InCapacity = 0)` - Initializes queue with capacity
+    - `void Shutdown()` - Shuts down the queue
+    - `bool IsInitialized() const` - Checks initialization status
+    - `EQueueResult Enqueue(void* Item)` - Enqueues an item
+    - `EQueueResult EnqueueWithTimeout(void* Item, uint32 TimeoutMs)` - Enqueues with timeout
+    - `EQueueResult Dequeue(void*& OutItem)` - Dequeues an item
+    - `EQueueResult DequeueWithTimeout(void*& OutItem, uint32 TimeoutMs)` - Dequeues with timeout
+    - `EQueueResult Peek(void*& OutItem) const` - Peeks at next item without removing
+    - `bool IsEmpty() const` - Checks if queue is empty
+    - `bool IsFull() const` - Checks if queue is full
+    - `int32 GetSize() const` - Gets current size
+    - `int32 GetCapacity() const` - Gets maximum capacity
+    - `void Clear()` - Clears all items
+    - `FQueueStats GetStats() const` - Gets queue statistics
+    - `void ResetStats()` - Resets statistics
+    - `void Close()` - Closes the queue
+    - `bool IsClosed() const` - Checks if queue is closed
+    - `bool SetCapacity(int32 NewCapacity)` - Sets queue capacity
+    - `int32 EnqueueBatch(void** Items, int32 Count)` - Enqueues multiple items
+    - `int32 DequeueBatch(void** OutItems, int32 MaxCount)` - Dequeues multiple items
+    - `static IThreadSafeQueue& Get()` - Gets singleton instance
+
+- `TThreadSafeQueue<T>` [3_ThreadingTaskSystem/Public/Interfaces/IThreadSafeQueue.h]: Template class
+  - Purpose: Type-safe wrapper for IThreadSafeQueue
+  - Key methods:
+    - Type-safe wrappers for all IThreadSafeQueue methods
+  - Key members:
+    - `IThreadSafeQueue* Queue` - Underlying queue implementation
+
+- `ITransactionManager` [3_ThreadingTaskSystem/Public/Interfaces/ITransactionManager.h]: Interface
+  - Purpose: Manages zone-based transactions with concurrency control
+  - Key methods:
+    - Transaction creation, validation, and execution
+    - Conflict detection and resolution
+    - Zone version management
+
+- `FTransactionManager` [3_ThreadingTaskSystem/Public/TransactionManager.h]: Implements ITransactionManager
+  - Purpose: Handles mining transactions with different concurrency models
+  - Key methods:
+    - Implementation of ITransactionManager interface
+    - Transaction processing and conflict resolution
+  - Key members:
+    - Zone version tracking
+    - Transaction history
+    - Conflict statistics
+
+- `FThreadSafeOperationQueue` [3_ThreadingTaskSystem/Public/ThreadSafeOperationQueue.h]: Implementation class
+  - Purpose: Specialized thread-safe queue for mining operations
+  - Key methods:
+    - Implementation of IThreadSafeQueue interface
+    - Mining-specific optimizations
+  - Key members:
+    - Internal queue structures
+    - Concurrency control primitives
+
+- `FPriorityTaskQueue` [3_ThreadingTaskSystem/Public/PriorityTaskQueue.h]: Implementation class
+  - Purpose: Task queue with priority-based scheduling
+  - Key methods:
+    - Priority-based enqueue and dequeue
+    - Task prioritization and ordering
+  - Key members:
+    - Priority buckets for tasks
+    - Task ordering within priorities
+
+- `FParallelExecutor` [3_ThreadingTaskSystem/Public/ParallelExecutor.h]: Implementation class
+  - Purpose: Executes tasks in parallel with workload distribution
+  - Key methods:
+    - Work distribution and parallel execution
+    - Load balancing across worker threads
+  - Key members:
+    - Worker thread pool
+    - Work stealing mechanisms
+
+- `FZoneManager` [3_ThreadingTaskSystem/Public/ZoneManager.h]: Implementation class
+  - Purpose: Manages mining zones with multi-threading support
+  - Key methods:
+    - Zone creation and management
+    - Zone-based transaction coordination
+  - Key members:
+    - Zone grid management
+    - Zone state tracking
+
+### Structures
+- `FAsyncProgress` [3_ThreadingTaskSystem/Public/Interfaces/IAsyncOperation.h]
+  - Purpose: Tracks progress of asynchronous operations
+  - Key members:
+    - `float CompletionPercentage` - Progress percentage (0.0 - 1.0)
+    - `int32 CurrentStage` - Current operation stage
+    - `int32 TotalStages` - Total number of stages
+    - `FString StatusMessage` - Optional status message
+    - `double ElapsedTimeSeconds` - Time elapsed since start
+    - `double EstimatedTimeRemainingSeconds` - Estimated time remaining
+    - `int64 ItemsProcessed` - Number of items processed
+    - `int64 TotalItems` - Total items to process
+
+- `FAsyncResult` [3_ThreadingTaskSystem/Public/Interfaces/IAsyncOperation.h]
+  - Purpose: Holds result of an asynchronous operation
+  - Key members:
+    - `bool bSuccess` - Whether operation succeeded
+    - `FString ErrorMessage` - Error message if failed
+    - `int32 ErrorCode` - Error code if failed
+    - `bool bCancelled` - Whether operation was cancelled
+    - `TSharedPtr<void> ResultData` - Optional result data
+
+- `FTaskConfig` [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]
+  - Purpose: Configuration for scheduled tasks
+  - Key members:
+    - `ETaskPriority Priority` - Task priority level
+    - `ETaskType Type` - Task type for specialized handling
+    - `int32 PreferredCore` - Preferred CPU core
+    - `bool bCancellable` - Whether task can be canceled
+    - `bool bSupportsProgress` - Whether task reports progress
+    - `TArray<FTaskDependency> Dependencies` - Task dependencies
+    - `uint32 MaxExecutionTimeMs` - Maximum execution time
+    - `bool bAutoRetry` - Whether to auto-retry on failure
+    - `uint32 MaxRetries` - Maximum retry attempts
+    - `uint8 RetryPriorityBoost` - Priority boost for retries
+
+- `FTaskStats` [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]
+  - Purpose: Statistics for task performance monitoring
+  - Key members:
+    - `double QueueTimeMs` - Time spent in queue
+    - `double ExecutionTimeMs` - Time spent executing
+    - `uint32 RetryCount` - Number of retry attempts
+    - `uint64 PeakMemoryBytes` - Peak memory usage
+    - `uint32 ExecutingThreadId` - Thread that executed the task
+    - `int32 ExecutingCore` - CPU core that executed the task
+
+- `FQueueStats` [3_ThreadingTaskSystem/Public/Interfaces/IThreadSafeQueue.h]
+  - Purpose: Statistics for queue performance monitoring
+  - Key members:
+    - `int32 CurrentSize` - Current number of items
+    - `int32 Capacity` - Maximum capacity
+    - `uint64 TotalEnqueued` - Total items enqueued
+    - `uint64 TotalDequeued` - Total items dequeued
+    - `uint64 EnqueueFailures` - Failed enqueue operations
+    - `uint64 DequeueFailures` - Failed dequeue operations
+    - `uint64 TimeoutCount` - Number of timeouts
+    - `int32 PeakSize` - Peak queue size
+    - `double AverageEnqueueWaitTimeMs` - Average enqueue wait time
+    - `double AverageDequeueWaitTimeMs` - Average dequeue wait time
+    - `bool bIsClosed` - Whether queue is closed
+
+- `FTaskDependency` [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]
+  - Purpose: Defines task dependencies for complex task chains
+  - Key members:
+    - `uint64 TaskId` - ID of dependent task
+    - `bool bRequired` - Whether dependency is required
+    - `uint32 TimeoutMs` - Timeout for waiting on dependency
+
+### Enumerations
+- `EAsyncStatus` [3_ThreadingTaskSystem/Public/Interfaces/IAsyncOperation.h]
+  - Purpose: Status codes for asynchronous operations
+  - Values: NotStarted, InProgress, Completed, Failed, Cancelled, TimedOut, Invalid
+
+- `ETaskPriority` [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]
+  - Purpose: Task priority levels for scheduling
+  - Values: Critical, High, Normal, Low, Minimal
+
+- `ETaskStatus` [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]
+  - Purpose: Status codes for tasks
+  - Values: Queued, Running, Completed, Cancelled, Failed
+
+- `ETaskType` [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]
+  - Purpose: Task type classification for specialized handling
+  - Values: General, MiningOperation, SDFOperation, OctreeTraversal, MaterialOperation, ZoneTransaction
+
+- `EQueueResult` [3_ThreadingTaskSystem/Public/Interfaces/IThreadSafeQueue.h]
+  - Purpose: Result codes for queue operations
+  - Values: Success, QueueFull, QueueEmpty, Timeout, QueueClosed, Error
+
+### Delegates
+- `FAsyncProgressDelegate` [3_ThreadingTaskSystem/Public/Interfaces/IAsyncOperation.h]
+  - Purpose: Callback for async operation progress updates
+  - Signature: `DECLARE_DELEGATE_OneParam(FAsyncProgressDelegate, const FAsyncProgress&)`
+
+- `FAsyncCompletionDelegate` [3_ThreadingTaskSystem/Public/Interfaces/IAsyncOperation.h]
+  - Purpose: Callback for async operation completion
+  - Signature: `DECLARE_DELEGATE_OneParam(FAsyncCompletionDelegate, const FAsyncResult&)`
+
+### Navigation Landmarks
+FileStructure: [3_ThreadingTaskSystem/Public/Interfaces/IAsyncOperation.h]
+- Async operation status enum: ~L12-30
+- Async progress structure: ~L35-67
+- Async result structure: ~L72-110
+- Delegates declaration: ~L112-120
+- IAsyncOperation interface: ~L125-195
+
+FileStructure: [3_ThreadingTaskSystem/Public/AsyncTaskManager.h]
+- FAsyncOperationImpl class: ~L10-95
+- FAsyncTaskManager class: ~L100-170
+
+FileStructure: [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]
+- Task priority enum: ~L15-25
+- Task status enum: ~L30-40
+- Task type enum: ~L45-60
+- Task dependency structure: ~L65-75
+- Task config structure: ~L80-115
+- Task stats structure: ~L120-135
+- ITaskScheduler interface: ~L145-230
+
+FileStructure: [3_ThreadingTaskSystem/Public/Interfaces/IThreadSafeQueue.h]
+- Queue result enum: ~L10-25
+- Queue stats structure: ~L30-65
+- IThreadSafeQueue interface: ~L75-165
+- TThreadSafeQueue template: ~L170-270
+
+### Implementation Patterns
+- Singleton Pattern: Each manager class implements a singleton pattern with thread-safe initialization
+  ```cpp
+  static ITaskScheduler& Get();
+  static FTaskScheduler* Instance;
+  static FThreadSafeBool bInstanceInitialized;
+  ```
+
+- Thread Safety: Comprehensive thread safety mechanisms throughout the system
+  ```cpp
+  FCriticalSection OperationsLock;
+  FThreadSafeBool bIsInitialized;
+  FThreadSafeCounter PendingOperations;
+  ```
+
+- Task Delegation: Delegation pattern for task execution and callbacks
+  ```cpp
+  TFunction<void()> TaskFunc;
+  TFunction<void(bool)> OnComplete;
+  ```
+
+- Progress Reporting: Standardized progress tracking and reporting
+  ```cpp
+  FAsyncProgress Progress;
+  FAsyncProgressDelegate ProgressCallback;
+  ```
+
+- Resource Management: Careful resource cleanup for tasks and operations
+  ```cpp
+  virtual void Shutdown() override;
+  virtual uint32 CleanupCompletedOperations(double MaxAgeSeconds) override;
+  ```
+
+- Prioritization: Multi-level priority handling for tasks
+  ```cpp
+  ETaskPriority Priority;
+  uint8 RetryPriorityBoost;
+  ```
+
+- Dependency Management: Support for complex task dependencies
+  ```cpp
+  TArray<FTaskDependency> Dependencies;
+  bool WaitForTasks(const TArray<uint64>& TaskIds, bool bWaitForAll, uint32 TimeoutMs);
+  ```
+
+### UE5 Integration
+- Uses UE5 threading primitives (FCriticalSection, FEvent, FThreadSafeBool)
+- Implements UE5 interfaces for reflection and blueprint exposure
+- Leverages UE5 task graph system for certain operations
+- Compatible with UE5's async loading and streaming systems
+- Follows UE5 naming and design conventions
+
+### Naming Patterns
+- Interface classes: Prefix with 'I' (ITaskScheduler, IThreadSafeQueue)
+- Implementation classes: Prefix with 'F' (FTaskScheduler, FAsyncTaskManager)
+- Enumerations: Prefix with 'E' (ETaskPriority, EAsyncStatus)
+- Structures: Prefix with 'F' (FTaskConfig, FAsyncProgress)
+- Delegates: Suffix with 'Delegate' (FAsyncProgressDelegate)
+- Boolean methods: Prefix with 'Is' or 'Has' (IsInitialized, IsTaskThread)
+- Parameters: Prefix with 'In' for inputs, 'Out' for outputs (InCapacity, OutProgress)
+
+### Potential Conflicts
+- Multiple Initialize/Shutdown methods across different interfaces
+  - IAsyncOperation::Initialize() vs ITaskScheduler::Initialize()
+  - All system components have similar lifecycle methods
+
+- Multiple Get() singleton methods with different return types
+  - IAsyncOperation::Get() vs ITaskScheduler::Get()
+  - Each subsystem has its own singleton accessor
+
+- Multiple status enumerations with similar values
+  - EAsyncStatus vs ETaskStatus
+  - Different but related status tracking systems
+
+- Queue vs Task vs Operation terminology
+  - Clear conceptual separation needed between these related concepts
+
+### Architectural Boundaries
+- Async Task System provides the foundation for other systems' concurrent operations
+- Transaction Manager bridges between task system and zone-based mining operations
+- Clear separation between task scheduling (ITaskScheduler) and async operation management (IAsyncOperation)
+- Thread-safe data structures (IThreadSafeQueue) support multiple concurrent systems
+
+### Dependencies
+- Depends on UE5 Core (CoreMinimal.h, UObject)
+- Depends on System 1 (Core Registry) for type resolution
+- Required by most other systems for concurrent operations
+- Particularly important for System 2.3 (Zone-Based Concurrent Mining)
+
+### Thread Safety Model
+- Task Creation: Thread-safe via critical sections
+- Operation Execution: Managed by task scheduler with isolation
+- Progress Updates: Atomic operations and thread-safe counters
+- Result Access: Protected by synchronization primitives
+- Queue Operations: Fully thread-safe with internal locking
+
+### Performance Considerations
+- Task prioritization ensures critical mining operations complete first
+- Work stealing algorithms balance load across available cores
+- NUMA awareness for optimal memory access patterns
+- Avoids over-subscription with worker thread pool management
+- Uses atomic operations where possible to minimize lock contention
+
+### Known Issues & Constraints
+- Complex task dependencies can potentially lead to deadlocks
+- Task cancellation during certain phases may leave resources in inconsistent states
+- Thread affinity settings may not be honored on all platforms
+- Progress reporting has minimal performance impact but is not zero-cost

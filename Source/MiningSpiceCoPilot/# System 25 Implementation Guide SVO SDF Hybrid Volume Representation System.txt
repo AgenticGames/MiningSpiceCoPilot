@@ -1,0 +1,247 @@
+# System 25: SVO+SDF Hybrid Volume Representation System - Implementation Guide
+
+## Overview
+This document outlines the critical integration points needed while implementing the SVO+SDF Hybrid Volume Representation System (System 25) to ensure proper interaction with previously implemented core systems. These integration requirements must be addressed precisely during implementation to ensure correct system behavior.
+
+## Core Dependencies
+
+### System 1: Core Registry and Type System
+- **Type Registration Requirements**
+  - Register SVO node types (`ESVONodeClass`: Homogeneous, Interface, Empty) through `FSVOTypeRegistry::Get().RegisterNodeType()`
+  - Register field types for SDF operations through `FSDFTypeRegistry::Get().RegisterFieldType()`
+  - Register material relationships for proper boundary handling through `FMaterialRegistry::Get().RegisterMaterialRelationship()`
+
+- **Service Resolution Integration**
+  - Ensure `FSVOHybridVolume` is properly exposed through the `IServiceLocator` interface
+  - Implement service resolution in constructor: `IServiceLocator::Get().ResolveService<IConfigManager>()`
+
+- **Interface Implementation**
+  - Properly implement required interfaces (consult Core Registry for required virtual methods)
+  - Adhere to type hierarchy defined in System 1
+
+### System 2: Memory Management System
+- **Memory Allocation Integration**
+  - Utilize `FMemoryPoolManager::Get()` to create node pools with appropriate block sizes
+  - Implement `NarrowBandAllocator` using `IMemoryManager::Get().CreatePool()` with correct memory access patterns
+  - Enforce memory alignment requirements for SIMD operations (16/32/64-byte boundaries)
+
+- **Buffer Sharing Requirements**
+  - Implement zero-copy GPU buffer access using `IBufferProvider* buffer = IMemoryManager::Get().CreateBuffer()`
+  - Ensure proper synchronization when mapping/unmapping buffers
+
+- **Memory Tracking**
+  - Register memory allocations: `IMemoryManager::Get().RegisterAllocation()`
+  - Implement memory telemetry through `IMemoryTracker::Get().TrackAllocation()`
+  - Set appropriate memory budgets for different components
+
+### System 3: Threading and Async Task System
+- **Zone-Based Transactions**
+  - Integrate with `ITransactionManager::Get()` for field modifications
+  - Implement read/write set tracking for optimistic concurrency
+  - Utilize fast-path selection based on conflict probability
+
+- **Parallel Processing**
+  - Schedule tasks using `ITaskScheduler::Get().ScheduleTask()` with appropriate priorities
+  - Use `FParallelExecutor` for batch field operations
+  - Create task dependencies for complex operations
+
+- **Thread Safety**
+  - Utilize lock-free access where possible with `FThreadSafeOperationQueue`
+  - Implement appropriate synchronization using primitives from System 3
+  - Design for lock minimization with optimistic concurrency
+
+### System 4: Event System
+- **Event Publishing Requirements**
+  - Define event types in SVOEvents.h compatible with `EventBus` system
+  - Publish material boundary events through `UEventBus::Get()->PublishEvent()`
+  - Implement proper event context with material and zone information
+
+- **Event Subscription**
+  - Subscribe to relevant events from other systems using `UEventBus::Get()->SubscribeToEvent()`
+  - Properly handle event dispatching with appropriate priorities
+  - Design event propagation for cross-region consistency
+
+- **Event Optimization**
+  - Implement event coalescing for high-frequency field updates
+  - Utilize the `EventPathOptimizer` for efficient multi-region event delivery
+  - Consider event throttling for non-critical updates
+
+### System 5: Configuration Management System
+- **Configuration Parameters**
+  - Retrieve configuration parameters through `IConfigManager::Get().GetValue()`
+  - Define SVO+SDF specific parameters in configuration schema
+  - Handle dynamic configuration changes through change callbacks
+
+- **Hardware-Specific Configuration**
+  - Use `PerformanceConfig` to detect and configure for different hardware capabilities
+  - Implement SIMD path selection based on available instruction sets
+  - Support runtime quality adjustment based on performance metrics
+
+- **Material Configuration**
+  - Access material-specific parameters through `MaterialConfigProvider`
+  - Configure field precision based on material importance
+  - Handle cross-material interaction settings
+
+### System 6: Service Registry and Dependency Management
+- **Service Registration**
+  - Register SVO+SDF services through `IDependencyServiceLocator::Get().RegisterService()`
+  - Define proper service dependencies using `FDependencyManager::Get().RegisterDependency()`
+  - Handle service lifecycle with proper initialization sequencing
+
+- **Service Health Monitoring**
+  - Integrate with `IServiceMonitor::Get().RegisterServiceForMonitoring()`
+  - Implement service recovery mechanisms
+  - Report service operations for health tracking
+
+- **Cross-Region Coordination**
+  - Design zone-specific and region-specific service instances
+  - Implement proper service resolution hierarchy
+  - Handle cross-region boundary services correctly
+
+### System 7: Factory System for Component Creation
+- **Factory Implementation**
+  - Extend `USVONodeFactory` for creating specialized node instances
+  - Use `UDistanceFieldFactory` for SDF component creation
+  - Leverage `UMaterialSDFFactory` for material-specific field components
+
+- **Component Pooling**
+  - Configure component pools using `IComponentPoolManager::Get().CreatePool()`
+  - Implement proper component recycling and state reset
+  - Optimize pool sizes based on usage patterns
+
+- **Construction Parameters**
+  - Utilize the builder pattern through `IComponentBuilder`
+  - Define type-safe parameter specifications
+  - Implement proper validation during construction
+
+## Network Implementation Requirements
+
+### Network State Representation
+- **Version Tracking**
+  - Implement state version counters for field modifications
+  - Track material-specific version numbers
+  - Design efficient version comparison for change detection
+
+- **Partial Replication**
+  - Create bandwidth-efficient partial state replication
+  - Implement priority-based field synchronization
+  - Support delta compression for field updates
+
+- **Authority Model**
+  - Implement zone-based authority validation
+  - Create server authority checks for field modifications
+  - Design client prediction with server reconciliation
+
+- **Operation Ordering**
+  - Enforce deterministic operation execution order
+  - Implement conflict detection and resolution
+  - Design efficient state reconciliation for divergent clients
+
+## Specific Implementation Details
+
+### Memory Layout Considerations
+```cpp
+// Use these memory layout patterns for optimal performance
+// Node pooling with specific alignment:
+FOctreeNodePool* nodePool = new FOctreeNodePool(
+    "SVONodePool", 
+    nodeSize, 
+    1024, // Initial block count
+    16,   // 16-byte alignment for SIMD
+    EMemoryAccessPattern::OctreeTraversal
+);
+
+// Use Z-order curve mapping for cache coherence:
+uint32 index = ZOrderCurve::MortonEncode(x, y, z);
+
+// Narrow-band allocation:
+float* narrowBandData = NarrowBandAllocator::Allocate(
+    interfaceSize,
+    precisionLevel,
+    EMemoryPriority::High
+);
+```
+
+### Transaction Integration
+```cpp
+// Integrate with transaction system for mining operations
+uint64 transactionId = ITransactionManager::Get().BeginTransaction(ETransactionConcurrency::Optimistic);
+// Modify SVO nodes and SDF fields
+bool success = ITransactionManager::Get().CommitTransaction(transactionId);
+if (!success) {
+    // Handle conflict/retry logic
+}
+```
+
+### SIMD Optimization Paths
+```cpp
+// Implement multiple evaluation paths based on hardware capability
+if (FPlatformMisc::GetCPUVendor() == FPlatformMisc::Intel && FPlatformMisc::HasAVX512()) {
+    // Use AVX-512 implementation
+    EvaluateDistanceFieldAVX512(points, results);
+} else if (FPlatformMisc::HasAVX2()) {
+    // Use AVX2 implementation
+    EvaluateDistanceFieldAVX2(points, results);
+} else {
+    // Use fallback implementation
+    EvaluateDistanceFieldFallback(points, results);
+}
+```
+
+### GPU Integration
+```cpp
+// Zero-copy buffer access for GPU compute
+IBufferProvider* fieldBuffer = IMemoryManager::Get().CreateBuffer(
+    "MaterialSDFBuffer",
+    bufferSize,
+    true, // Zero-copy
+    true  // GPU writable
+);
+
+void* cpuData = fieldBuffer->Map(EBufferAccessMode::ReadWrite);
+// Modify data
+fieldBuffer->Unmap();
+// Use in compute shader
+```
+
+## Critical Implementation Requirements
+
+1. **Thread Safety**: All operations must be thread-safe with appropriate concurrency control
+2. **Memory Efficiency**: Implement narrow-band precision with distance-based detail levels
+3. **SIMD Optimization**: Create vectorized implementations for field evaluation and queries
+4. **Cache Coherence**: Use Z-order curves for optimal memory access patterns
+5. **Network Efficiency**: Implement delta compression and partial replication
+6. **Cross-Region Continuity**: Ensure seamless geological features across region boundaries
+7. **Material Interactions**: Implement Boolean operations with proper priority handling
+8. **Performance Scaling**: Support adaptive quality based on hardware capabilities
+
+## Implementation Sequence
+1. Define core interfaces and data structures
+2. Implement memory allocation and management
+3. Create base SVO structure with node classification
+4. Implement multi-channel SDF representation
+5. Add thread-safe access mechanisms
+6. Integrate with transaction system
+7. Implement SIMD-optimized field evaluation
+8. Add GPU buffer sharing
+9. Implement material interaction model
+10. Create serialization system
+11. Add network state synchronization
+12. Implement performance optimizations
+
+## Testing Requirements
+- Thread safety validation with concurrent operations
+- Memory efficiency benchmarking
+- Performance testing with different hardware profiles
+- Network synchronization verification
+- Cross-region continuity validation
+- Material interaction correctness testing
+
+## References
+- System 1 Documentation: Core Registry and Type System
+- System 2 Documentation: Memory Management System
+- System 3 Documentation: Threading and Async Task System
+- System 4 Documentation: Event System
+- System 5 Documentation: Configuration Management System
+- System 6 Documentation: Service Registry and Dependency Management
+- System 7 Documentation: Factory System for Component Creation

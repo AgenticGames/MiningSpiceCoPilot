@@ -4,167 +4,178 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Containers/Array.h"
+#include "Math/Vector.h"
 #include "Containers/Map.h"
+#include "Containers/Array.h"
 
 // Forward declarations
+class USVOHybridVolume;
 class FMaterialSDFManager;
 
 /**
  * Material interaction modeling with Boolean operations and transitions
- * Handles material priority, blending functions, and interaction constraints
- * Supports physics-based interactions and realistic mining responses
+ * Handles material relationships, blending, priority systems and transition handling
  */
 class MININGSPICECOPILOT_API FMaterialInteractionModel
 {
 public:
+    // Constructor and destructor
     FMaterialInteractionModel();
     ~FMaterialInteractionModel();
 
-    // Interaction rule types
-    enum class EInteractionType : uint8
+    // Boolean operation types for material interactions
+    enum class EBooleanOperation : uint8
     {
-        Replace,      // Complete replacement
-        Blend,        // Gradual blending
-        Boundary,     // Sharp boundary
-        Custom        // Custom interaction function
+        Union,
+        Subtraction,
+        Intersection,
+        SmoothUnion,
+        SmoothSubtraction,
+        SmoothIntersection,
+        Blend,
+        Replace
     };
-
-    // Blend function types
+    
+    // Blending function types for smooth transitions
     enum class EBlendFunction : uint8
     {
         Linear,
         Smoothstep,
         Exponential,
-        Sinusoidal,
+        Cosine,
+        Cubic,
         Custom
     };
 
-    // Material pair definition used as key in the interaction rules
-    struct FMaterialPair
+    // Material relationship type
+    enum class ERelationshipType : uint8
+    {
+        Compatible,     // Materials can blend with each other
+        Incompatible,   // Materials cannot blend and have a sharp boundary
+        Dominates,      // One material always replaces the other
+        Submits,        // One material is always replaced by the other
+        Custom          // Custom relationship with specific handler
+    };
+
+    // Structure for defining material relationship rules
+    struct FMaterialRelationship
     {
         uint8 MaterialA;
         uint8 MaterialB;
+        ERelationshipType Type;
+        float TransitionWidth;
+        EBlendFunction BlendFunc;
+        int32 Priority;
         
-        // Default constructor
-        FMaterialPair() : MaterialA(0), MaterialB(0) {}
-        
-        // Constructor with materials
-        FMaterialPair(uint8 InMaterialA, uint8 InMaterialB) : MaterialA(InMaterialA), MaterialB(InMaterialB) {}
-        
-        // Equal operator for use with TMap
-        bool operator==(const FMaterialPair& Other) const
-        {
-            return MaterialA == Other.MaterialA && MaterialB == Other.MaterialB;
-        }
-        
-        // For use in TMap as key
-        friend uint32 GetTypeHash(const FMaterialPair& Pair)
-        {
-            return HashCombine(GetTypeHash(Pair.MaterialA), GetTypeHash(Pair.MaterialB));
-        }
-    };
-    
-    // Defines how two materials interact when they meet
-    struct FInteractionRule
-    {
-        enum class EInteractionType : uint8
-        {
-            None,
-            Blend,
-            Replace,
-            Erode,
-            Repel
-        };
-        
-        EInteractionType Type;
-        float Strength; // 0.0 to 1.0, how strongly materials interact
-        float Distance; // Distance threshold for interaction to take effect
-        
-        // Default constructor
-        FInteractionRule() 
-            : Type(EInteractionType::None)
-            , Strength(0.0f)
-            , Distance(0.0f) 
-        {}
-        
-        // Constructor with parameters
-        FInteractionRule(EInteractionType InType, float InStrength, float InDistance)
-            : Type(InType)
-            , Strength(InStrength)
-            , Distance(InDistance)
-        {}
-    };
-    
-    // Settings for blending two materials
-    struct FBlendSettings
-    {
-        float BlendFactor; // 0.0 to 1.0, how much to blend
-        float TransitionWidth; // Width of the transition region
-        bool bSmoothTransition; // Whether to use smooth interpolation
-        
-        // Default constructor
-        FBlendSettings()
-            : BlendFactor(0.5f)
+        FMaterialRelationship()
+            : MaterialA(0)
+            , MaterialB(0)
+            , Type(ERelationshipType::Compatible)
             , TransitionWidth(1.0f)
-            , bSmoothTransition(true)
+            , BlendFunc(EBlendFunction::Linear)
+            , Priority(0)
         {}
+    };
+    
+    // Structure for material operation context
+    struct FOperationContext
+    {
+        FVector Position;
+        float Radius;
+        float Strength;
+        uint8 PrimaryMaterial;
+        uint8 SecondaryMaterial;
+        EBooleanOperation Operation;
+        EBlendFunction BlendFunc;
+        float BlendFactor;
         
-        // Constructor with parameters
-        FBlendSettings(float InBlendFactor, float InTransitionWidth, bool bInSmoothTransition)
-            : BlendFactor(InBlendFactor)
-            , TransitionWidth(InTransitionWidth)
-            , bSmoothTransition(bInSmoothTransition)
+        FOperationContext()
+            : Position(FVector::ZeroVector)
+            , Radius(1.0f)
+            , Strength(1.0f)
+            , PrimaryMaterial(0)
+            , SecondaryMaterial(0)
+            , Operation(EBooleanOperation::Union)
+            , BlendFunc(EBlendFunction::Linear)
+            , BlendFactor(0.5f)
         {}
     };
 
-    // Initialization
-    void Initialize(FMaterialSDFManager* InMaterialManager);
+    // Initialize with volume reference
+    void Initialize(USVOHybridVolume* InVolume, FMaterialSDFManager* InMaterialManager);
     
-    // Material interaction rules
-    void SetInteractionRule(uint8 MaterialA, uint8 MaterialB, EInteractionType Type);
-    void SetMaterialPriority(uint8 MaterialIndex, uint8 Priority);
-    void SetMaterialCompatibility(uint8 MaterialA, uint8 MaterialB, bool IsCompatible);
-    void SetBlendFunction(uint8 MaterialA, uint8 MaterialB, EBlendFunction Function, float Strength);
+    // Material relationship management
+    void SetMaterialRelationship(uint8 MaterialA, uint8 MaterialB, const FMaterialRelationship& Relationship);
+    void SetDefaultRelationship(ERelationshipType Type, float TransitionWidth = 1.0f);
+    FMaterialRelationship GetMaterialRelationship(uint8 MaterialA, uint8 MaterialB) const;
+    void ClearRelationships();
+    
+    // Material priority system
+    void SetMaterialPriority(uint8 MaterialIndex, int32 Priority);
+    int32 GetMaterialPriority(uint8 MaterialIndex) const;
+    uint8 GetDominantMaterial(const TArray<uint8>& Materials) const;
+    
+    // Blending functions
+    void RegisterCustomBlendFunction(EBlendFunction BlendType, TFunction<float(float, float, float)> BlendFunc);
+    float ApplyBlendFunction(EBlendFunction BlendType, float ValueA, float ValueB, float BlendFactor) const;
+    
+    // Core SDF operations
+    float CombineDistanceFields(float DistanceA, float DistanceB, EBooleanOperation Operation, float Smoothing = 0.0f) const;
+    float BlendDistanceFields(float DistanceA, float DistanceB, EBlendFunction BlendFunc, float BlendFactor) const;
     
     // Material operations
-    void ApplyMaterialOperation(const FVector& Position, float Radius, uint8 MaterialIndex, bool IsAdditive, float Strength);
-    void BlendMaterials(const FVector& Position, float Radius, uint8 SourceMaterial, uint8 TargetMaterial, float BlendFactor);
-    void ReplaceMaterial(const FVector& Position, float Radius, uint8 SourceMaterial, uint8 TargetMaterial);
+    void ApplyMaterialOperation(const FOperationContext& Context);
+    void BlendMaterials(const FVector& Position, float Radius, uint8 MaterialA, uint8 MaterialB, float BlendFactor, EBlendFunction BlendFunc = EBlendFunction::Linear);
+    void UnionMaterials(const FVector& Position, float Radius, uint8 MaterialA, uint8 MaterialB, float Smoothing = 0.0f);
+    void SubtractMaterials(const FVector& Position, float Radius, uint8 MaterialA, uint8 MaterialB, float Smoothing = 0.0f);
+    void IntersectMaterials(const FVector& Position, float Radius, uint8 MaterialA, uint8 MaterialB, float Smoothing = 0.0f);
     
-    // Custom interaction registration
-    using FCustomInteractionFunction = TFunction<float(float, float, float)>;
-    using FCustomBlendFunction = TFunction<float(float, float)>;
+    // Boundary management
+    float GetBoundaryWidth(uint8 MaterialA, uint8 MaterialB) const;
+    void SetBoundaryWidth(uint8 MaterialA, uint8 MaterialB, float Width);
+    bool HasSharpBoundary(uint8 MaterialA, uint8 MaterialB) const;
     
-    void RegisterCustomInteraction(uint8 MaterialA, uint8 MaterialB, FCustomInteractionFunction Function);
-    void RegisterCustomBlendFunction(uint8 MaterialA, uint8 MaterialB, FCustomBlendFunction Function);
-    
-    // Query methods
-    EInteractionType GetInteractionType(uint8 MaterialA, uint8 MaterialB) const;
+    // Material compatibility
     bool AreMaterialsCompatible(uint8 MaterialA, uint8 MaterialB) const;
-    uint8 GetDominantMaterial(const TArray<TPair<uint8, float>>& Materials) const;
+    TArray<uint8> GetCompatibleMaterials(uint8 MaterialIndex) const;
     
     // Network synchronization
-    void SerializeInteractionRules(FArchive& Ar);
-    TArray<uint8> GenerateRulesDelta(uint64 BaseVersion) const;
-    void ApplyRulesDelta(const TArray<uint8>& DeltaData);
-    bool ValidateInteraction(uint8 MaterialA, uint8 MaterialB) const;
-    uint64 GetCurrentRulesVersion() const;
-
-private:
-    // Internal data structures
-    FMaterialSDFManager* MaterialManager;
-    TMap<FMaterialPair, FInteractionRule> InteractionRules;
-    TMap<uint8, uint8> MaterialPriorities;
-    TMap<FMaterialPair, bool> MaterialCompatibility;
-    TMap<FMaterialPair, FBlendSettings> BlendSettings;
-    TMap<FMaterialPair, FCustomInteractionFunction> CustomInteractions;
-    TMap<FMaterialPair, FCustomBlendFunction> CustomBlendFunctions;
-    uint64 RulesVersion;
+    TArray<uint8> SerializeInteractionData() const;
+    bool DeserializeInteractionData(const TArray<uint8>& Data);
+    void RegisterNetworkVersion(uint64 VersionId);
     
-    // Helper methods
-    FMaterialPair MakePair(uint8 MaterialA, uint8 MaterialB) const;
-    float ApplyBlendFunction(EBlendFunction Function, float Alpha, float Strength) const;
-    void PropagateRuleChanges();
-    bool ShouldInteract(uint8 MaterialA, uint8 MaterialB) const;
+private:
+    // Internal data
+    USVOHybridVolume* Volume;
+    FMaterialSDFManager* MaterialManager;
+    
+    // Material interaction data
+    TMap<uint64, FMaterialRelationship> MaterialRelationships;
+    TMap<uint8, int32> MaterialPriorities;
+    TMap<EBlendFunction, TFunction<float(float, float, float)>> CustomBlendFunctions;
+    
+    FMaterialRelationship DefaultRelationship;
+    
+    // Network state
+    uint64 CurrentNetworkVersion;
+    
+    // Internal helpers
+    uint64 GetMaterialPairKey(uint8 MaterialA, uint8 MaterialB) const;
+    TArray<uint8> GetMaterialsAtPosition(const FVector& Position) const;
+    float EvaluateFieldAtPosition(const FVector& Position, uint8 MaterialIndex) const;
+    
+    // SDF operation implementations
+    float Union(float DistanceA, float DistanceB) const;
+    float Subtraction(float DistanceA, float DistanceB) const;
+    float Intersection(float DistanceA, float DistanceB) const;
+    float SmoothUnion(float DistanceA, float DistanceB, float Smoothing) const;
+    float SmoothSubtraction(float DistanceA, float DistanceB, float Smoothing) const;
+    float SmoothIntersection(float DistanceA, float DistanceB, float Smoothing) const;
+    
+    // Blend function implementations
+    float LinearBlend(float ValueA, float ValueB, float BlendFactor) const;
+    float SmoothstepBlend(float ValueA, float ValueB, float BlendFactor) const;
+    float ExponentialBlend(float ValueA, float ValueB, float BlendFactor) const;
+    float CosineBlend(float ValueA, float ValueB, float BlendFactor) const;
+    float CubicBlend(float ValueA, float ValueB, float BlendFactor) const;
 };

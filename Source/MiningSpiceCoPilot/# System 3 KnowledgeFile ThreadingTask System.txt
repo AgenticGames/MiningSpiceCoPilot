@@ -1,0 +1,406 @@
+## SYSTEM 3: Threading and Async Task System
+
+### Class Hierarchy
+- `IAsyncOperation` [3_ThreadingTaskSystem/Public/Interfaces/IAsyncOperation.h]: Interface
+  - Purpose: Base interface for asynchronous operations in the mining architecture
+  - Key methods:
+    - `bool Initialize()` - Initializes the async operation manager
+    - `void Shutdown()` - Shuts down the async operation manager
+    - `bool IsInitialized() const` - Checks initialization status
+    - `uint64 CreateOperation(const FString& OperationType, const FString& OperationName = TEXT(""))` - Creates a new async operation
+    - `bool StartOperation(uint64 OperationId, const TMap<FString, FString>& Parameters = TMap<FString, FString>())` - Starts an async operation
+    - `bool CancelOperation(uint64 OperationId, bool bWaitForCancellation = false)` - Cancels an async operation
+    - `EAsyncStatus GetOperationStatus(uint64 OperationId) const` - Gets operation status
+    - `FAsyncProgress GetOperationProgress(uint64 OperationId) const` - Gets progress information
+    - `FAsyncResult GetOperationResult(uint64 OperationId) const` - Gets operation result
+    - `bool WaitForCompletion(uint64 OperationId, uint32 TimeoutMs = 0)` - Waits for completion
+    - `bool RegisterProgressCallback(uint64 OperationId, const FAsyncProgressDelegate& Callback, uint32 UpdateIntervalMs = 100)` - Registers progress callback
+    - `bool RegisterCompletionCallback(uint64 OperationId, const FAsyncCompletionDelegate& Callback)` - Registers completion callback
+    - `uint32 GetActiveOperationCount() const` - Gets count of active operations
+    - `TArray<uint64> GetActiveOperations() const` - Gets IDs of all active operations
+    - `TArray<uint64> GetOperationsOfType(const FString& OperationType) const` - Gets operations of specific type
+    - `uint32 CleanupCompletedOperations(double MaxAgeSeconds = 300.0)` - Cleans up completed operations
+    - `static IAsyncOperation& Get()` - Gets singleton instance
+
+- `FAsyncOperationImpl` [3_ThreadingTaskSystem/Public/AsyncTaskManager.h]: Implements IAsyncOperation
+  - Purpose: Concrete implementation of an asynchronous operation
+  - Key methods:
+    - Constructor and destructor
+    - Getters for operation properties (ID, type, name)
+    - Status and progress management
+    - Callback registration and notification
+  - Key members:
+    - `uint64 Id` - Unique operation identifier
+    - `FString Type` - Operation type name
+    - `FString Name` - Operation name
+    - `EAsyncStatus Status` - Current operation status
+    - `FAsyncProgress Progress` - Progress information
+    - `FAsyncResult Result` - Operation result
+    - `TMap<FString, FString> Parameters` - Operation parameters
+    - `TArray<FAsyncProgressDelegate> ProgressCallbacks` - Progress callbacks
+    - `TArray<FAsyncCompletionDelegate> CompletionCallbacks` - Completion callbacks
+    - Time tracking for creation, start, completion
+
+- `FAsyncTaskManager` [3_ThreadingTaskSystem/Public/AsyncTaskManager.h]: Manager class
+  - Purpose: Manages asynchronous operations and their lifecycles
+  - Key methods:
+    - Implementation of IAsyncOperation interface
+    - Operation creation, tracking, and cleanup
+  - Key members:
+    - `TMap<uint64, TSharedPtr<FAsyncOperationImpl>> Operations` - Map of active operations
+    - `TMap<FString, TArray<uint64>> OperationsByType` - Operations organized by type
+    - `FCriticalSection OperationsLock` - Thread safety lock
+    - `FThreadSafeBool bIsInitialized` - Initialization flag
+    - `uint64 NextOperationId` - Counter for generating unique IDs
+    - `static FAsyncTaskManager* Instance` - Singleton instance
+
+- `ITaskScheduler` [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]: Interface
+  - Purpose: Provides task scheduling capabilities optimized for mining operations
+  - Key methods:
+    - `bool Initialize()` - Initializes the task scheduler
+    - `void Shutdown()` - Shuts down the task scheduler
+    - `bool IsInitialized() const` - Checks initialization status
+    - `uint64 ScheduleTask(TFunction<void()> TaskFunc, const FTaskConfig& Config, const FString& Desc = TEXT(""))` - Schedules task
+    - `uint64 ScheduleTaskWithCallback(TFunction<void()> TaskFunc, TFunction<void(bool)> OnComplete, const FTaskConfig& Config, const FString& Desc = TEXT(""))` - Schedules task with callback
+    - `bool CancelTask(uint64 TaskId)` - Cancels task
+    - `ETaskStatus GetTaskStatus(uint64 TaskId) const` - Gets task status
+    - `FTaskStats GetTaskStats(uint64 TaskId) const` - Gets task statistics
+    - `bool GetTaskProgress(uint64 TaskId, float& OutProgress) const` - Gets task progress
+    - `bool WaitForTask(uint64 TaskId, uint32 TimeoutMs = 0)` - Waits for task completion
+    - `bool WaitForTasks(const TArray<uint64>& TaskIds, bool bWaitForAll = true, uint32 TimeoutMs = 0)` - Waits for multiple tasks
+    - `uint32 GetWorkerThreadCount() const` - Gets worker thread count
+    - `int32 GetCurrentThreadId() const` - Gets current thread ID
+    - `bool IsTaskThread() const` - Checks if current thread is a task system thread
+    - `bool SetThreadPriority(int32 ThreadId, EThreadPriority Priority)` - Sets thread priority
+    - `bool SetThreadAffinity(int32 ThreadId, uint64 CoreMask)` - Sets thread affinity
+    - `TMap<ETaskStatus, int32> GetTaskCounts() const` - Gets task counts by status
+    - `static ITaskScheduler& Get()` - Gets singleton instance
+
+- `FTaskScheduler` [3_ThreadingTaskSystem/Public/TaskScheduler.h]: Implements ITaskScheduler
+  - Purpose: Concrete implementation of task scheduling for mining operations
+  - Key methods:
+    - Implementation of ITaskScheduler interface
+    - Task creation, execution, and lifecycle management
+  - Key members:
+    - Task tracking and management structures
+    - Thread pool and worker management
+    - Priority queue integration
+
+- `IThreadSafeQueue` [3_ThreadingTaskSystem/Public/Interfaces/IThreadSafeQueue.h]: Interface
+  - Purpose: Provides thread-safe queue operations for concurrent access
+  - Key methods:
+    - `bool Initialize(int32 InCapacity = 0)` - Initializes queue with capacity
+    - `void Shutdown()` - Shuts down the queue
+    - `bool IsInitialized() const` - Checks initialization status
+    - `EQueueResult Enqueue(void* Item)` - Enqueues an item
+    - `EQueueResult EnqueueWithTimeout(void* Item, uint32 TimeoutMs)` - Enqueues with timeout
+    - `EQueueResult Dequeue(void*& OutItem)` - Dequeues an item
+    - `EQueueResult DequeueWithTimeout(void*& OutItem, uint32 TimeoutMs)` - Dequeues with timeout
+    - `EQueueResult Peek(void*& OutItem) const` - Peeks at next item without removing
+    - `bool IsEmpty() const` - Checks if queue is empty
+    - `bool IsFull() const` - Checks if queue is full
+    - `int32 GetSize() const` - Gets current size
+    - `int32 GetCapacity() const` - Gets maximum capacity
+    - `void Clear()` - Clears all items
+    - `FQueueStats GetStats() const` - Gets queue statistics
+    - `void ResetStats()` - Resets statistics
+    - `void Close()` - Closes the queue
+    - `bool IsClosed() const` - Checks if queue is closed
+    - `bool SetCapacity(int32 NewCapacity)` - Sets queue capacity
+    - `int32 EnqueueBatch(void** Items, int32 Count)` - Enqueues multiple items
+    - `int32 DequeueBatch(void** OutItems, int32 MaxCount)` - Dequeues multiple items
+    - `static IThreadSafeQueue& Get()` - Gets singleton instance
+
+- `TThreadSafeQueue<T>` [3_ThreadingTaskSystem/Public/Interfaces/IThreadSafeQueue.h]: Template class
+  - Purpose: Type-safe wrapper for IThreadSafeQueue
+  - Key methods:
+    - Type-safe wrappers for all IThreadSafeQueue methods
+  - Key members:
+    - `IThreadSafeQueue* Queue` - Underlying queue implementation
+
+- `ITransactionManager` [3_ThreadingTaskSystem/Public/Interfaces/ITransactionManager.h]: Interface
+  - Purpose: Manages zone-based transactions with concurrency control
+  - Key methods:
+    - Transaction creation, validation, and execution
+    - Conflict detection and resolution
+    - Zone version management
+
+- `FTransactionManager` [3_ThreadingTaskSystem/Public/TransactionManager.h]: Implements ITransactionManager
+  - Purpose: Handles mining transactions with different concurrency models
+  - Key methods:
+    - Implementation of ITransactionManager interface
+    - Transaction processing and conflict resolution
+  - Key members:
+    - Zone version tracking
+    - Transaction history
+    - Conflict statistics
+
+- `FThreadSafeOperationQueue` [3_ThreadingTaskSystem/Public/ThreadSafeOperationQueue.h]: Implementation class
+  - Purpose: Specialized thread-safe queue for mining operations
+  - Key methods:
+    - Implementation of IThreadSafeQueue interface
+    - Mining-specific optimizations
+  - Key members:
+    - Internal queue structures
+    - Concurrency control primitives
+
+- `FPriorityTaskQueue` [3_ThreadingTaskSystem/Public/PriorityTaskQueue.h]: Implementation class
+  - Purpose: Task queue with priority-based scheduling
+  - Key methods:
+    - Priority-based enqueue and dequeue
+    - Task prioritization and ordering
+  - Key members:
+    - Priority buckets for tasks
+    - Task ordering within priorities
+
+- `FParallelExecutor` [3_ThreadingTaskSystem/Public/ParallelExecutor.h]: Implementation class
+  - Purpose: Executes tasks in parallel with workload distribution
+  - Key methods:
+    - Work distribution and parallel execution
+    - Load balancing across worker threads
+  - Key members:
+    - Worker thread pool
+    - Work stealing mechanisms
+
+- `FZoneManager` [3_ThreadingTaskSystem/Public/ZoneManager.h]: Implementation class
+  - Purpose: Manages mining zones with multi-threading support
+  - Key methods:
+    - Zone creation and management
+    - Zone-based transaction coordination
+  - Key members:
+    - Zone grid management
+    - Zone state tracking
+
+### Structures
+- `FAsyncProgress` [3_ThreadingTaskSystem/Public/Interfaces/IAsyncOperation.h]
+  - Purpose: Tracks progress of asynchronous operations
+  - Key members:
+    - `float CompletionPercentage` - Progress percentage (0.0 - 1.0)
+    - `int32 CurrentStage` - Current operation stage
+    - `int32 TotalStages` - Total number of stages
+    - `FString StatusMessage` - Optional status message
+    - `double ElapsedTimeSeconds` - Time elapsed since start
+    - `double EstimatedTimeRemainingSeconds` - Estimated time remaining
+    - `int64 ItemsProcessed` - Number of items processed
+    - `int64 TotalItems` - Total items to process
+
+- `FAsyncResult` [3_ThreadingTaskSystem/Public/Interfaces/IAsyncOperation.h]
+  - Purpose: Holds result of an asynchronous operation
+  - Key members:
+    - `bool bSuccess` - Whether operation succeeded
+    - `FString ErrorMessage` - Error message if failed
+    - `int32 ErrorCode` - Error code if failed
+    - `bool bCancelled` - Whether operation was cancelled
+    - `TSharedPtr<void> ResultData` - Optional result data
+
+- `FTaskConfig` [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]
+  - Purpose: Configuration for scheduled tasks
+  - Key members:
+    - `ETaskPriority Priority` - Task priority level
+    - `ETaskType Type` - Task type for specialized handling
+    - `int32 PreferredCore` - Preferred CPU core
+    - `bool bCancellable` - Whether task can be canceled
+    - `bool bSupportsProgress` - Whether task reports progress
+    - `TArray<FTaskDependency> Dependencies` - Task dependencies
+    - `uint32 MaxExecutionTimeMs` - Maximum execution time
+    - `bool bAutoRetry` - Whether to auto-retry on failure
+    - `uint32 MaxRetries` - Maximum retry attempts
+    - `uint8 RetryPriorityBoost` - Priority boost for retries
+
+- `FTaskStats` [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]
+  - Purpose: Statistics for task performance monitoring
+  - Key members:
+    - `double QueueTimeMs` - Time spent in queue
+    - `double ExecutionTimeMs` - Time spent executing
+    - `uint32 RetryCount` - Number of retry attempts
+    - `uint64 PeakMemoryBytes` - Peak memory usage
+    - `uint32 ExecutingThreadId` - Thread that executed the task
+    - `int32 ExecutingCore` - CPU core that executed the task
+
+- `FQueueStats` [3_ThreadingTaskSystem/Public/Interfaces/IThreadSafeQueue.h]
+  - Purpose: Statistics for queue performance monitoring
+  - Key members:
+    - `int32 CurrentSize` - Current number of items
+    - `int32 Capacity` - Maximum capacity
+    - `uint64 TotalEnqueued` - Total items enqueued
+    - `uint64 TotalDequeued` - Total items dequeued
+    - `uint64 EnqueueFailures` - Failed enqueue operations
+    - `uint64 DequeueFailures` - Failed dequeue operations
+    - `uint64 TimeoutCount` - Number of timeouts
+    - `int32 PeakSize` - Peak queue size
+    - `double AverageEnqueueWaitTimeMs` - Average enqueue wait time
+    - `double AverageDequeueWaitTimeMs` - Average dequeue wait time
+    - `bool bIsClosed` - Whether queue is closed
+
+- `FTaskDependency` [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]
+  - Purpose: Defines task dependencies for complex task chains
+  - Key members:
+    - `uint64 TaskId` - ID of dependent task
+    - `bool bRequired` - Whether dependency is required
+    - `uint32 TimeoutMs` - Timeout for waiting on dependency
+
+### Enumerations
+- `EAsyncStatus` [3_ThreadingTaskSystem/Public/Interfaces/IAsyncOperation.h]
+  - Purpose: Status codes for asynchronous operations
+  - Values: NotStarted, InProgress, Completed, Failed, Cancelled, TimedOut, Invalid
+
+- `ETaskPriority` [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]
+  - Purpose: Task priority levels for scheduling
+  - Values: Critical, High, Normal, Low, Minimal
+
+- `ETaskStatus` [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]
+  - Purpose: Status codes for tasks
+  - Values: Queued, Running, Completed, Cancelled, Failed
+
+- `ETaskType` [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]
+  - Purpose: Task type classification for specialized handling
+  - Values: General, MiningOperation, SDFOperation, OctreeTraversal, MaterialOperation, ZoneTransaction
+
+- `EQueueResult` [3_ThreadingTaskSystem/Public/Interfaces/IThreadSafeQueue.h]
+  - Purpose: Result codes for queue operations
+  - Values: Success, QueueFull, QueueEmpty, Timeout, QueueClosed, Error
+
+### Delegates
+- `FAsyncProgressDelegate` [3_ThreadingTaskSystem/Public/Interfaces/IAsyncOperation.h]
+  - Purpose: Callback for async operation progress updates
+  - Signature: `DECLARE_DELEGATE_OneParam(FAsyncProgressDelegate, const FAsyncProgress&)`
+
+- `FAsyncCompletionDelegate` [3_ThreadingTaskSystem/Public/Interfaces/IAsyncOperation.h]
+  - Purpose: Callback for async operation completion
+  - Signature: `DECLARE_DELEGATE_OneParam(FAsyncCompletionDelegate, const FAsyncResult&)`
+
+### Navigation Landmarks
+FileStructure: [3_ThreadingTaskSystem/Public/Interfaces/IAsyncOperation.h]
+- Async operation status enum: ~L12-30
+- Async progress structure: ~L35-67
+- Async result structure: ~L72-110
+- Delegates declaration: ~L112-120
+- IAsyncOperation interface: ~L125-195
+
+FileStructure: [3_ThreadingTaskSystem/Public/AsyncTaskManager.h]
+- FAsyncOperationImpl class: ~L10-95
+- FAsyncTaskManager class: ~L100-170
+
+FileStructure: [3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h]
+- Task priority enum: ~L15-25
+- Task status enum: ~L30-40
+- Task type enum: ~L45-60
+- Task dependency structure: ~L65-75
+- Task config structure: ~L80-115
+- Task stats structure: ~L120-135
+- ITaskScheduler interface: ~L145-230
+
+FileStructure: [3_ThreadingTaskSystem/Public/Interfaces/IThreadSafeQueue.h]
+- Queue result enum: ~L10-25
+- Queue stats structure: ~L30-65
+- IThreadSafeQueue interface: ~L75-165
+- TThreadSafeQueue template: ~L170-270
+
+### Implementation Patterns
+- Singleton Pattern: Each manager class implements a singleton pattern with thread-safe initialization
+  ```cpp
+  static ITaskScheduler& Get();
+  static FTaskScheduler* Instance;
+  static FThreadSafeBool bInstanceInitialized;
+  ```
+
+- Thread Safety: Comprehensive thread safety mechanisms throughout the system
+  ```cpp
+  FCriticalSection OperationsLock;
+  FThreadSafeBool bIsInitialized;
+  FThreadSafeCounter PendingOperations;
+  ```
+
+- Task Delegation: Delegation pattern for task execution and callbacks
+  ```cpp
+  TFunction<void()> TaskFunc;
+  TFunction<void(bool)> OnComplete;
+  ```
+
+- Progress Reporting: Standardized progress tracking and reporting
+  ```cpp
+  FAsyncProgress Progress;
+  FAsyncProgressDelegate ProgressCallback;
+  ```
+
+- Resource Management: Careful resource cleanup for tasks and operations
+  ```cpp
+  virtual void Shutdown() override;
+  virtual uint32 CleanupCompletedOperations(double MaxAgeSeconds) override;
+  ```
+
+- Prioritization: Multi-level priority handling for tasks
+  ```cpp
+  ETaskPriority Priority;
+  uint8 RetryPriorityBoost;
+  ```
+
+- Dependency Management: Support for complex task dependencies
+  ```cpp
+  TArray<FTaskDependency> Dependencies;
+  bool WaitForTasks(const TArray<uint64>& TaskIds, bool bWaitForAll, uint32 TimeoutMs);
+  ```
+
+### UE5 Integration
+- Uses UE5 threading primitives (FCriticalSection, FEvent, FThreadSafeBool)
+- Implements UE5 interfaces for reflection and blueprint exposure
+- Leverages UE5 task graph system for certain operations
+- Compatible with UE5's async loading and streaming systems
+- Follows UE5 naming and design conventions
+
+### Naming Patterns
+- Interface classes: Prefix with 'I' (ITaskScheduler, IThreadSafeQueue)
+- Implementation classes: Prefix with 'F' (FTaskScheduler, FAsyncTaskManager)
+- Enumerations: Prefix with 'E' (ETaskPriority, EAsyncStatus)
+- Structures: Prefix with 'F' (FTaskConfig, FAsyncProgress)
+- Delegates: Suffix with 'Delegate' (FAsyncProgressDelegate)
+- Boolean methods: Prefix with 'Is' or 'Has' (IsInitialized, IsTaskThread)
+- Parameters: Prefix with 'In' for inputs, 'Out' for outputs (InCapacity, OutProgress)
+
+### Potential Conflicts
+- Multiple Initialize/Shutdown methods across different interfaces
+  - IAsyncOperation::Initialize() vs ITaskScheduler::Initialize()
+  - All system components have similar lifecycle methods
+
+- Multiple Get() singleton methods with different return types
+  - IAsyncOperation::Get() vs ITaskScheduler::Get()
+  - Each subsystem has its own singleton accessor
+
+- Multiple status enumerations with similar values
+  - EAsyncStatus vs ETaskStatus
+  - Different but related status tracking systems
+
+- Queue vs Task vs Operation terminology
+  - Clear conceptual separation needed between these related concepts
+
+### Architectural Boundaries
+- Async Task System provides the foundation for other systems' concurrent operations
+- Transaction Manager bridges between task system and zone-based mining operations
+- Clear separation between task scheduling (ITaskScheduler) and async operation management (IAsyncOperation)
+- Thread-safe data structures (IThreadSafeQueue) support multiple concurrent systems
+
+### Dependencies
+- Depends on UE5 Core (CoreMinimal.h, UObject)
+- Depends on System 1 (Core Registry) for type resolution
+- Required by most other systems for concurrent operations
+- Particularly important for System 2.3 (Zone-Based Concurrent Mining)
+
+### Thread Safety Model
+- Task Creation: Thread-safe via critical sections
+- Operation Execution: Managed by task scheduler with isolation
+- Progress Updates: Atomic operations and thread-safe counters
+- Result Access: Protected by synchronization primitives
+- Queue Operations: Fully thread-safe with internal locking
+
+### Performance Considerations
+- Task prioritization ensures critical mining operations complete first
+- Work stealing algorithms balance load across available cores
+- NUMA awareness for optimal memory access patterns
+- Avoids over-subscription with worker thread pool management
+- Uses atomic operations where possible to minimize lock contention
+
+### Known Issues & Constraints
+- Complex task dependencies can potentially lead to deadlocks
+- Task cancellation during certain phases may leave resources in inconsistent states
+- Thread affinity settings may not be honored on all platforms
+- Progress reporting has minimal performance impact but is not zero-cost
