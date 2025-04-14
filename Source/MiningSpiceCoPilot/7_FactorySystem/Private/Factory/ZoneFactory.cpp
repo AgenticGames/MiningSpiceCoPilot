@@ -33,8 +33,18 @@ bool UZoneFactory::Initialize()
     }
 
     // Get component pool manager
-    IComponentPoolManager& PoolManagerRef = IComponentPoolManager::Get();
-    PoolManager = TScriptInterface<IComponentPoolManager>(&PoolManagerRef);
+    IComponentPoolManager* PoolManagerPtr = &IComponentPoolManager::Get();
+    UObject* PoolManagerObject = Cast<UObject>(PoolManagerPtr);
+    if (PoolManagerObject)
+    {
+        PoolManager.SetObject(PoolManagerObject);
+        PoolManager.SetInterface(PoolManagerPtr);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("ZoneFactory: Failed to cast IComponentPoolManager to UObject"));
+        return false;
+    }
 
     // Initialize metrics tracking
     IFactoryMetrics::Get().TrackOperation(
@@ -117,7 +127,23 @@ UObject* UZoneFactory::CreateComponent(UClass* ComponentType, const TMap<FName, 
     if (Parameters.Contains(FName("Bounds")))
     {
         FString BoundsStr = Parameters.FindRef(FName("Bounds"));
-        FBox::FParseStream(BoundsStr) >> ZoneBounds;
+        // Parse the string into an FBox
+        TArray<FString> Components;
+        BoundsStr.ParseIntoArray(Components, TEXT(","), true);
+        if (Components.Num() >= 6)
+        {
+            FVector Min(
+                FCString::Atof(*Components[0]),
+                FCString::Atof(*Components[1]),
+                FCString::Atof(*Components[2])
+            );
+            FVector Max(
+                FCString::Atof(*Components[3]),
+                FCString::Atof(*Components[4]),
+                FCString::Atof(*Components[5])
+            );
+            ZoneBounds = FBox(Min, Max);
+        }
     }
     
     // Parse zone type parameter
@@ -232,7 +258,10 @@ UObject* UZoneFactory::CreateComponent(UClass* ComponentType, const TMap<FName, 
 TArray<UClass*> UZoneFactory::GetSupportedTypes() const
 {
     TArray<UClass*> Types;
-    SupportedTypes.GetKeys(Types);
+    for (UClass* SupportedType : SupportedTypes)
+    {
+        Types.Add(SupportedType);
+    }
     return Types;
 }
 

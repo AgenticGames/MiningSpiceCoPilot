@@ -1,6 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "1_CoreRegistry/Public/SDFTypeRegistry.h"
+#include "SDFTypeRegistry.h"
 
 // Initialize static members
 FSDFTypeRegistry* FSDFTypeRegistry::Singleton = nullptr;
@@ -26,24 +26,26 @@ FSDFTypeRegistry::~FSDFTypeRegistry()
 
 bool FSDFTypeRegistry::Initialize()
 {
-    bool bWasAlreadyInitialized = false;
-    if (!bIsInitialized.AtomicSet(true, bWasAlreadyInitialized))
+    // Check if already initialized
+    if (bIsInitialized)
     {
-        // Initialize internal maps
-        FieldTypeMap.Empty();
-        FieldTypeNameMap.Empty();
-        OperationMap.Empty();
-        OperationNameMap.Empty();
-        
-        // Reset counters
-        NextTypeId = 1;
-        NextOperationId = 1;
-        
-        return true;
+        return false;
     }
     
-    // Already initialized
-    return false;
+    // Set initialized flag
+    bIsInitialized.AtomicSet(true);
+    
+    // Initialize internal maps
+    FieldTypeMap.Empty();
+    FieldTypeNameMap.Empty();
+    OperationMap.Empty();
+    OperationNameMap.Empty();
+    
+    // Reset type ID counter
+    NextTypeId = 1;
+    NextOperationId = 1;
+    
+    return true;
 }
 
 void FSDFTypeRegistry::Shutdown()
@@ -51,7 +53,7 @@ void FSDFTypeRegistry::Shutdown()
     if (bIsInitialized)
     {
         // Lock for thread safety
-        FScopeLock Lock(&RegistryLock);
+        FRWScopeLock Lock(RegistryLock, SLT_Write);
         
         // Clear all registered items
         FieldTypeMap.Empty();
@@ -88,7 +90,7 @@ bool FSDFTypeRegistry::Validate(TArray<FString>& OutErrors) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     bool bIsValid = true;
     
@@ -176,7 +178,7 @@ void FSDFTypeRegistry::Clear()
     if (IsInitialized())
     {
         // Lock for thread safety
-        FScopeLock Lock(&RegistryLock);
+        FRWScopeLock Lock(RegistryLock, SLT_Write);
         
         // Clear all registered items
         FieldTypeMap.Empty();
@@ -223,7 +225,7 @@ uint32 FSDFTypeRegistry::RegisterFieldType(
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_Write);
     
     // Check if type name is already registered
     if (FieldTypeNameMap.Contains(InTypeName))
@@ -282,7 +284,7 @@ uint32 FSDFTypeRegistry::RegisterOperation(
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_Write);
     
     // Check if operation name is already registered
     if (OperationNameMap.Contains(InOperationName))
@@ -361,10 +363,10 @@ const FSDFFieldTypeInfo* FSDFTypeRegistry::GetFieldTypeInfo(uint32 InTypeId) con
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Look up type by ID
-    TSharedRef<FSDFFieldTypeInfo>* TypeInfoPtr = FieldTypeMap.Find(InTypeId);
+    const TSharedRef<FSDFFieldTypeInfo>* TypeInfoPtr = FieldTypeMap.Find(InTypeId);
     if (TypeInfoPtr)
     {
         return &(TypeInfoPtr->Get());
@@ -381,14 +383,14 @@ const FSDFFieldTypeInfo* FSDFTypeRegistry::GetFieldTypeInfoByName(const FName& I
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Look up type ID by name
     const uint32* TypeIdPtr = FieldTypeNameMap.Find(InTypeName);
     if (TypeIdPtr)
     {
         // Look up type info by ID
-        TSharedRef<FSDFFieldTypeInfo>* TypeInfoPtr = FieldTypeMap.Find(*TypeIdPtr);
+        const TSharedRef<FSDFFieldTypeInfo>* TypeInfoPtr = FieldTypeMap.Find(*TypeIdPtr);
         if (TypeInfoPtr)
         {
             return &(TypeInfoPtr->Get());
@@ -406,10 +408,10 @@ const FSDFOperationInfo* FSDFTypeRegistry::GetOperationInfo(uint32 InOperationId
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Look up operation by ID
-    TSharedRef<FSDFOperationInfo>* OpInfoPtr = OperationMap.Find(InOperationId);
+    const TSharedRef<FSDFOperationInfo>* OpInfoPtr = OperationMap.Find(InOperationId);
     if (OpInfoPtr)
     {
         return &(OpInfoPtr->Get());
@@ -426,14 +428,14 @@ const FSDFOperationInfo* FSDFTypeRegistry::GetOperationInfoByName(const FName& I
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Look up operation ID by name
     const uint32* OpIdPtr = OperationNameMap.Find(InOperationName);
     if (OpIdPtr)
     {
         // Look up operation info by ID
-        TSharedRef<FSDFOperationInfo>* OpInfoPtr = OperationMap.Find(*OpIdPtr);
+        const TSharedRef<FSDFOperationInfo>* OpInfoPtr = OperationMap.Find(*OpIdPtr);
         if (OpInfoPtr)
         {
             return &(OpInfoPtr->Get());
@@ -453,7 +455,7 @@ TArray<FSDFFieldTypeInfo> FSDFTypeRegistry::GetAllFieldTypes() const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Collect all field type infos
     Result.Reserve(FieldTypeMap.Num());
@@ -475,7 +477,7 @@ TArray<FSDFOperationInfo> FSDFTypeRegistry::GetAllOperations() const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Collect all operation infos
     Result.Reserve(OperationMap.Num());
@@ -495,7 +497,7 @@ bool FSDFTypeRegistry::IsFieldTypeRegistered(uint32 InTypeId) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     return FieldTypeMap.Contains(InTypeId);
 }
@@ -508,7 +510,7 @@ bool FSDFTypeRegistry::IsOperationRegistered(uint32 InOperationId) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     return OperationMap.Contains(InOperationId);
 }
@@ -517,8 +519,7 @@ FSDFTypeRegistry& FSDFTypeRegistry::Get()
 {
     if (!bSingletonInitialized)
     {
-        bool bWasAlreadyInitialized = false;
-        if (!bSingletonInitialized.AtomicSet(true, bWasAlreadyInitialized))
+        if (!bSingletonInitialized.AtomicSet(true))
         {
             Singleton = new FSDFTypeRegistry();
             Singleton->Initialize();

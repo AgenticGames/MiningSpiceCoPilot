@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "2_MemoryManagement/Public/SVOAllocator.h"
+#include "SVOAllocator.h"
 #include "HAL/PlatformMath.h"
 #include "Misc/ScopeLock.h"
 
@@ -96,7 +96,7 @@ void* FSVOAllocator::Allocate(const UObject* RequestingObject, FName AllocationT
     }
     
     // Get a free block index
-    uint32 BlockIndex = FreeBlocks.Pop(false);
+    uint32 BlockIndex = FreeBlocks.Pop(EAllowShrinking::No);
     
     // Mark as allocated and set metadata
     BlockMetadata[BlockIndex].bAllocated = true;
@@ -565,57 +565,52 @@ void FSVOAllocator::FreePoolMemory()
 
 void FSVOAllocator::UpdateStats() const
 {
-    // Make sure this is called with the lock held
+    // Acquire lock for thread safety
+    FScopeLock Lock(&PoolLock);
     
-    // Initialize base stats
-    CachedStats.PoolName = PoolName;
-    CachedStats.BlockSize = BlockSize;
-    CachedStats.BlockCount = CurrentBlockCount;
-    CachedStats.bAllowsGrowth = bAllowsGrowth;
-    CachedStats.FreeBlocks = FreeBlocks.Num();
-    CachedStats.AllocatedBlocks = CurrentBlockCount - FreeBlocks.Num();
+    // Only update if dirty
+    if (!bStatsDirty)
+    {
+        return;
+    }
     
-    // Calculate overhead (metadata storage)
-    CachedStats.OverheadBytes = BlockMetadata.GetAllocatedSize() + FreeBlocks.GetAllocatedSize();
+    // Reset stats
+    CachedStats.TotalAllocations = 0;
+    CachedStats.PeakAllocatedBlocks = 0;
+    CachedStats.AllocatedBlocks = 0;
+    // Clear previous allocation tracking data if present in your implementation
+    // CachedStats.AllocationsByTag.Empty();
+    // CachedStats.AllocationsByObject.Empty();
     
-    // Count allocations and peak usage
-    uint32 AllocatedCount = 0;
-    for (const FBlockMetadata& Metadata : BlockMetadata)
+    // Count allocations
+    uint32 AllocatedBlockCount = 0;
+    for (const auto& Metadata : BlockMetadata)
     {
         if (Metadata.bAllocated)
         {
-            AllocatedCount++;
+            AllocatedBlockCount++;
+            // Track allocations by tag if implemented
+            // CachedStats.AllocationsByTag.FindOrAdd(Metadata.AllocationTag)++;
+            
+            // Track allocations by object if implemented
+            // if (Metadata.RequestingObject.IsValid())
+            // {
+            //     const UObject* Object = Metadata.RequestingObject.Get();
+            //     CachedStats.AllocationsByObject.FindOrAdd(Object->GetClass()->GetFName())++;
+            // }
         }
     }
     
-    CachedStats.AllocatedBlocks = AllocatedCount;
-    CachedStats.PeakAllocatedBlocks = FMath::Max(CachedStats.PeakAllocatedBlocks, AllocatedCount);
+    // Calculate memory usage
+    CachedStats.AllocatedBlocks = AllocatedBlockCount;
+    // Update fragmentation calculation
+    CachedStats.FreeBlocks = CurrentBlockCount - AllocatedBlockCount;
+    CachedStats.FragmentationPercent = CurrentBlockCount > 0 
+        ? 100.0f * (static_cast<float>(CachedStats.FreeBlocks) / CurrentBlockCount) 
+        : 0.0f;
     
-    // Calculate growth info
-    CachedStats.GrowthCount = CurrentBlockCount > MaxBlockCount ? 
-        (CurrentBlockCount - MaxBlockCount + MaxBlockCount - 1) / MaxBlockCount : 0;
-    
-    // Calculate fragmentation
-    uint32 FragmentTransitions = 0;
-    bool PrevWasAllocated = false;
-    
-    for (uint32 i = 0; i < CurrentBlockCount; ++i)
-    {
-        bool IsAllocated = BlockMetadata[i].bAllocated;
-        
-        if (i > 0 && IsAllocated != PrevWasAllocated)
-        {
-            FragmentTransitions++;
-        }
-        
-        PrevWasAllocated = IsAllocated;
-    }
-    
-    // Fragmentation metric: number of transitions between allocated and free blocks
-    // as a percentage of the maximum possible transitions
-    const float MaxPossibleTransitions = static_cast<float>(CurrentBlockCount);
-    CachedStats.FragmentationPercent = MaxPossibleTransitions > 0.0f ?
-        (FragmentTransitions / MaxPossibleTransitions) * 100.0f : 0.0f;
+    // Mark stats as clean
+    bStatsDirty = false;
 }
 
 int32 FSVOAllocator::GetBlockIndex(const void* Ptr) const

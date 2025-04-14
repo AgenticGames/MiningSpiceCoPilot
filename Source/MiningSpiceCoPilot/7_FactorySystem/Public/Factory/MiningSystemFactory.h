@@ -4,7 +4,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Interfaces/IFactory.h"
+#include "Factory/SVONodeFactory.h" // Include where IMiningFactory is defined
 #include "MiningSystemFactory.generated.h"
 
 class IComponentPoolManager;

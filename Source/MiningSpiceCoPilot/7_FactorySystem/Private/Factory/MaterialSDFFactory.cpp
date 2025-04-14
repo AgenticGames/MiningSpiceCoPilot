@@ -33,8 +33,18 @@ bool UMaterialSDFFactory::Initialize()
     }
 
     // Get component pool manager
-    IComponentPoolManager& PoolManagerRef = IComponentPoolManager::Get();
-    PoolManager = TScriptInterface<IComponentPoolManager>(&PoolManagerRef);
+    IComponentPoolManager* PoolManagerPtr = &IComponentPoolManager::Get();
+    UObject* PoolManagerObject = Cast<UObject>(PoolManagerPtr);
+    if (PoolManagerObject)
+    {
+        PoolManager.SetObject(PoolManagerObject);
+        PoolManager.SetInterface(PoolManagerPtr);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("MaterialSDFFactory: Failed to cast IComponentPoolManager to UObject"));
+        return false;
+    }
 
     // Initialize metrics tracking
     IFactoryMetrics::Get().TrackOperation(
@@ -123,33 +133,33 @@ UObject* UMaterialSDFFactory::CreateComponent(UClass* ComponentType, const TMap<
     }
     
     // Parse operation parameter
-    ECsgOperation Operation = ECsgOperation::Union;
+    EMiningCsgOperation Operation = EMiningCsgOperation::Union;
     if (Parameters.Contains(FName("Operation")))
     {
         FString OperationStr = Parameters.FindRef(FName("Operation"));
         if (OperationStr.Equals("Union", ESearchCase::IgnoreCase))
         {
-            Operation = ECsgOperation::Union;
+            Operation = EMiningCsgOperation::Union;
         }
         else if (OperationStr.Equals("Subtraction", ESearchCase::IgnoreCase))
         {
-            Operation = ECsgOperation::Subtraction;
+            Operation = EMiningCsgOperation::Subtraction;
         }
         else if (OperationStr.Equals("Intersection", ESearchCase::IgnoreCase))
         {
-            Operation = ECsgOperation::Intersection;
+            Operation = EMiningCsgOperation::Intersection;
         }
         else if (OperationStr.Equals("SmoothUnion", ESearchCase::IgnoreCase))
         {
-            Operation = ECsgOperation::SmoothUnion;
+            Operation = EMiningCsgOperation::SmoothUnion;
         }
         else if (OperationStr.Equals("SmoothSubtract", ESearchCase::IgnoreCase))
         {
-            Operation = ECsgOperation::SmoothSubtract;
+            Operation = EMiningCsgOperation::SmoothSubtract;
         }
         else if (OperationStr.Equals("Replace", ESearchCase::IgnoreCase))
         {
-            Operation = ECsgOperation::Replace;
+            Operation = EMiningCsgOperation::Replace;
         }
     }
     
@@ -243,7 +253,10 @@ UObject* UMaterialSDFFactory::CreateComponent(UClass* ComponentType, const TMap<
 TArray<UClass*> UMaterialSDFFactory::GetSupportedTypes() const
 {
     TArray<UClass*> Types;
-    SupportedTypes.GetKeys(Types);
+    for (UClass* SupportedType : SupportedTypes)
+    {
+        Types.Add(SupportedType);
+    }
     return Types;
 }
 
@@ -381,7 +394,7 @@ bool UMaterialSDFFactory::GetPoolStats(UClass* ComponentType, int32& OutAvailabl
     return bSuccess;
 }
 
-UObject* UMaterialSDFFactory::CreateMaterialSDF(uint32 MaterialType, ECsgOperation Operation, const FIntVector& Resolution, EMaterialBlendMode BlendMode)
+UObject* UMaterialSDFFactory::CreateMaterialSDF(uint32 MaterialType, EMiningCsgOperation Operation, const FIntVector& Resolution, EMaterialBlendMode BlendMode)
 {
     if (!bIsInitialized)
     {
@@ -528,7 +541,7 @@ UMaterialSDFFactory* UMaterialSDFFactory::Get()
     return GlobalFactoryInstance;
 }
 
-bool UMaterialSDFFactory::ConfigureMaterialProperties(UObject* Component, uint32 MaterialType, ECsgOperation Operation, EMaterialBlendMode BlendMode)
+bool UMaterialSDFFactory::ConfigureMaterialProperties(UObject* Component, uint32 MaterialType, EMiningCsgOperation Operation, EMaterialBlendMode BlendMode)
 {
     if (!Component)
     {
@@ -634,7 +647,7 @@ bool UMaterialSDFFactory::ConfigureBlending(UObject* Component, const TArray<uin
     return true;
 }
 
-FName UMaterialSDFFactory::GetMaterialPoolName(uint32 MaterialType, ECsgOperation Operation)
+FName UMaterialSDFFactory::GetMaterialPoolName(uint32 MaterialType, EMiningCsgOperation Operation)
 {
     // Generate a consistent pool name based on the parameters
     return FName(*FString::Printf(TEXT("MaterialSDF_%d_Op%d"), MaterialType, (int32)Operation));

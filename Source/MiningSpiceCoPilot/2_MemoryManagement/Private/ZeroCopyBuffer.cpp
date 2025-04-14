@@ -1,11 +1,19 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "2_MemoryManagement/Public/ZeroCopyBuffer.h"
+#include "ZeroCopyBuffer.h"
 #include "RHI.h"
 #include "RenderingThread.h"
 #include "HAL/PlatformMemory.h"
 #include "Misc/ScopeLock.h"
 #include "Containers/ResourceArray.h"
+
+namespace
+{
+    bool IsRHIInitialized()
+    {
+        return GDynamicRHI != nullptr && !IsRunningCommandlet();
+    }
+}
 
 FZeroCopyBuffer::FZeroCopyBuffer(const FName& InName, uint64 InSizeInBytes, bool InGPUWritable)
     : Name(InName)
@@ -44,9 +52,9 @@ bool FZeroCopyBuffer::Initialize()
         return false;
     }
 
-    // Allocate CPU memory aligned to platform cache line size for optimal performance
-    const uint32 Alignment = FPlatformMemory::GetConstants().CacheLineSize;
-    RawData = FPlatformMemory::BinnedAllocFromOS(SizeInBytes, Alignment);
+    // Allocate CPU memory with alignment
+    const uint32 Alignment = 64; // Use fixed alignment since CacheLineSize isn't always available
+    RawData = FMemory::Malloc(SizeInBytes, Alignment);
     
     if (!RawData)
     {
@@ -59,22 +67,25 @@ bool FZeroCopyBuffer::Initialize()
     FMemory::Memzero(RawData, SizeInBytes);
 
     // Create GPU resource if RHI is available
-    if (IsRunningRHIInSeparateThread())
+    if (IsRHIInitialized())
     {
-        // Enqueue command to create buffer on render thread
-        ENQUEUE_RENDER_COMMAND(CreateZeroCopyBuffer)(
-            [this](FRHICommandListImmediate& RHICmdList)
-            {
-                CreateGPUBuffer_RenderThread();
-            }
-        );
-        // Wait for completion
-        FlushRenderingCommands();
-    }
-    else if (IsRHIInitialized())
-    {
-        // RHI is available but not on a separate thread
-        CreateGPUBuffer_RenderThread();
+        if (IsRunningRHIInSeparateThread())
+        {
+            // Enqueue command to create buffer on render thread
+            ENQUEUE_RENDER_COMMAND(CreateZeroCopyBuffer)(
+                [this](FRHICommandListImmediate& RHICmdList)
+                {
+                    CreateGPUBuffer_RenderThread();
+                }
+            );
+            // Wait for completion
+            FlushRenderingCommands();
+        }
+        else
+        {
+            // RHI is available but not on a separate thread
+            CreateGPUBuffer_RenderThread();
+        }
     }
 
     bInitialized = true;
@@ -85,11 +96,6 @@ bool FZeroCopyBuffer::Initialize()
 
 void FZeroCopyBuffer::CreateGPUBuffer_RenderThread()
 {
-    if (!GRHISupportsBufferLocks)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("ZeroCopyBuffer: RHI doesn't support buffer locks, zero-copy may not be optimal"));
-    }
-
     // Create GPU resource
     FRHIResourceCreateInfo CreateInfo(TEXT("ZeroCopyBuffer"));
     
@@ -108,19 +114,18 @@ void FZeroCopyBuffer::CreateGPUBuffer_RenderThread()
     if (!ResourceBuffer)
     {
         UE_LOG(LogTemp, Error, TEXT("ZeroCopyBuffer: Failed to create GPU resource for buffer '%s'"), *Name.ToString());
+        return;
     }
-    else
+    
+    UE_LOG(LogTemp, Log, TEXT("ZeroCopyBuffer: Created GPU resource for buffer '%s'"), *Name.ToString());
+        
+    // Create Shader Resource View
+    ShaderResourceView = RHICreateShaderResourceView(ResourceBuffer);
+        
+    // Create Unordered Access View if writable
+    if (bGPUWritable)
     {
-        UE_LOG(LogTemp, Log, TEXT("ZeroCopyBuffer: Created GPU resource for buffer '%s'"), *Name.ToString());
-        
-        // Create Shader Resource View
-        ShaderResourceView = RHICreateShaderResourceView(ResourceBuffer);
-        
-        // Create Unordered Access View if writable
-        if (bGPUWritable)
-        {
-            UnorderedAccessView = RHICreateUnorderedAccessView(ResourceBuffer);
-        }
+        UnorderedAccessView = RHICreateUnorderedAccessView(ResourceBuffer);
     }
 }
 
@@ -377,4 +382,114 @@ FUnorderedAccessViewRHIRef FZeroCopyBuffer::GetUnorderedAccessView() const
     }
     
     return UnorderedAccessView;
+}
+
+bool FZeroCopyBuffer::Resize(uint64 NewSizeInBytes, bool bPreserveContent)
+{
+    if (!bInitialized)
+    {
+        UE_LOG(LogTemp, Error, TEXT("ZeroCopyBuffer: Cannot resize uninitialized buffer '%s'"), *Name.ToString());
+        return false;
+    }
+    
+    if (NewSizeInBytes == 0)
+    {
+        UE_LOG(LogTemp, Error, TEXT("ZeroCopyBuffer: Cannot resize buffer '%s' to zero size"), *Name.ToString());
+        return false;
+    }
+    
+    // Don't resize if already mapped
+    if (MappedData)
+    {
+        UE_LOG(LogTemp, Error, TEXT("ZeroCopyBuffer: Cannot resize mapped buffer '%s'"), *Name.ToString());
+        return false;
+    }
+    
+    // If size matches, no need to resize
+    if (NewSizeInBytes == SizeInBytes)
+    {
+        return true;
+    }
+    
+    // Save old data if preserving content
+    void* OldData = nullptr;
+    uint64 OldSize = SizeInBytes;
+    
+    if (bPreserveContent && RawData)
+    {
+        OldData = FMemory::Malloc(OldSize);
+        FMemory::Memcpy(OldData, RawData, OldSize);
+    }
+    
+    // Shutdown current buffer (releases GPU resources)
+    Shutdown();
+    
+    // Update size
+    SizeInBytes = NewSizeInBytes;
+    
+    // Reinitialize with new size
+    bool Result = Initialize();
+    
+    // Restore content if needed
+    if (Result && bPreserveContent && OldData)
+    {
+        uint64 CopySize = FMath::Min(OldSize, NewSizeInBytes);
+        FMemory::Memcpy(RawData, OldData, CopySize);
+        
+        // Sync to GPU if available
+        SyncToGPU();
+    }
+    
+    // Free temporary copy
+    if (OldData)
+    {
+        FMemory::Free(OldData);
+    }
+    
+    return Result;
+}
+
+FBufferStats FZeroCopyBuffer::GetStats() const
+{
+    FBufferStats Stats;
+    Stats.BufferName = Name;
+    Stats.SizeInBytes = SizeInBytes;
+    Stats.ReferenceCount = 1; // Zero-copy buffer doesn't track references
+    Stats.bIsMapped = MappedData != nullptr;
+    Stats.bIsZeroCopy = true;
+    Stats.bIsGPUWritable = bGPUWritable;
+    Stats.VersionNumber = 1; // Zero-copy buffer doesn't track versions
+    Stats.LastAccessMode = CurrentAccessMode;
+    Stats.UsageHint = EBufferUsage::General;
+    
+    return Stats;
+}
+
+bool FZeroCopyBuffer::Validate(TArray<FString>& OutErrors) const
+{
+    if (!bInitialized)
+    {
+        OutErrors.Add(FString::Printf(TEXT("ZeroCopyBuffer '%s' is not initialized"), *Name.ToString()));
+        return false;
+    }
+    
+    if (!RawData)
+    {
+        OutErrors.Add(FString::Printf(TEXT("ZeroCopyBuffer '%s' has null raw data pointer"), *Name.ToString()));
+        return false;
+    }
+    
+    if (SizeInBytes == 0)
+    {
+        OutErrors.Add(FString::Printf(TEXT("ZeroCopyBuffer '%s' has zero size"), *Name.ToString()));
+        return false;
+    }
+    
+    if (MappedData && MappedData != RawData)
+    {
+        OutErrors.Add(FString::Printf(TEXT("ZeroCopyBuffer '%s' has inconsistent mapped pointer"), *Name.ToString()));
+        return false;
+    }
+    
+    return true;
 }

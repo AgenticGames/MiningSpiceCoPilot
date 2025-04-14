@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
-#include "IConfigManager.h"
+#include "../5_IConfigManager.h"
 #include "IConfigProvider.generated.h"
 
 /**
@@ -243,3 +243,4 @@ public:
      */
     virtual TArray<TSharedPtr<FConfigKeyInfo>> GetAllKeyInfo() const = 0;
 };
+

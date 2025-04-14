@@ -34,8 +34,18 @@ bool UMiningSystemFactory::Initialize()
     }
 
     // Get component pool manager
-    IComponentPoolManager& PoolManagerRef = IComponentPoolManager::Get();
-    PoolManager = TScriptInterface<IComponentPoolManager>(&PoolManagerRef);
+    IComponentPoolManager* PoolManagerPtr = &IComponentPoolManager::Get();
+    UObject* PoolManagerObject = Cast<UObject>(PoolManagerPtr);
+    if (PoolManagerObject)
+    {
+        PoolManager.SetObject(PoolManagerObject);
+        PoolManager.SetInterface(PoolManagerPtr);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("MiningSystemFactory: Failed to cast IComponentPoolManager to UObject"));
+        return false;
+    }
 
     // Initialize metrics tracking
     IFactoryMetrics::Get().TrackOperation(
@@ -150,7 +160,10 @@ UObject* UMiningSystemFactory::CreateComponent(UClass* ComponentType, const TMap
 TArray<UClass*> UMiningSystemFactory::GetSupportedTypes() const
 {
     TArray<UClass*> Types;
-    SupportedTypes.GetKeys(Types);
+    for (UClass* SupportedType : SupportedTypes)
+    {
+        Types.Add(SupportedType);
+    }
     return Types;
 }
 

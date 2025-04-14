@@ -6,15 +6,13 @@
 #include "HAL/LowLevelMemTracker.h"
 #include "HAL/MallocAnsi.h"
 #include "HAL/PlatformMemory.h"
-#include "Math/AlignmentTemplates.h"
-#include "Math/SIMDFloat.h"
 #include "HAL/PlatformMath.h"
 #include "Misc/SpinLock.h"
 #include "Misc/ScopeLock.h"
-#include "2_MemoryManagement/Public/Interfaces/IMemoryManager.h"
-#include "2_MemoryManagement/Public/Interfaces/IPoolAllocator.h"
-#include "2_MemoryManagement/Public/Interfaces/IBufferProvider.h"
-#include "2_MemoryManagement/Public/Interfaces/IMemoryTracker.h"
+#include "Interfaces/IMemoryManager.h"
+#include "Interfaces/IPoolAllocator.h"
+#include "Interfaces/IBufferProvider.h"
+#include "Interfaces/IMemoryTracker.h"
 
 /**
  * Memory pool manager implementation for the SVO+SDF mining system
@@ -69,7 +67,7 @@ public:
     
     virtual void UnregisterAllocation(void* Ptr, const FName& CategoryName) override;
     
-    static IMemoryManager& Get() override;
+    static IMemoryManager& Get();
     //~ End IMemoryManager Interface
 
     /**

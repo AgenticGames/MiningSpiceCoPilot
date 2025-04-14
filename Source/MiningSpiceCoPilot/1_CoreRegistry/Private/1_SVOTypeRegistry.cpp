@@ -1,6 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "1_CoreRegistry/Public/SVOTypeRegistry.h"
+#include "SVOTypeRegistry.h"
 
 // Initialize static members
 FSVOTypeRegistry* FSVOTypeRegistry::Singleton = nullptr;
@@ -25,21 +25,23 @@ FSVOTypeRegistry::~FSVOTypeRegistry()
 
 bool FSVOTypeRegistry::Initialize()
 {
-    bool bWasAlreadyInitialized = false;
-    if (!bIsInitialized.AtomicSet(true, bWasAlreadyInitialized))
+    // Check if already initialized
+    if (bIsInitialized)
     {
-        // Initialize internal maps
-        NodeTypeMap.Empty();
-        NodeTypeNameMap.Empty();
-        
-        // Reset type ID counter
-        NextTypeId = 1;
-        
-        return true;
+        return false;
     }
     
-    // Already initialized
-    return false;
+    // Set initialized flag
+    bIsInitialized.AtomicSet(true);
+    
+    // Initialize internal maps
+    NodeTypeMap.Empty();
+    NodeTypeNameMap.Empty();
+    
+    // Reset type ID counter
+    NextTypeId = 1;
+    
+    return true;
 }
 
 void FSVOTypeRegistry::Shutdown()
@@ -47,7 +49,7 @@ void FSVOTypeRegistry::Shutdown()
     if (bIsInitialized)
     {
         // Lock for thread safety
-        FScopeLock Lock(&RegistryLock);
+        FRWScopeLock Lock(RegistryLock, SLT_Write);
         
         // Clear all registered types
         NodeTypeMap.Empty();
@@ -82,7 +84,7 @@ bool FSVOTypeRegistry::Validate(TArray<FString>& OutErrors) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     bool bIsValid = true;
     
@@ -141,7 +143,7 @@ void FSVOTypeRegistry::Clear()
     if (IsInitialized())
     {
         // Lock for thread safety
-        FScopeLock Lock(&RegistryLock);
+        FRWScopeLock Lock(RegistryLock, SLT_Write);
         
         // Clear all registered types
         NodeTypeMap.Empty();
@@ -186,7 +188,7 @@ uint32 FSVOTypeRegistry::RegisterNodeType(
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_Write);
     
     // Check if type name is already registered
     if (NodeTypeNameMap.Contains(InTypeName))
@@ -229,10 +231,10 @@ const FSVONodeTypeInfo* FSVOTypeRegistry::GetNodeTypeInfo(uint32 InTypeId) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Look up type by ID
-    TSharedRef<FSVONodeTypeInfo>* TypeInfoPtr = NodeTypeMap.Find(InTypeId);
+    const TSharedRef<FSVONodeTypeInfo>* TypeInfoPtr = NodeTypeMap.Find(InTypeId);
     if (TypeInfoPtr)
     {
         return &(TypeInfoPtr->Get());
@@ -249,14 +251,14 @@ const FSVONodeTypeInfo* FSVOTypeRegistry::GetNodeTypeInfoByName(const FName& InT
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Look up type ID by name
     const uint32* TypeIdPtr = NodeTypeNameMap.Find(InTypeName);
     if (TypeIdPtr)
     {
         // Look up type info by ID
-        TSharedRef<FSVONodeTypeInfo>* TypeInfoPtr = NodeTypeMap.Find(*TypeIdPtr);
+        const TSharedRef<FSVONodeTypeInfo>* TypeInfoPtr = NodeTypeMap.Find(*TypeIdPtr);
         if (TypeInfoPtr)
         {
             return &(TypeInfoPtr->Get());
@@ -276,7 +278,7 @@ TArray<FSVONodeTypeInfo> FSVOTypeRegistry::GetAllNodeTypes() const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Collect all type infos
     Result.Reserve(NodeTypeMap.Num());
@@ -298,7 +300,7 @@ TArray<FSVONodeTypeInfo> FSVOTypeRegistry::GetNodeTypesByClass(ESVONodeClass InN
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Collect type infos matching the class
     for (const auto& TypeInfoPair : NodeTypeMap)
@@ -321,7 +323,7 @@ bool FSVOTypeRegistry::IsNodeTypeRegistered(uint32 InTypeId) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     return NodeTypeMap.Contains(InTypeId);
 }
@@ -334,7 +336,7 @@ bool FSVOTypeRegistry::IsNodeTypeRegistered(const FName& InTypeName) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     return NodeTypeNameMap.Contains(InTypeName);
 }
@@ -344,8 +346,7 @@ FSVOTypeRegistry& FSVOTypeRegistry::Get()
     // Thread-safe singleton initialization
     if (!bSingletonInitialized)
     {
-        bool bWasAlreadyInitialized = false;
-        if (!bSingletonInitialized.AtomicSet(true, bWasAlreadyInitialized))
+        if (!bSingletonInitialized.AtomicSet(true))
         {
             Singleton = new FSVOTypeRegistry();
             Singleton->Initialize();

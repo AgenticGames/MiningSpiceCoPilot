@@ -33,8 +33,18 @@ bool USVONodeFactory::Initialize()
     }
 
     // Get component pool manager
-    IComponentPoolManager& PoolManagerRef = IComponentPoolManager::Get();
-    PoolManager = TScriptInterface<IComponentPoolManager>(&PoolManagerRef);
+    IComponentPoolManager* PoolManagerPtr = &IComponentPoolManager::Get();
+    UObject* PoolManagerObject = Cast<UObject>(PoolManagerPtr);
+    if (PoolManagerObject)
+    {
+        PoolManager.SetObject(PoolManagerObject);
+        PoolManager.SetInterface(PoolManagerPtr);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("SVONodeFactory: Failed to cast IComponentPoolManager to UObject"));
+        return false;
+    }
 
     // Initialize metrics tracking
     IFactoryMetrics::Get().TrackOperation(
@@ -231,7 +241,10 @@ UObject* USVONodeFactory::CreateComponent(UClass* ComponentType, const TMap<FNam
 TArray<UClass*> USVONodeFactory::GetSupportedTypes() const
 {
     TArray<UClass*> Types;
-    SupportedTypes.GetKeys(Types);
+    for (UClass* SupportedType : SupportedTypes)
+    {
+        Types.Add(SupportedType);
+    }
     return Types;
 }
 
@@ -436,24 +449,54 @@ UObject* USVONodeFactory::CreateSVONode(ENodeType NodeType, const FVector& Locat
     switch (NodeType)
     {
     case ENodeType::Internal:
-        NodeClass = SupportedTypes.FilterByPredicate([](UClass* Class) {
-            return Class->GetName().Contains(TEXT("Internal"));
-        }).Array()[0];
-        NodeTypeName = FName("InternalNode");
+        {
+            // Replace FilterByPredicate with manual iteration
+            TArray<UClass*> Classes;
+            SupportedTypes.GetKeys(Classes);
+            for (UClass* Class : Classes)
+            {
+                if (Class->GetName().Contains(TEXT("Internal")))
+                {
+                    NodeClass = Class;
+                    break;
+                }
+            }
+            NodeTypeName = FName("InternalNode");
+        }
         break;
         
     case ENodeType::Leaf:
-        NodeClass = SupportedTypes.FilterByPredicate([](UClass* Class) {
-            return Class->GetName().Contains(TEXT("Leaf"));
-        }).Array()[0];
-        NodeTypeName = FName("LeafNode");
+        {
+            // Replace FilterByPredicate with manual iteration
+            TArray<UClass*> Classes;
+            SupportedTypes.GetKeys(Classes);
+            for (UClass* Class : Classes)
+            {
+                if (Class->GetName().Contains(TEXT("Leaf")))
+                {
+                    NodeClass = Class;
+                    break;
+                }
+            }
+            NodeTypeName = FName("LeafNode");
+        }
         break;
         
     case ENodeType::Empty:
-        NodeClass = SupportedTypes.FilterByPredicate([](UClass* Class) {
-            return Class->GetName().Contains(TEXT("Empty"));
-        }).Array()[0];
-        NodeTypeName = FName("EmptyNode");
+        {
+            // Replace FilterByPredicate with manual iteration
+            TArray<UClass*> Classes;
+            SupportedTypes.GetKeys(Classes);
+            for (UClass* Class : Classes)
+            {
+                if (Class->GetName().Contains(TEXT("Empty")))
+                {
+                    NodeClass = Class;
+                    break;
+                }
+            }
+            NodeTypeName = FName("EmptyNode");
+        }
         break;
     }
     
@@ -541,24 +584,54 @@ TArray<UObject*> USVONodeFactory::CreateSVONodeBatch(ENodeType NodeType, int32 C
     switch (NodeType)
     {
     case ENodeType::Internal:
-        NodeClass = SupportedTypes.FilterByPredicate([](UClass* Class) {
-            return Class->GetName().Contains(TEXT("Internal"));
-        }).Array()[0];
-        NodeTypeName = FName("InternalNode");
+        {
+            // Replace FilterByPredicate with manual iteration
+            TArray<UClass*> Classes;
+            SupportedTypes.GetKeys(Classes);
+            for (UClass* Class : Classes)
+            {
+                if (Class->GetName().Contains(TEXT("Internal")))
+                {
+                    NodeClass = Class;
+                    break;
+                }
+            }
+            NodeTypeName = FName("InternalNode");
+        }
         break;
         
     case ENodeType::Leaf:
-        NodeClass = SupportedTypes.FilterByPredicate([](UClass* Class) {
-            return Class->GetName().Contains(TEXT("Leaf"));
-        }).Array()[0];
-        NodeTypeName = FName("LeafNode");
+        {
+            // Replace FilterByPredicate with manual iteration
+            TArray<UClass*> Classes;
+            SupportedTypes.GetKeys(Classes);
+            for (UClass* Class : Classes)
+            {
+                if (Class->GetName().Contains(TEXT("Leaf")))
+                {
+                    NodeClass = Class;
+                    break;
+                }
+            }
+            NodeTypeName = FName("LeafNode");
+        }
         break;
         
     case ENodeType::Empty:
-        NodeClass = SupportedTypes.FilterByPredicate([](UClass* Class) {
-            return Class->GetName().Contains(TEXT("Empty"));
-        }).Array()[0];
-        NodeTypeName = FName("EmptyNode");
+        {
+            // Replace FilterByPredicate with manual iteration
+            TArray<UClass*> Classes;
+            SupportedTypes.GetKeys(Classes);
+            for (UClass* Class : Classes)
+            {
+                if (Class->GetName().Contains(TEXT("Empty")))
+                {
+                    NodeClass = Class;
+                    break;
+                }
+            }
+            NodeTypeName = FName("EmptyNode");
+        }
         break;
     }
     
@@ -693,24 +766,54 @@ void USVONodeFactory::OptimizeMemoryLayout(ENodeType NodeType, int32 Count)
     switch (NodeType)
     {
     case ENodeType::Internal:
-        NodeClass = SupportedTypes.FilterByPredicate([](UClass* Class) {
-            return Class->GetName().Contains(TEXT("Internal"));
-        }).Array()[0];
-        NodeTypeName = FName("InternalNode");
+        {
+            // Replace FilterByPredicate with manual iteration
+            TArray<UClass*> Classes;
+            SupportedTypes.GetKeys(Classes);
+            for (UClass* Class : Classes)
+            {
+                if (Class->GetName().Contains(TEXT("Internal")))
+                {
+                    NodeClass = Class;
+                    break;
+                }
+            }
+            NodeTypeName = FName("InternalNode");
+        }
         break;
         
     case ENodeType::Leaf:
-        NodeClass = SupportedTypes.FilterByPredicate([](UClass* Class) {
-            return Class->GetName().Contains(TEXT("Leaf"));
-        }).Array()[0];
-        NodeTypeName = FName("LeafNode");
+        {
+            // Replace FilterByPredicate with manual iteration
+            TArray<UClass*> Classes;
+            SupportedTypes.GetKeys(Classes);
+            for (UClass* Class : Classes)
+            {
+                if (Class->GetName().Contains(TEXT("Leaf")))
+                {
+                    NodeClass = Class;
+                    break;
+                }
+            }
+            NodeTypeName = FName("LeafNode");
+        }
         break;
         
     case ENodeType::Empty:
-        NodeClass = SupportedTypes.FilterByPredicate([](UClass* Class) {
-            return Class->GetName().Contains(TEXT("Empty"));
-        }).Array()[0];
-        NodeTypeName = FName("EmptyNode");
+        {
+            // Replace FilterByPredicate with manual iteration
+            TArray<UClass*> Classes;
+            SupportedTypes.GetKeys(Classes);
+            for (UClass* Class : Classes)
+            {
+                if (Class->GetName().Contains(TEXT("Empty")))
+                {
+                    NodeClass = Class;
+                    break;
+                }
+            }
+            NodeTypeName = FName("EmptyNode");
+        }
         break;
     }
     

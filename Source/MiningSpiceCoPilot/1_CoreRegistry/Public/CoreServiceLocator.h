@@ -1,59 +1,65 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
-#include "1_CoreRegistry/Public/Interfaces/IServiceLocator.h"
-#include "1_CoreRegistry/Public/Interfaces/IServiceProvider.h"
-#include "Templates/Atomic.h"
-#include "Containers/Map.h"
-#include "HAL/ThreadSafeBool.h"
-#include "HAL/ThreadSafeCounter.h"
-#include "Misc/SpinLock.h"
+#include "UObject/Interface.h"
+#include "CoreServiceLocator.generated.h"
 
 /**
- * Implementation of the IServiceLocator interface that provides
- * service registration and resolution for the mining subsystems.
- * Supports zone and region-specific service instances with thread-safe operations.
+ * Interface for the core service locator
+ * This is the main registry for core services in the Mining system
  */
-class MININGSPICECOPILOT_API FServiceLocator : public IServiceLocator
+UINTERFACE(MinimalAPI, meta = (CannotImplementInterfaceInBlueprint))
+class UCoreServiceLocator : public UInterface
 {
+    GENERATED_BODY()
+};
+
+/**
+ * Core service locator interface implementation
+ */
+class MININGSPICECOPILOT_API ICoreServiceLocator
+{
+    GENERATED_BODY()
 public:
-    /** Default constructor */
-    FServiceLocator();
+    /**
+     * Registers a service with the locator
+     * @param ServiceName - Name of the service
+     * @param ServiceInstance - Instance of the service
+     * @return True if registration was successful
+     */
+    virtual bool RegisterService(const FName& ServiceName, TScriptInterface<UObject> ServiceInstance) = 0;
     
-    /** Destructor */
-    virtual ~FServiceLocator();
+    /**
+     * Unregisters a service from the locator
+     * @param ServiceName - Name of the service to unregister
+     * @return True if unregistration was successful
+     */
+    virtual bool UnregisterService(const FName& ServiceName) = 0;
     
-    //~ Begin IServiceLocator Interface
-    virtual bool Initialize() override;
-    virtual void Shutdown() override;
-    virtual bool IsInitialized() const override;
-    virtual bool RegisterService(void* InService, const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override;
-    virtual void* ResolveService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override;
-    virtual bool UnregisterService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override;
-    virtual bool HasService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) const override;
-    //~ End IServiceLocator Interface
+    /**
+     * Retrieves a service from the locator
+     * @param ServiceName - Name of the service to retrieve
+     * @return The requested service instance or nullptr if not found
+     */
+    virtual TScriptInterface<UObject> GetService(const FName& ServiceName) = 0;
     
-    /** Gets the singleton instance of the service locator */
-    static FServiceLocator& Get();
+    /**
+     * Checks if a service exists in the locator
+     * @param ServiceName - Name of the service to check
+     * @return True if the service exists
+     */
+    virtual bool HasService(const FName& ServiceName) const = 0;
     
-private:
-    /** Creates a unique key for service lookup based on interface type and context */
-    FName CreateServiceKey(const UClass* InInterfaceType, int32 InZoneID, int32 InRegionID) const;
+    /**
+     * Gets all registered service names
+     * @return Array of service names
+     */
+    virtual TArray<FName> GetAllServiceNames() const = 0;
     
-    /** Map of registered services with context-specific keys */
-    TMap<FName, void*> ServiceMap;
-    
-    /** Thread-safe flag indicating if the locator has been initialized */
-    FThreadSafeBool bIsInitialized;
-    
-    /** Lock for thread-safe access to the service map */
-    mutable FSpinLock ServiceMapLock;
-    
-    /** Singleton instance of the service locator */
-    static FServiceLocator* Singleton;
-    
-    /** Thread-safe initialization flag for the singleton */
-    static FThreadSafeBool bSingletonInitialized;
+    /**
+     * Gets the singleton instance of the service locator
+     * @return Reference to the service locator interface
+     */
+    static ICoreServiceLocator& Get();
 };

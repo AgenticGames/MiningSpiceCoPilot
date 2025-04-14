@@ -81,6 +81,15 @@ private:
         }
     };
 
+    // Enable GetTypeHash for FServiceKey
+    friend FORCEINLINE uint32 GetTypeHash(const FServiceKey& Key)
+    {
+        return HashCombine(
+            HashCombine(GetTypeHash(Key.InterfaceType), GetTypeHash(Key.ZoneID)),
+            GetTypeHash(Key.RegionID)
+        );
+    }
+
     /** Monitoring information for a service */
     struct FMonitoringInfo
     {

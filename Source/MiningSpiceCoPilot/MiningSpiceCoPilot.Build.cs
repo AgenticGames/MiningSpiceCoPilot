@@ -27,7 +27,8 @@ public class MiningSpiceCoPilot : ModuleRules
 			Path.Combine(ModuleDirectory, "2.3_ZoneBasedConcurrentMining/Public"),
 			
 			// Interface paths - make sure interfaces can be found
-			Path.Combine(ModuleDirectory, "Interfaces")
+			Path.Combine(ModuleDirectory, "Interfaces"),
+			
 		});
 		
 		// Add private include paths
@@ -45,7 +46,9 @@ public class MiningSpiceCoPilot : ModuleRules
 			Path.Combine(ModuleDirectory, "25_SvoSdfVolume/Private"),
 			Path.Combine(ModuleDirectory, "2.1_TieredCompression/Private"),
 			Path.Combine(ModuleDirectory, "2.2_RegionHibernation/Private"),
-			Path.Combine(ModuleDirectory, "2.3_ZoneBasedConcurrentMining/Private")
+			Path.Combine(ModuleDirectory, "2.3_ZoneBasedConcurrentMining/Private"),
+			
+
 		});
 
 		PublicDependencyModuleNames.AddRange(new string[] { 
@@ -56,12 +59,15 @@ public class MiningSpiceCoPilot : ModuleRules
 			"EnhancedInput", 
 			"Json", 
 			"RHI",
-			"RenderCore"
+			"RenderCore",
+			"ApplicationCore" // Additional platform abstraction
 		});
 		
 		PrivateDependencyModuleNames.AddRange(new string[] {
 			"Slate",
-			"SlateCore"
+			"SlateCore",
+			"Projects",   // For project settings and access
+			"EngineSettings" // For engine configuration access
 		});
 	}
 }

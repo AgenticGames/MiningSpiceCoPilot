@@ -1,6 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "1_CoreRegistry/Public/ZoneTypeRegistry.h"
+#include "ZoneTypeRegistry.h"
 
 // Initialize static members
 FZoneTypeRegistry* FZoneTypeRegistry::Singleton = nullptr;
@@ -25,25 +25,24 @@ FZoneTypeRegistry::~FZoneTypeRegistry()
 
 bool FZoneTypeRegistry::Initialize()
 {
-    bool bWasAlreadyInitialized = false;
-    if (!bIsInitialized.AtomicSet(true, bWasAlreadyInitialized))
+    // Check if already initialized
+    if (bIsInitialized)
     {
-        // Initialize internal maps
-        TransactionTypeMap.Empty();
-        TransactionTypeNameMap.Empty();
-        ZoneGridConfigMap.Empty();
-        
-        // Reset counter
-        NextTypeId = 1;
-        
-        // Set empty default config
-        DefaultZoneGridConfigName = NAME_None;
-        
-        return true;
+        return false;
     }
     
-    // Already initialized
-    return false;
+    // Set initialized flag
+    bIsInitialized.AtomicSet(true);
+    
+    // Initialize internal maps
+    TransactionTypeMap.Empty();
+    TransactionTypeNameMap.Empty();
+    ZoneGridConfigMap.Empty();
+    
+    // Reset type ID counter
+    NextTypeId = 1;
+    
+    return true;
 }
 
 void FZoneTypeRegistry::Shutdown()
@@ -51,7 +50,7 @@ void FZoneTypeRegistry::Shutdown()
     if (bIsInitialized)
     {
         // Lock for thread safety
-        FScopeLock Lock(&RegistryLock);
+        FRWScopeLock Lock(RegistryLock, SLT_Write);
         
         // Clear all registered items
         TransactionTypeMap.Empty();
@@ -87,7 +86,7 @@ bool FZoneTypeRegistry::Validate(TArray<FString>& OutErrors) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     bool bIsValid = true;
     
@@ -182,7 +181,7 @@ void FZoneTypeRegistry::Clear()
     if (IsInitialized())
     {
         // Lock for thread safety
-        FScopeLock Lock(&RegistryLock);
+        FRWScopeLock Lock(RegistryLock, SLT_Write);
         
         // Clear all registered items
         TransactionTypeMap.Empty();
@@ -215,7 +214,7 @@ uint32 FZoneTypeRegistry::RegisterTransactionType(
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_Write);
     
     // Check if type name is already registered
     if (TransactionTypeNameMap.Contains(InTypeName))
@@ -278,7 +277,7 @@ uint32 FZoneTypeRegistry::RegisterMaterialTransaction(
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_Write);
     
     // Check if type name is already registered
     if (TransactionTypeNameMap.Contains(InTypeName))
@@ -348,7 +347,7 @@ bool FZoneTypeRegistry::RegisterZoneGridConfig(
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_Write);
     
     // Check if config name is already registered
     if (ZoneGridConfigMap.Contains(InConfigName))
@@ -391,10 +390,10 @@ const FZoneTransactionTypeInfo* FZoneTypeRegistry::GetTransactionTypeInfo(uint32
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Look up type by ID
-    TSharedRef<FZoneTransactionTypeInfo>* TypeInfoPtr = TransactionTypeMap.Find(InTypeId);
+    const TSharedRef<FZoneTransactionTypeInfo>* TypeInfoPtr = TransactionTypeMap.Find(InTypeId);
     if (TypeInfoPtr)
     {
         return &(TypeInfoPtr->Get());
@@ -411,14 +410,14 @@ const FZoneTransactionTypeInfo* FZoneTypeRegistry::GetTransactionTypeInfoByName(
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Look up type ID by name
     const uint32* TypeIdPtr = TransactionTypeNameMap.Find(InTypeName);
     if (TypeIdPtr)
     {
         // Look up type info by ID
-        TSharedRef<FZoneTransactionTypeInfo>* TypeInfoPtr = TransactionTypeMap.Find(*TypeIdPtr);
+        const TSharedRef<FZoneTransactionTypeInfo>* TypeInfoPtr = TransactionTypeMap.Find(*TypeIdPtr);
         if (TypeInfoPtr)
         {
             return &(TypeInfoPtr->Get());
@@ -436,10 +435,10 @@ const FZoneGridConfig* FZoneTypeRegistry::GetZoneGridConfig(const FName& InConfi
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Look up config by name
-    TSharedRef<FZoneGridConfig>* ConfigPtr = ZoneGridConfigMap.Find(InConfigName);
+    const TSharedRef<FZoneGridConfig>* ConfigPtr = ZoneGridConfigMap.Find(InConfigName);
     if (ConfigPtr)
     {
         return &(ConfigPtr->Get());
@@ -467,7 +466,7 @@ bool FZoneTypeRegistry::SetDefaultZoneGridConfig(const FName& InConfigName)
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_Write);
     
     // Check if config exists
     if (!ZoneGridConfigMap.Contains(InConfigName))
@@ -501,7 +500,7 @@ bool FZoneTypeRegistry::UpdateTransactionProperty(uint32 InTypeId, const FName& 
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_Write);
     
     // Check if the transaction type is registered
     TSharedRef<FZoneTransactionTypeInfo>* TypeInfoPtr = TransactionTypeMap.Find(InTypeId);
@@ -565,7 +564,7 @@ bool FZoneTypeRegistry::UpdateFastPathThreshold(uint32 InTypeId, float InConflic
     float ConflictRate = FMath::Clamp(InConflictRate, 0.0f, 1.0f);
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_Write);
     
     // Check if the transaction type is registered
     TSharedRef<FZoneTransactionTypeInfo>* TypeInfoPtr = TransactionTypeMap.Find(InTypeId);
@@ -608,7 +607,7 @@ bool FZoneTypeRegistry::IsTransactionTypeRegistered(uint32 InTypeId) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     return TransactionTypeMap.Contains(InTypeId);
 }
@@ -621,7 +620,7 @@ bool FZoneTypeRegistry::IsTransactionTypeRegistered(const FName& InTypeName) con
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     return TransactionTypeNameMap.Contains(InTypeName);
 }
@@ -631,8 +630,7 @@ FZoneTypeRegistry& FZoneTypeRegistry::Get()
     // Thread-safe singleton initialization
     if (!bSingletonInitialized)
     {
-        bool bWasAlreadyInitialized = false;
-        if (!bSingletonInitialized.AtomicSet(true, bWasAlreadyInitialized))
+        if (!bSingletonInitialized.AtomicSet(true))
         {
             Singleton = new FZoneTypeRegistry();
             Singleton->Initialize();

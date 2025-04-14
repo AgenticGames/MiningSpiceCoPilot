@@ -33,8 +33,18 @@ bool UDistanceFieldFactory::Initialize()
     }
 
     // Get component pool manager
-    IComponentPoolManager& PoolManagerRef = IComponentPoolManager::Get();
-    PoolManager = TScriptInterface<IComponentPoolManager>(&PoolManagerRef);
+    IComponentPoolManager* PoolManagerPtr = &IComponentPoolManager::Get();
+    UObject* PoolManagerObject = Cast<UObject>(PoolManagerPtr);
+    if (PoolManagerObject)
+    {
+        PoolManager.SetObject(PoolManagerObject);
+        PoolManager.SetInterface(PoolManagerPtr);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("DistanceFieldFactory: Failed to cast IComponentPoolManager to UObject"));
+        return false;
+    }
 
     // Initialize metrics tracking
     IFactoryMetrics::Get().TrackOperation(
@@ -67,9 +77,6 @@ void UDistanceFieldFactory::Shutdown()
     
     // Clear supported types
     SupportedTypes.Empty();
-    
-    // Clear field pool configurations
-    FieldPoolConfigs.Empty();
     
     bIsInitialized = false;
     UE_LOG(LogTemp, Display, TEXT("DistanceFieldFactory shut down"));
@@ -120,7 +127,15 @@ UObject* UDistanceFieldFactory::CreateComponent(UClass* ComponentType, const TMa
     if (Parameters.Contains(FName("Resolution")))
     {
         FString ResolutionStr = Parameters.FindRef(FName("Resolution"));
-        FIntVector::FParseStream(ResolutionStr) >> Resolution;
+        // Parse the string into an FIntVector
+        TArray<FString> Components;
+        ResolutionStr.ParseIntoArray(Components, TEXT(","), true);
+        if (Components.Num() >= 3)
+        {
+            Resolution.X = FCString::Atoi(*Components[0]);
+            Resolution.Y = FCString::Atoi(*Components[1]);
+            Resolution.Z = FCString::Atoi(*Components[2]);
+        }
     }
     
     // Parse materials parameter
@@ -219,7 +234,10 @@ UObject* UDistanceFieldFactory::CreateComponent(UClass* ComponentType, const TMa
 TArray<UClass*> UDistanceFieldFactory::GetSupportedTypes() const
 {
     TArray<UClass*> Types;
-    SupportedTypes.GetKeys(Types);
+    for (UClass* SupportedType : SupportedTypes)
+    {
+        Types.Add(SupportedType);
+    }
     return Types;
 }
 

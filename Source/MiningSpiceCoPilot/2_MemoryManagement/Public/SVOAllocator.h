@@ -3,8 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "2_MemoryManagement/Public/Interfaces/IPoolAllocator.h"
-#include "2_MemoryManagement/Public/Interfaces/IMemoryManager.h"
+#include "Interfaces/IPoolAllocator.h"
+#include "Interfaces/IMemoryManager.h"
 
 /**
  * Specialized allocator for SVO octree nodes
@@ -93,7 +93,7 @@ private:
     /**
      * Calculates memory metrics for this pool
      */
-    void UpdateStats();
+    void UpdateStats() const;
 
     /**
      * Gets a block index from a pointer

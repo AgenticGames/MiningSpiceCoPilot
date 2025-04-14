@@ -1,6 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "1_CoreRegistry/Public/MaterialRegistry.h"
+#include "MaterialRegistry.h"
 
 // Initialize static members
 FMaterialRegistry* FMaterialRegistry::Singleton = nullptr;
@@ -27,26 +27,28 @@ FMaterialRegistry::~FMaterialRegistry()
 
 bool FMaterialRegistry::Initialize()
 {
-    bool bWasAlreadyInitialized = false;
-    if (!bIsInitialized.AtomicSet(true, bWasAlreadyInitialized))
+    // Check if already initialized
+    if (bIsInitialized)
     {
-        // Initialize internal maps
-        MaterialTypeMap.Empty();
-        MaterialTypeNameMap.Empty();
-        RelationshipMap.Empty();
-        RelationshipsBySourceMap.Empty();
-        RelationshipsByTargetMap.Empty();
-        
-        // Reset counters
-        NextTypeId = 1;
-        NextRelationshipId = 1;
-        NextChannelId = 0;
-        
-        return true;
+        return false;
     }
     
-    // Already initialized
-    return false;
+    // Set initialized flag
+    bIsInitialized.AtomicSet(true);
+    
+    // Initialize internal maps
+    MaterialTypeMap.Empty();
+    MaterialTypeNameMap.Empty();
+    RelationshipMap.Empty();
+    RelationshipsBySourceMap.Empty();
+    RelationshipsByTargetMap.Empty();
+    
+    // Reset type ID counter
+    NextTypeId = 1;
+    NextRelationshipId = 1;
+    NextChannelId = 0;
+    
+    return true;
 }
 
 void FMaterialRegistry::Shutdown()
@@ -54,7 +56,7 @@ void FMaterialRegistry::Shutdown()
     if (bIsInitialized)
     {
         // Lock for thread safety
-        FScopeLock Lock(&RegistryLock);
+        FRWScopeLock Lock(RegistryLock, SLT_Write);
         
         // Clear all registered items
         MaterialTypeMap.Empty();
@@ -92,7 +94,7 @@ bool FMaterialRegistry::Validate(TArray<FString>& OutErrors) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     bool bIsValid = true;
     
@@ -253,7 +255,7 @@ void FMaterialRegistry::Clear()
     if (IsInitialized())
     {
         // Lock for thread safety
-        FScopeLock Lock(&RegistryLock);
+        FRWScopeLock Lock(RegistryLock, SLT_Write);
         
         // Clear all registered items
         MaterialTypeMap.Empty();
@@ -287,7 +289,7 @@ uint32 FMaterialRegistry::RegisterMaterialType(
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_Write);
     
     // Check if type name is already registered
     if (MaterialTypeNameMap.Contains(InTypeName))
@@ -364,7 +366,7 @@ uint32 FMaterialRegistry::RegisterMaterialRelationship(
     float CompatibilityScore = FMath::Clamp(InCompatibilityScore, 0.0f, 1.0f);
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_Write);
     
     // Look up source and target type IDs
     const uint32* SourceIdPtr = MaterialTypeNameMap.Find(InSourceTypeName);
@@ -430,7 +432,7 @@ int32 FMaterialRegistry::AllocateMaterialChannel(uint32 InTypeId)
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_Write);
     
     // Check if the material type is registered
     TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
@@ -466,10 +468,10 @@ const FMaterialTypeInfo* FMaterialRegistry::GetMaterialTypeInfo(uint32 InTypeId)
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Look up type by ID
-    TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
+    const TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
     if (TypeInfoPtr)
     {
         return &(TypeInfoPtr->Get());
@@ -486,14 +488,14 @@ const FMaterialTypeInfo* FMaterialRegistry::GetMaterialTypeInfoByName(const FNam
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Look up type ID by name
     const uint32* TypeIdPtr = MaterialTypeNameMap.Find(InTypeName);
     if (TypeIdPtr)
     {
         // Look up type info by ID
-        TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(*TypeIdPtr);
+        const TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(*TypeIdPtr);
         if (TypeInfoPtr)
         {
             return &(TypeInfoPtr->Get());
@@ -511,10 +513,10 @@ const FMaterialRelationship* FMaterialRegistry::GetMaterialRelationship(uint32 I
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Look up relationship by ID
-    TSharedRef<FMaterialRelationship>* RelationshipPtr = RelationshipMap.Find(InRelationshipId);
+    const TSharedRef<FMaterialRelationship>* RelationshipPtr = RelationshipMap.Find(InRelationshipId);
     if (RelationshipPtr)
     {
         return &(RelationshipPtr->Get());
@@ -533,7 +535,7 @@ TArray<FMaterialTypeInfo> FMaterialRegistry::GetAllMaterialTypes() const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Collect all material type infos
     Result.Reserve(MaterialTypeMap.Num());
@@ -555,7 +557,7 @@ TArray<FMaterialTypeInfo> FMaterialRegistry::GetDerivedMaterialTypes(uint32 InPa
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Check if the parent type is registered
     if (!MaterialTypeMap.Contains(InParentTypeId))
@@ -585,7 +587,7 @@ TArray<FMaterialRelationship> FMaterialRegistry::GetMaterialRelationships(uint32
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Collect all relationships where this type is the source
     TArray<uint32> RelationshipIds;
@@ -611,7 +613,7 @@ bool FMaterialRegistry::IsMaterialTypeRegistered(uint32 InTypeId) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     return MaterialTypeMap.Contains(InTypeId);
 }
@@ -624,7 +626,7 @@ bool FMaterialRegistry::IsMaterialTypeRegistered(const FName& InTypeName) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     return MaterialTypeNameMap.Contains(InTypeName);
 }
@@ -637,7 +639,7 @@ bool FMaterialRegistry::IsMaterialDerivedFrom(uint32 InDerivedTypeId, uint32 InB
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
     
     // Check if both types are registered
     if (!MaterialTypeMap.Contains(InDerivedTypeId) || !MaterialTypeMap.Contains(InBaseTypeId))
@@ -688,7 +690,7 @@ bool FMaterialRegistry::UpdateMaterialProperty(uint32 InTypeId, const FName& InP
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&RegistryLock);
+    FRWScopeLock Lock(RegistryLock, SLT_Write);
     
     // Check if the material type is registered
     TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
@@ -754,8 +756,7 @@ FMaterialRegistry& FMaterialRegistry::Get()
     // Thread-safe singleton initialization
     if (!bSingletonInitialized)
     {
-        bool bWasAlreadyInitialized = false;
-        if (!bSingletonInitialized.AtomicSet(true, bWasAlreadyInitialized))
+        if (!bSingletonInitialized.AtomicSet(true))
         {
             Singleton = new FMaterialRegistry();
             Singleton->Initialize();

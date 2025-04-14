@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "1_CoreRegistry/Public/Interfaces/IRegistry.h"
+#include "Interfaces/IRegistry.h"
 #include "Containers/Map.h"
 #include "Templates/SharedPointer.h"
 #include "HAL/ThreadSafeBool.h"
@@ -273,7 +273,7 @@ private:
     uint32 SchemaVersion;
     
     /** Lock for thread-safe access to the registry maps */
-    mutable FSpinLock RegistryLock;
+    mutable FRWLock RegistryLock;
     
     /** Singleton instance of the registry */
     static FMaterialRegistry* Singleton;

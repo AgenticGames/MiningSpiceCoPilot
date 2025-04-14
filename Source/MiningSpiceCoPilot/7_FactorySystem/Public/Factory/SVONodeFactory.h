@@ -115,7 +115,7 @@ public:
 
     //~ Begin IMiningFactory Interface
     virtual bool Initialize() override;
-    virtual void Shutdown() override;
+    virtual void Shutdown() override; // Removed any UFUNCTION() declaration
     virtual bool IsInitialized() const override;
     virtual FName GetFactoryName() const override;
     virtual bool SupportsType(UClass* ComponentType) const override;

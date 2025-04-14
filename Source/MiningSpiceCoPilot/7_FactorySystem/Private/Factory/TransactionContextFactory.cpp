@@ -14,6 +14,19 @@ namespace
     const FName FactoryName = "TransactionContextFactory";
 }
 
+// Fixed enums for transaction types
+void InitializeTransactionEnums()
+{
+    // Read transaction type
+    ETransactionType Read = ETransactionType::Read;
+    
+    // Write transaction type
+    ETransactionType Write = ETransactionType::Write;
+    
+    // ReadWrite transaction type
+    ETransactionType ReadWrite = ETransactionType::ReadWrite;
+}
+
 UTransactionContextFactory::UTransactionContextFactory()
     : bIsInitialized(false)
     , FactoryName(::FactoryName)
@@ -33,8 +46,18 @@ bool UTransactionContextFactory::Initialize()
     }
 
     // Get component pool manager
-    IComponentPoolManager& PoolManagerRef = IComponentPoolManager::Get();
-    PoolManager = TScriptInterface<IComponentPoolManager>(&PoolManagerRef);
+    IComponentPoolManager* PoolManagerPtr = &IComponentPoolManager::Get();
+    UObject* PoolManagerObject = Cast<UObject>(PoolManagerPtr);
+    if (PoolManagerObject)
+    {
+        PoolManager.SetObject(PoolManagerObject);
+        PoolManager.SetInterface(PoolManagerPtr);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("TransactionContextFactory: Failed to cast IComponentPoolManager to UObject"));
+        return false;
+    }
 
     // Initialize metrics tracking
     IFactoryMetrics::Get().TrackOperation(
@@ -243,7 +266,10 @@ UObject* UTransactionContextFactory::CreateComponent(UClass* ComponentType, cons
 TArray<UClass*> UTransactionContextFactory::GetSupportedTypes() const
 {
     TArray<UClass*> Types;
-    SupportedTypes.GetKeys(Types);
+    for (UClass* SupportedType : SupportedTypes)
+    {
+        Types.Add(SupportedType);
+    }
     return Types;
 }
 

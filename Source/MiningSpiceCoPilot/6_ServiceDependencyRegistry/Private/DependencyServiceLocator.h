@@ -1,4 +1,4 @@
-// ServiceLocator.h
+﻿// ServiceLocator.h
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
@@ -38,19 +38,13 @@ public:
 
 private:
     /** Key for service lookup */
-    struct FServiceKey
-    {
-        const UClass* InterfaceType;
-        int32 ZoneID;
-        int32 RegionID;
 
-        /** Constructor */
-        FServiceKey(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE)
-            : InterfaceType(InInterfaceType)
-            , ZoneID(InZoneID)
-            , RegionID(InRegionID)
-        {
-        }
+    // Hash function for FServiceKey
+    friend uint32 GetTypeHash(const FServiceKey& Key)
+    {
+        return HashCombine(GetTypeHash(Key.ServiceType), GetTypeHash(Key.ServiceName));
+    }
+
 
         /** Equality operator */
         bool operator==(const FServiceKey& Other) const

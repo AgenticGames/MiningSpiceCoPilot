@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "2_MemoryManagement/Public/MemoryPoolManager.h"
+#include "MemoryPoolManager.h"
 #include "SVOAllocator.h"
 #include "MemoryNarrowBandAllocator.h"
 #include "SharedBufferManager.h"
@@ -62,54 +62,38 @@ FMemoryPoolManager::~FMemoryPoolManager()
 
 bool FMemoryPoolManager::Initialize()
 {
-    // Check if already initialized
-    bool bWasInitialized = false;
-    if (bIsInitialized.AtomicSet(true, bWasInitialized))
+    // Guard against multiple initialization
+    if (bIsInitialized)
     {
-        // Already initialized
-        UE_LOG(LogTemp, Warning, TEXT("FMemoryPoolManager::Initialize - Already initialized"));
-        return false;
+        return true;
     }
 
-    // Create helper components
-    MemoryTracker = CreateMemoryTracker();
-    Defragmenter = CreateDefragmenter();
+    // Register for memory warnings
+    FCoreDelegates::GetMemoryTrimDelegate().AddRaw(this, &FMemoryPoolManager::OnMemoryWarning);
+
+    // Check platform capabilities
+    if (!IsSupported())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("FMemoryPoolManager::Initialize - Some features may be disabled due to platform limitations"));
+    }
 
     // Initialize memory tracker
-    if (MemoryTracker)
-    {
-        if (!MemoryTracker->Initialize())
-        {
-            UE_LOG(LogTemp, Error, TEXT("FMemoryPoolManager::Initialize - Failed to initialize memory tracker"));
-            Shutdown();
-            return false;
-        }
-    }
-    else
+    MemoryTracker = CreateMemoryTracker();
+    if (!MemoryTracker)
     {
         UE_LOG(LogTemp, Error, TEXT("FMemoryPoolManager::Initialize - Failed to create memory tracker"));
-        Shutdown();
         return false;
     }
 
-    // Initialize default budgets
-    SetMemoryBudget(CATEGORY_SVO_NODES, DEFAULT_BUDGET_SVO_NODES);
-    SetMemoryBudget(CATEGORY_SDF_FIELDS, DEFAULT_BUDGET_SDF_FIELDS);
-    SetMemoryBudget(CATEGORY_NARROW_BAND, DEFAULT_BUDGET_NARROW_BAND);
-    SetMemoryBudget(CATEGORY_MATERIAL_CHANNELS, DEFAULT_BUDGET_MATERIAL_CHANNELS);
-    SetMemoryBudget(CATEGORY_MESH_DATA, DEFAULT_BUDGET_MESH_DATA);
-    SetMemoryBudget(CATEGORY_GENERAL, DEFAULT_BUDGET_GENERAL);
+    // Initialize defragmenter
+    Defragmenter = new FMemoryDefragmenter();
+    if (!Defragmenter)
+    {
+        UE_LOG(LogTemp, Error, TEXT("FMemoryPoolManager::Initialize - Failed to create defragmenter"));
+        return false;
+    }
 
-    // Update memory statistics
-    UpdateMemoryStats();
-
-    // Register for low memory warnings if available on this platform
-    FCoreDelegates::GetMemoryWarningDelegate().AddRaw(this, &FMemoryPoolManager::OnMemoryWarning);
-    
-    UE_LOG(LogTemp, Log, TEXT("FMemoryPoolManager::Initialize - Memory manager initialized successfully"));
-    UE_LOG(LogTemp, Verbose, TEXT("FMemoryPoolManager::Initialize - Available physical memory: %llu bytes"),
-        AvailablePhysicalMemory.GetValue());
-
+    bIsInitialized = true;
     return true;
 }
 
@@ -120,63 +104,63 @@ void FMemoryPoolManager::Shutdown()
         return;
     }
 
-    // Unregister from low memory warnings
-    FCoreDelegates::GetMemoryWarningDelegate().RemoveAll(this);
+    // Unregister from memory warnings
+    FCoreDelegates::GetMemoryTrimDelegate().RemoveAll(this);
 
-    // Shutdown and destroy all pools (in reverse order of importance)
+    // Release all pools
     {
         FWriteScopeLock WriteLock(PoolsLock);
-        for (auto& PoolPair : Pools)
-        {
-            if (PoolPair.Value.IsValid())
-            {
-                PoolPair.Value->Shutdown();
-            }
-        }
         Pools.Empty();
     }
 
-    // Shutdown and destroy all buffers
+    // Release all buffers
     {
         FWriteScopeLock WriteLock(BuffersLock);
-        for (auto& BufferPair : Buffers)
-        {
-            if (BufferPair.Value.IsValid())
-            {
-                BufferPair.Value->Shutdown();
-            }
-        }
         Buffers.Empty();
     }
 
-    // Shutdown memory tracker
+    // Clean up memory tracker
     if (MemoryTracker)
     {
-        MemoryTracker->Shutdown();
         delete MemoryTracker;
         MemoryTracker = nullptr;
     }
 
-    // Delete defragmenter
+    // Clean up defragmenter
     if (Defragmenter)
     {
         delete Defragmenter;
         Defragmenter = nullptr;
     }
 
-    // Clear budget data
-    {
-        FWriteScopeLock WriteLock(BudgetsLock);
-        MemoryBudgets.Empty();
-    }
-
     bIsInitialized = false;
-    UE_LOG(LogTemp, Log, TEXT("FMemoryPoolManager::Shutdown - Memory manager shut down"));
 }
 
 bool FMemoryPoolManager::IsInitialized() const
 {
     return bIsInitialized;
+}
+
+bool FMemoryPoolManager::IsSupported() const
+{
+    // Check for minimum requirements
+    bool bSupported = true;
+
+    // Check for NUMA support
+    if (FPlatformMemory::GetNumNUMANodes() > 1)
+    {
+        bNUMAAwarenessEnabled = true;
+        NUMAPreferredNode = 0; // Default to first node
+    }
+    
+    // Check for SIMD support
+    if (!FPlatformMath::SupportsSSE4_1())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("FMemoryPoolManager::IsSupported - SSE4.1 not supported, some optimizations will be disabled"));
+        // We don't fail here, just log a warning
+    }
+
+    return bSupported;
 }
 
 IPoolAllocator* FMemoryPoolManager::CreatePool(
@@ -600,60 +584,6 @@ IMemoryManager& FMemoryPoolManager::Get()
     return *ManagerInstance;
 }
 
-bool FMemoryPoolManager::IsSupported() const
-{
-    // Check for minimum requirements
-    bool bSupported = true;
-    
-    // Check for SIMD support (required for optimized SDF operations)
-    if (!FPlatformMath::SupportsSSE4_1())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("FMemoryPoolManager::IsSupported - SSE4.1 not supported, some optimizations will be disabled"));
-        // We don't fail here, just log a warning
-    }
-    
-    return bSupported;
-}
-
-bool FMemoryPoolManager::SetNUMAPolicy(bool bUseNUMAAwareness, int32 PreferredNode)
-{
-    // Store the settings
-    bNUMAAwarenessEnabled = bUseNUMAAwareness;
-    NUMAPreferredNode = PreferredNode;
-    
-    // If NUMA awareness is enabled, try to set the policy
-    if (bNUMAAwarenessEnabled)
-    {
-        // Query number of NUMA nodes available
-        const int32 NumNodes = FPlatformMemory::GetNumNUMANodes();
-        
-        // Check if NUMA is supported and configured
-        if (NumNodes <= 1)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("FMemoryPoolManager::SetNUMAPolicy - NUMA awareness requested but not supported on this system"));
-            bNUMAAwarenessEnabled = false;
-            NUMAPreferredNode = 0;
-            return false;
-        }
-        
-        // Validate preferred node
-        if (PreferredNode < 0 || PreferredNode >= NumNodes)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("FMemoryPoolManager::SetNUMAPolicy - Invalid NUMA node %d (system has %d nodes), using node 0"),
-                PreferredNode, NumNodes);
-            NUMAPreferredNode = 0;
-        }
-        
-        UE_LOG(LogTemp, Log, TEXT("FMemoryPoolManager::SetNUMAPolicy - NUMA awareness enabled, preferred node: %d"), NUMAPreferredNode);
-    }
-    else
-    {
-        UE_LOG(LogTemp, Verbose, TEXT("FMemoryPoolManager::SetNUMAPolicy - NUMA awareness disabled"));
-    }
-    
-    return true;
-}
-
 IPoolAllocator* FMemoryPoolManager::CreateSVONodePool(
     const FName& PoolName,
     uint32 NodeSize,
@@ -1015,10 +945,16 @@ uint64 FMemoryPoolManager::ReleaseUnusedResources(float MaxTimeMs)
 
 void FMemoryPoolManager::OnMemoryWarning()
 {
-    UE_LOG(LogTemp, Warning, TEXT("FMemoryPoolManager::OnMemoryWarning - Memory warning received!"));
-    
-    // Try to free memory
-    const uint64 FreedBytes = ReduceMemoryUsage(1024 * 1024 * 100, 250.0f); // Try to free 100MB in 250ms
-    
-    UE_LOG(LogTemp, Warning, TEXT("FMemoryPoolManager::OnMemoryWarning - Freed %llu bytes"), FreedBytes);
+    if (!bIsInitialized)
+    {
+        return;
+    }
+
+    // Log memory state
+    UE_LOG(LogTemp, Warning, TEXT("FMemoryPoolManager::OnMemoryWarning - Memory warning received, current usage: %llu bytes"),
+        GetTotalMemoryUsage());
+
+    // Attempt to reduce memory usage
+    EnforceBudgets(EMemoryPriority::Low);
+    ReleaseUnusedResources(5.0f); // Give it up to 5ms to free resources
 }
