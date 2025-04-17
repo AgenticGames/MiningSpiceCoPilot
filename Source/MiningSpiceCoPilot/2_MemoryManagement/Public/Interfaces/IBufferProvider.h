@@ -42,7 +42,13 @@ enum class EBufferUsage : uint8
     VertexData,
     
     /** Buffer optimized for index data */
-    IndexData
+    IndexData,
+    
+    /** Buffer optimized for sequential access */
+    Sequential,
+    
+    /** Buffer optimized for random access */
+    Random
 };
 
 /**

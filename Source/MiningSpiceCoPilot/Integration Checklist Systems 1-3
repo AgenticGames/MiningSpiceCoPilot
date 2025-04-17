@@ -1,0 +1,293 @@
+IMPORTANT: As you complete an integration feature, mark it with a TICK!
+
+ICON LEGEND:
+Core Feature Icons (Items with this icon are 100% in the scope of the original system prompt --> Example, this one (Source\MiningSpiceCoPilot\# SYSTEM 3 Threading and Async Task System REFINED.txt)):
+
+⚙️ - Required System Component / Core Integration Feature / Essential Functionality 
+
+Stretch Goal Icons (Beyond the scope of the original implementation and connection points of the system prompt documents):
+🚀 - Performance Enhancement
+✨ - Advanced Feature
+🔍 - Misc Optimization
+👀 - Visualization / Telemetry
+
+
+Comprehensive list of integration points between the Core Registry (System1) and Threading Task System (System3) with specific function/member references: (Each section should have at LEAST 6 entries, Core integration + Visualization & Telemetry having at least 8, list them in importance order, if appropriate you can make more per section (As a bonus, each category gets an extra 2 items that will heavily benefit the SVO/SDF system itself, mark these with an extra icon 🧊)):
+
+# Integration Points Between Core Registry and Threading Task System
+
+System 1 documentation can be found at
+Source\MiningSpiceCoPilot\# SYSTEM 1 Core Registry and Type System REFINED.txt
+
+System 3 documentation can be found at
+Source\MiningSpiceCoPilot\# SYSTEM 3 Threading and Async Task System REFINED.txt
+
+## Core Thread-Safe Registry Operations
+
+1. ⚙️ **Thread-Safe Type Registration** 
+   - `IRegistry` implementations need integration with `FThreadSafety` from `ThreadSafety.h`
+   - Implementation: 
+     - Replace standard locks in all registry classes with `FSpinLock` from `ThreadSafety.h`
+     - Add contention tracking for high-traffic registration points using `FThreadSafety::RecordContention()`
+     - Update `FZoneTypeRegistry::RegisterTransactionType` to use optimistic locking for concurrent registration
+     - Implement thread-safe singleton pattern in all registry Get() methods using atomic operations
+     - Required files: `ZoneTypeRegistry.h`, `MaterialRegistry.h`, `SDFTypeRegistry.h`, `SVOTypeRegistry.h`, `ThreadSafety.h`
+     - Ensures miners can safely register new material types and zone operations during gameplay without crashes or data corruption
+
+2. ⚙️ **Synchronized Service Resolution**
+   - `FServiceLocator::ResolveService` needs thread safety from `FThreadSafety` primitives
+   - Implementation:
+     - Update `FServiceLocator` to use reader-writer lock from `FMiningReaderWriterLock` for service resolution
+     - Implement lock-free fast-path for frequently accessed services with versioned access
+     - Add zone-aware service resolution that coordinates with `FTransactionManager`
+     - Create specialized thread-local caching for repeated service lookups
+     - Required files: `CoreServiceLocator.h`, `ThreadSafety.h`, `TransactionManager.h`, `IServiceLocator.h`
+     - Improves performance when multiple mining operations in different areas need access to the same service instances
+
+3. ⚙️ **Zone Transaction Type Registration**
+   - `FZoneTypeRegistry` needs deep integration with `FTransactionManager` from `TransactionManager.h`
+   - Implementation:
+     - Add transaction type capabilities from registry to inform `FTransactionManager` optimizations
+     - Link `FZoneTypeRegistry::RegisterTransactionType` with `FTransactionManager::UpdateFastPathThreshold`
+     - Create callback mechanism for transaction statistics to update registry metadata
+     - Implement zone hierarchy awareness for nested transactions
+     - Required files: `ZoneTypeRegistry.h`, `TransactionManager.h`, `ITransactionManager.h`, `ThreadSafety.h`
+     - Enables the system to optimize mining operations based on material types, reducing conflicts when multiple miners work in close proximity
+
+4. ⚙️ **Material-Specific Version Tracking**
+   - `FMaterialRegistry` needs integration with version tracking from `FTransactionManager`
+   - Implementation:
+     - Add material channel version tracking to `FMaterialRegistry` using `FThreadSafeCounter`
+     - Integrate `FMaterialRegistry::GetMaterialType` with `FTransactionManager::GetOrCreateMaterialVersion`
+     - Create specialized version validators for material inheritance chains
+     - Implement optimistic concurrency for material property updates
+     - Required files: `MaterialRegistry.h`, `TransactionManager.h`, `ThreadSafety.h`
+     - Allows multiple miners to safely modify different properties of the same material type without conflicts
+
+5. ⚙️ **Type-Safe Task Scheduling**
+   - `FTaskScheduler` needs type information from registry system for mining operations
+   - Implementation:
+     - Enhance `FTaskScheduler` to query type capabilities from `FSVOTypeRegistry` and `FSDFTypeRegistry`
+     - Create type-aware task creation helpers in registry interfaces
+     - Add type-specific worker thread specialization based on registry metadata
+     - Implement SIMD capability detection through registry for optimized task execution
+     - Required files: `TaskScheduler.h`, `SVOTypeRegistry.h`, `SDFTypeRegistry.h`, `ITaskScheduler.h`
+     - Optimizes mining tasks based on ore/rock types being processed, using specialized algorithms per material
+
+6. ⚙️ **Registry Concurrency Boundaries**
+   - Clearly define thread safety boundaries between registries using `FThreadSafety` tools
+   - Implementation:
+     - Define hierarchical locking order for all registry operations using `FHierarchicalLock`
+     - Implement deadlock prevention for cross-registry operations
+     - Create wait-free read paths for frequent type lookups
+     - Add contention metrics collection for registry access patterns
+     - Required files: All Registry headers, `ThreadSafety.h`, `IRegistry.h`
+     - Prevents mining operations from freezing when multiple systems need to access the type registry simultaneously
+
+7. ⚙️ **SDF Field Operation Thread Safety**
+   - `FSDFTypeRegistry` needs specialized thread safety from `FSVOFieldReadLock`
+   - Implementation:
+     - Integrate `FSDFTypeRegistry::RegisterFieldOperation` with `FSVOFieldReadLock` for versioned access
+     - Implement wait-free field operation lookup for frequently used operations
+     - Create specialized read-mostly synchronization for distance field evaluation
+     - Add optimistic concurrency for field operation registration
+     - Required files: `SDFTypeRegistry.h`, `ThreadSafety.h`
+     - Allows miners to safely modify terrain while other players are viewing/interacting with the same area
+
+8. ⚙️ **Async Type Loading and Registration**
+   - Async loading of type data needs `FAsyncTaskManager` integration
+   - Implementation:
+     - Create async type registration tasks using `FAsyncTaskManager`
+     - Implement progress tracking for large type registrations
+     - Add cancellation support for interrupted type loading
+     - Create versioning protection during async type loading
+     - Required files: `AsyncTaskManager.h`, All Registry headers, `IAsyncOperation.h`
+     - Enables loading new mining equipment and material types without interrupting gameplay
+
+## Performance Optimizations
+
+9. 🚀 **Lock-Free Type Lookup**
+   - Optimize type lookups with lock-free algorithms from `ThreadSafety.h`
+   - Implementation:
+     - Replace standard map lookups with lock-free alternatives in all registries
+     - Implement type ID hashing for O(1) lockless lookup times
+     - Add type lookup caching with thread-local storage
+     - Create specialized lookup paths for hot code paths
+     - Required files: All Registry headers, `ThreadSafety.h`
+     - Dramatically improves mining performance during complex operations that require frequent type lookups
+
+10. 🚀 **NUMA-Aware Registry Access**
+    - Optimize multi-socket access to registries with NUMA awareness
+    - Implementation:
+      - Create NUMA-local type caches for frequently accessed types
+      - Implement thread affinity hints for type-specific operations
+      - Add NUMA topology detection to service resolution
+      - Create zone assignment strategies based on NUMA domains
+      - Required files: All Registry headers, `ThreadSafety.h`, `TaskScheduler.h`
+      - Significantly improves performance on server systems when processing large mining operations
+
+11. 🚀 **Parallelized Type Operations**
+    - Integrate `FParallelExecutor` with registry batch operations
+    - Implementation:
+      - Create batch type registration API using `FParallelExecutor`
+      - Implement parallel validation for type consistency checks
+      - Add parallel type initialization during system startup
+      - Create specialized executors for type-specific operations
+      - Required files: `ParallelExecutor.h`, All Registry headers
+      - Speeds up loading times when initializing large procedurally generated mining worlds
+
+12. 🚀 **Optimistic Type Registration**
+    - Implement optimistic concurrency for type registration
+    - Implementation:
+      - Create versioned type tables with optimistic update
+      - Implement speculative type registration with validation
+      - Add efficient retry strategies for registration conflicts
+      - Create conflict tracking for registration hot spots
+      - Required files: All Registry headers, `TransactionManager.h`, `ThreadSafety.h`
+      - Enables real-time mod loading to add new materials and mining equipment without server restarts
+
+13. 🚀 **Material-Aware Task Prioritization**
+    - Enhance `FPriorityTaskQueue` with material type awareness
+    - Implementation:
+      - Add material value metadata from `FMaterialRegistry` to task prioritization
+      - Implement player-focused priority boosting for valuable materials
+      - Create material-specific worker thread specialization
+      - Add adaptive task prioritization based on material rarity
+      - Required files: `PriorityTaskQueue.h`, `MaterialRegistry.h`, `TaskScheduler.h`
+      - Prioritizes processing of valuable materials when multiple mining operations are happening at once
+
+14. 🚀 **Wait-Free Registry Services**
+    - Create wait-free service resolution for critical paths
+    - Implementation:
+      - Implement wait-free access patterns for critical services
+      - Add versioned service access with non-blocking reads
+      - Create fast-path resolution for frequently used services
+      - Implement service instance caching with versioned validation
+      - Required files: `CoreServiceLocator.h`, `ThreadSafety.h`, `IServiceLocator.h`
+      - Ensures mining operations remain smooth even during complex multiplayer scenarios with many concurrent services
+
+## Advanced Features
+
+15. ✨ **Hot-Reload Type Synchronization**
+    - Synchronize hot-reloaded types across multiple threads
+    - Implementation:
+      - Create type versioning system using `FThreadSafeCounter`
+      - Implement thread coordination for type schema updates
+      - Add version migration paths for in-flight operations
+      - Create state preservation during registry updates
+      - Required files: All Registry headers, `ThreadSafety.h`, `TransactionManager.h` 
+      - Enables developers to update mining equipment and material properties while testing without restarting
+
+16. ✨ **Dynamic Capability Detection**
+    - Runtime capability querying with thread-specific optimizations
+    - Implementation:
+      - Link `IRegistry::GetCapabilities` with hardware-specific optimizations in `TaskScheduler`
+      - Implement SIMD instruction detection for specialized mining operations
+      - Add capability-aware task creation and scheduling
+      - Create specialized worker threads for different capability profiles
+      - Required files: `IRegistry.h`, `TaskScheduler.h`, `ThreadSafety.h`, `ITaskScheduler.h`
+      - Automatically detects and utilizes advanced CPU features for optimal mining performance across different hardware
+
+17. ✨ **Cross-Zone Transaction Coordination**
+    - Coordinate cross-zone mining operations with type awareness
+    - Implementation:
+      - Enhance `FZoneManager` with transaction type metadata from `FZoneTypeRegistry`
+      - Implement zone-specific transaction strategies based on content types
+      - Add predictive conflict resolution for common mining patterns
+      - Create zone partitioning optimization based on material distribution
+      - Required files: `ZoneManager.h`, `ZoneTypeRegistry.h`, `TransactionManager.h`
+      - Enables large mining equipment to work across multiple zones without causing conflicts or data corruption
+
+18. ✨ **Adaptive Thread Allocation**
+    - Workload-aware thread allocation based on type capabilities
+    - Implementation:
+      - Create type-specific workload profiling in registries
+      - Link profiling data with `FTaskScheduler` for adaptive thread allocation
+      - Implement specialized worker threads for different mining operation types
+      - Add dynamic pool sizing based on operation complexity and type
+      - Required files: All Registry headers, `TaskScheduler.h`, `ThreadSafety.h`
+      - Automatically optimizes CPU resource usage based on the specific mining tasks being performed
+
+## Visualizations & Telemetry
+
+19. 👀 **Thread Safety Boundary Visualization**
+    - Visualize thread safety boundaries for debugging
+    - Implementation:
+      - Add debug visualization for registry locking boundaries
+      - Create lock hierarchy visualization using `FThreadSafety` tools
+      - Implement lock contention heat maps for registry operations
+      - Add thread interaction graphs for cross-registry operations
+      - Required files: All Registry headers, `ThreadSafety.h`
+      - Helps developers quickly identify performance bottlenecks in mining operations
+
+20. 👀 **Type Registration Metrics**
+    - Collect and visualize type registration patterns
+    - Implementation:
+      - Add metrics collection to all registry operations
+      - Create performance tracking for type lookup and registration
+      - Implement visualization tools for type usage patterns
+      - Add telemetry for registry contention points
+      - Required files: All Registry headers, `ThreadSafety.h`
+      - Provides insights into which materials and mining equipment are most frequently used
+
+21. 👀 **Zone Transaction Visualization**
+    - Create real-time visualization of zone transactions
+    - Implementation:
+      - Link `FZoneTypeRegistry` visualization with `FTransactionManager` statistics
+      - Implement real-time transaction visualization for debugging
+      - Add conflict visualization with material-specific highlighting
+      - Create historical transaction analysis tools
+      - Required files: `ZoneTypeRegistry.h`, `TransactionManager.h`
+      - Shows developers exactly what's happening during complex mining operations with many miners
+
+22. 👀 **Task Dependency Graphs**
+    - Visualize task dependencies with type awareness
+    - Implementation:
+      - Enhance `TaskDependencyVisualizer` with type metadata from registries
+      - Implement real-time visualization of type-specific task flows
+      - Add mining operation dependency tracking and visualization
+      - Create critical path analysis for complex mining operations
+      - Required files: `TaskDependencyVisualizer.h`, All Registry headers
+      - Helps optimize complex mining operations by showing task bottlenecks
+
+23. 👀 **Service Resolution Telemetry**
+    - Collect and visualize service resolution patterns
+    - Implementation:
+      - Add telemetry to `FServiceLocator` for service usage patterns
+      - Create visualization tools for service dependencies
+      - Implement service resolution latency tracking
+      - Add service dependency graphs with type information
+      - Required files: `CoreServiceLocator.h`, `IServiceLocator.h`, `ThreadSafety.h`
+      - Identifies which mining services are most heavily used and helps optimize them
+
+24. 👀 **Contention Point Analysis**
+    - Advanced analysis of contention in type system
+    - Implementation:
+      - Enhance `FThreadSafety` contention tracking with type-specific contexts
+      - Create detailed contention reports with type information
+      - Implement contention prediction for common mining patterns
+      - Add adaptive synchronization based on contention history
+      - Required files: `ThreadSafety.h`, All Registry headers
+      - Automatically identifies and addresses bottlenecks in mining operations
+
+25. 👀 **NUMA Topology Visualization**
+    - Visualize NUMA impact on registry performance
+    - Implementation:
+      - Create NUMA domain visualization for registry operations
+      - Implement cross-socket traffic analysis for type lookups
+      - Add NUMA-aware performance recommendations
+      - Create thread migration visualization for registry operations
+      - Required files: `ThreadSafety.h`, `TaskScheduler.h`, All Registry headers
+      - Helps optimize performance on high-end servers running large mining operations
+
+26. 👀 **Thread Specialization Analysis**
+    - Analyze and visualize thread specialization effectiveness
+    - Implementation:
+      - Create specialized worker thread analysis tools
+      - Implement visualization of thread affinity and workload distribution
+      - Add performance comparison across different thread specialization strategies
+      - Create recommendations for optimal thread specialization based on workload
+      - Required files: `TaskScheduler.h`, `ThreadSafety.h`
+      - Helps automatically optimize thread assignments for different mining activities
+
+IMPORTANT: As you complete an integration feature, mark it with a TICK!

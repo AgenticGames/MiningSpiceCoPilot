@@ -1,0 +1,2234 @@
+# MINING SYSTEM IMPLEMENTATION
+# SYSTEM 1 OF 153: Core Registry and Type System
+Reference: Foundation Systems - Core Registry and Type System
+Category: Foundation Systems
+
+PURPOSE
+Provide a comprehensive type registration and management system for the SVO+SDF hybrid mining architecture, enabling efficient type-safe access, reflection, and metadata integration for octree nodes, signed distance fields, material channels, and zone-based transaction components throughout the mining system.
+
+ARCHITECTURAL POSITION
+- Category: Foundation Systems
+- Dependencies: None (Core System)
+- Dependent Systems: All other systems (2-153)
+
+KEY REQUIREMENTS
+- Centralized type registration for SVO nodes, SDF fields, and material channels
+- Efficient type-safe lookup and casting with SIMD-aligned type structures
+- Runtime reflection for SVO+SDF component properties and services
+- Comprehensive metadata integration for mining system types with SDF-specific attributes
+- Support for multi-channel material type registration with inheritance
+- Zone-based transaction type registration with concurrency metadata
+- Versioning support for SDF data serialization and saved game compatibility
+- Hierarchical type relationships for octree node types and field specializations
+- Memory-layout awareness for SIMD-optimized types and structures
+- Blueprint exposure for key mining types with appropriate abstractions
+- UE5 Type Integration: Enhanced integration with UObject/USTRUCT for seamless UE5 reflection compatibility
+- Thread-Safe Registration: Atomic type registration with optimistic locking for minimal contention
+- Versioned Type Schema: Robust versioning with backward compatibility and migration paths for saved games
+- Layered Service Resolution: Context-aware service resolution supporting global, region, and zone scopes
+- Blueprint Access Layer: Simplified blueprint-friendly interface for gameplay-critical components
+- Type Capabilities System: Runtime capability querying for feature detection across different hardware
+- Hot-Reload Support: Development-time type reloading with state preservation and reference updating
+- Type Visualization: Debug visualization of type relationships and dependencies for system analysis
+
+CORE COMPONENTS
+
+FServiceLocator : public IServiceLocator
+- Service registration and resolution for mining subsystems
+- Lifecycle management for subsystem instances
+- Interface-based service resolution with type safety
+- Thread-safe singleton access pattern using atomic operations
+- Zone-aware service resolution for region-specific instances
+- Service dependency resolution with validation
+- Integration with UE5's subsystem framework
+- Support for per-Region service instances via hierarchy
+- Fallback resolution for alternative service implementations
+- Material-specific service instances for specialized processing
+- SDF field service providers for different field operations
+- Hierarchical scoping with context chain resolution
+- Context-aware resolution with thread safety optimizations
+- Layered resolution supporting global, region, and zone scopes
+
+FSVOTypeRegistry : public IRegistry
+- SVO node type registration and management
+- Node classification type hierarchy (Homogeneous, Interface, Empty)
+- Type-safe casting and conversion operations for node types
+- Property reflection for SVO node types
+- Memory layout metadata for efficient node access
+- Integration with octree traversal and manipulation
+- Node pool integration for type-specific allocation
+- Node serialization support with compression metadata
+- Material relationship tracking for interface nodes
+- Node behavior registration for specialized processing
+- UE5 type integration through template specialization
+- Advanced SIMD memory layout optimization with alignment control
+- Runtime capability detection for hardware-specific optimizations
+- Versioned schema support with migration paths
+
+FSDFTypeRegistry : public IRegistry
+- SDF field type registration and management
+- Field channel type management for material-specific fields
+- Field operation registration for CSG manipulations
+- Distance function registration for material types
+- SIMD optimization metadata for field operations
+- GPU compute shader metadata for field processing
+- Field serialization support with format versioning
+- Operation compatibility tracking for field interactions
+- Field evaluation strategy registration for different contexts
+- Narrow-band precision metadata for field types
+- Optimize for narrow-band operations and SIMD instruction detection
+- Advanced field operation cataloging with compatibility matrices
+- Versioned field operation registration with migration
+- Hardware-specific operation variants with capability detection
+
+FMaterialRegistry : public IRegistry
+- Material type registration for the mining system
+- Material channel allocation and tracking for SDF fields
+- Material property registration for mining responses
+- Material interaction rules and priority registration
+- Material hierarchy for inheritance and specialization
+- Material visualization metadata for rendering
+- Material sound effect registration for mining feedback
+- Material physics property registration for simulation
+- Mining tool interaction metadata for material types
+- Resource extraction data for materials
+- Material relationship graph with dependency tracking
+- Advanced inheritance system with property propagation
+- Material compatibility matrix for interaction validation
+- Blueprint-friendly material property exposure
+
+FZoneTypeRegistry : public IRegistry
+- Zone-based transaction type registration
+- Zone grid configuration and sizing metadata
+- Transaction context type registration and validation
+- Concurrency control metadata for zone operations
+- Version tracking configuration for different operation types
+- Fast-path selection metadata for transaction types
+- Material-specific transaction handling registration
+- Transaction retry strategy configuration
+- Zone conflict resolution rule registration
+- Performance monitoring hooks for transaction types
+- Enhanced for multi-threaded zone operations with atomic versioning
+- Zone operation classification with specialized handling
+- Conflict resolution strategy registration and selection
+- Transaction behavior visualization for debugging
+
+REQUIRED FILES
+[From Source/MiningSystem/Core/]
+Public/Interfaces/
+- IServiceLocator.h
+- IRegistry.h
+
+Public/Registry/
+- ServiceLocator.h
+- SVOTypeRegistry.h
+- SDFTypeRegistry.h
+- MaterialRegistry.h
+- ZoneTypeRegistry.h
+
+Private/Registry/
+- ServiceLocator.cpp
+- SVOTypeRegistry.cpp
+- SDFTypeRegistry.cpp
+- MaterialRegistry.cpp
+- ZoneTypeRegistry.cpp
+
+IMPLEMENTATION NOTES
+- Implement specialized type registries for SVO nodes, SDF fields, materials, and zones
+- Design memory-aligned type structures for SIMD optimization with 16/32/64-byte alignment
+- Create comprehensive metadata system for field operations and node behaviors
+- Implement efficient type lookup optimized for high-frequency operations during mining
+- Design thread-safe registration and lookup using atomics from Threading System (3)
+- Create material channel allocation system with efficient ID assignment and tracking
+- Implement field operation registration with compatibility checking for material interactions
+- Design node classification hierarchy with specialized behavior for different node types
+- Support runtime registration for plugin and mod extensibility with version checking
+- Create zone configuration registry with concurrency metadata for transaction management
+- Implement service resolution with zone awareness for region-specific processing
+- Design type-safe casting with compile-time verification where possible
+- Create reflection system compatible with UE's property system and extended for SDF specifics
+- Implement versioning system for serialization compatibility across game versions
+- Design visualization metadata for debugging and editor integration
+- Support material interaction rule registration with priority system for conflicts
+- Create field evaluation strategy registry for different contexts (mining, rendering, physics)
+- Implement optimal lookup algorithms for real-time field evaluation during mining
+- Design dependency tracking for service initialization ordering
+- Create blueprint type exposure with appropriate abstractions for gameplay access
+- Implement thread-safe type registration using atomic operations with optimistic locking
+- Design layered service resolution with context-aware scoping for different hierarchy levels
+- Create runtime capability querying for feature detection across diverse hardware 
+- Implement hot-reload support with state preservation and reference updating
+- Design type visualization tools for relationship debugging and dependency analysis
+- Create UE5 reflection integration with seamless USTRUCT/UObject compatibility
+- Implement blueprint-friendly facades for gameplay-critical type operations
+- Design versioned schema with backward compatibility and migration paths
+
+
+*
+
+# MINING SYSTEM IMPLEMENTATION
+# SYSTEM 2 OF 153: Memory Management System
+Reference: Foundation Systems - Memory Management System
+Category: Foundation Systems
+
+PURPOSE
+Provide optimized memory management for the SVO+SDF hybrid mining system, implementing narrow-band cache-coherent memory layouts, hierarchical memory tiers, mining-specific access patterns, and active defragmentation to ensure high performance with minimal fragmentation during intensive mining operations across diverse geological structures.
+
+ARCHITECTURAL POSITION
+- Category: Foundation Systems
+- Dependencies: Core Registry (1)
+- Dependent Systems: Threading (3), GPU/CPU Buffer Sharing (17), SVO+SDF Volume (25)
+
+KEY REQUIREMENTS
+- Narrow-band cache-coherent memory layout using Z-order curve mapping for SVO+SDF data
+- Hierarchical memory tiers with precision levels based on distance from material interfaces
+- Mining-aware access patterns optimized for different tool types and operation patterns
+- Active defragmentation during gameplay pauses and low-activity periods
+- Memory pooling for frequently allocated objects with mining-specific pool sizes
+- Zero-copy buffer sharing between CPU and GPU for distance field data
+- Thread-safe allocation with minimal contention for parallel mining operations
+- Cache-friendly data packing to minimize cache line crossings in critical paths
+- SIMD-aligned allocations (16/32/64-byte) for vectorized distance field operations
+- Explicit hot/cold data separation for improved cache utilization
+- Band-specific allocation pools for different precision tiers of the distance field
+- NUMA-aware memory management for multi-socket systems
+- Active Defragmentation: Runtime defragmentation with reference updating and minimal pause times
+- Memory Access Patterns: SDF-specialized caching strategies with preemptive fetching for mining patterns
+- NUMA-Aware Allocation: Memory policy enforcement for optimal cross-socket performance
+- UE5 Memory Integration: Seamless integration with UE5's memory subsystems and GC
+- Allocation Grouping: Related-data clustering for improved cache locality during mining operations
+- Memory Fault Tolerance: Graceful degradation during memory pressure with quality scaling
+- Per-Region Memory Budgets: Dynamic budget allocation with priority-based enforcement
+- Data Structure Specialization: Custom containers optimized for SDF field operations with minimal overhead
+
+CORE COMPONENTS
+
+FMemoryPoolManager : public IMemoryManager
+- Memory pool creation and management with specialized SVO+SDF pools
+- Z-order curve mapping for cache-coherent spatial indexing
+- Hierarchical memory tiers for different precision levels
+- Thread-safe memory allocation strategies with minimal contention
+- Memory tracking for pool utilization with detailed analytics
+- Pool cleanup and defragmentation during low-activity periods
+- Integration with UE5's memory subsystem
+- Custom allocators for SVO+SDF-specific data structures
+- Allocation size classes optimized for octree nodes and distance fields
+- Active defragmentation during gameplay pauses
+- Pool priority management for active mining regions
+- NUMA-aware allocation for multi-socket systems
+- Adaptive pool sizing based on operation patterns and memory pressure
+- Dynamic pool adjustment based on mining activity patterns
+- Preemptive allocation for predicted operations
+- Real-time memory pressure monitoring with adaptive responses
+
+FSVOAllocator : public IPoolAllocator
+- Specialized allocator for SVO octree nodes
+- Z-order curve indexing for cache-coherent allocation
+- Node type-specific allocation patterns (Homogeneous/Interface/Empty)
+- Thread-safe allocation strategies for parallel mining
+- Memory layout optimization for cache coherence
+- Integration with SVOHybridVolume from System (25)
+- Block-based allocation with size-specific pools
+- Metadata tracking for allocation statistics
+- Activity-based memory strategies
+- Adaptive allocation patterns for mining operations
+- SIMD-aligned allocation for vectorized operations
+- Spatial-locality grouping and proactive defragmentation
+- Node type specialization with custom memory layouts
+- Predictive allocation based on mining patterns
+- Advanced memory coalescence for related nodes
+
+FNarrowBandAllocator : public IPoolAllocator
+- Specialized allocator for narrow-band distance field data
+- Precision tier-based memory management (high/medium/low)
+- Access pattern optimization for mining operations
+- Thread-safe allocation with minimal synchronization
+- Memory layout optimization for cache coherence
+- Integration with MultiChannelDistanceField from System (26)
+- Band-specific memory pools with appropriate alignment
+- Mining-aware allocation strategy
+- Efficient memory reclamation during band shifting
+- Prefetching hints based on mining directions
+- Sliding window implementation for active mining areas
+- Optimize for different precision tiers with specialized caching strategies
+- Band-specific memory layouts optimized for access patterns
+- Adaptive band width based on material importance
+- Priority-based allocation for gameplay-critical materials
+
+FSharedBufferManager : public IBufferProvider
+- Buffer sharing between CPU and GPU components
+- Reference-counted buffer management with version tracking
+- Buffer ownership and lifetime tracking
+- Thread-safe buffer access patterns
+- Integration with SVO+SDF components
+- Buffer resizing with minimal copying
+- Specialized buffers for distance field data
+- Memory mapping for large data structures
+- Priority-based buffer retention
+- Activity-tiered buffer strategies
+- SDF field sharing optimization
+- Zone-based buffer coordination
+- Zero-copy fallback paths with efficient synchronization mechanisms
+- Dynamic buffer sizing based on access patterns
+- Lock-free buffer access with atomic versioning
+- Cross-region buffer coordination with boundary optimization
+
+FZeroCopyBuffer : public IBufferProvider
+- Zero-copy buffer implementation for GPU/CPU sharing
+- Platform-specific buffer creation (D3D12/Vulkan)
+- Synchronized access through memory barriers
+- Mapping/unmapping with proper synchronization
+- Performance monitoring for access patterns
+- Integration with GPU Compute System (13)
+- Cache-friendly memory layouts for SDF operations
+- Memory access pattern optimization based on usage
+- Priority-based memory retention
+- Fast-path mapping for active regions
+- Distance field specific optimization
+- Material channel sharing optimization
+- Platform-specific optimizations for different GPU architectures
+- Adaptive synchronization based on access patterns
+- Hardware-specific memory optimizations
+- Low-latency buffer transitions for critical operations
+
+FCompressionUtility
+- State compression for inactive regions
+- Multi-tiered compression strategies for different activity levels
+- Run-length encoding for homogeneous SDF regions
+- Delta compression for mining modifications
+- Compression selection based on data type and activity
+- Performance vs. compression ratio balancing
+- Integration with serialization systems
+- Specialized compression for SDF fields
+- Memory-efficient representation of sparse octree data
+- Activity-based compression level selection
+- Distance-based precision encoding
+- Material-aware compression strategies
+- Algorithm selection based on data characteristics and access patterns
+- Adaptive compression ratios based on region importance
+- Hardware-specific compression optimizations
+- Fast decompression paths for frequently accessed data
+
+FMemoryDefragmenter
+- Active memory defragmentation during gameplay pauses
+- Movement of allocations to eliminate fragmentation
+- Reference updating after memory movement
+- Incremental defragmentation for minimal pause times
+- Priority-based defragmentation for critical allocations
+- Integration with FMemoryPoolManager
+- Performance impact monitoring during defragmentation
+- Defragmentation scheduling based on memory state
+- Fragmentation threshold detection for proactive defragmentation
+- Activity-based defragmentation prioritization
+- SDF field-specific defragmentation
+- Octree node reorganization for locality
+- Predictive defragmentation during gameplay lulls
+- Incremental reference updating with minimal disruption
+- Region-specific defragmentation with priority control
+- Fragmentation analysis with visualization tools
+
+FMemoryTelemetry : public IMemoryTracker
+- Memory usage tracking and reporting with SVO+SDF metrics
+- Allocation pattern analysis for optimization
+- Memory leak detection for long sessions
+- High-water mark tracking for budgeting
+- Integration with Performance System (8)
+- Thread-safe telemetry collection
+- System-wide memory usage visualization
+- Per-system memory budget enforcement
+- Activity-based memory usage analysis
+- Compression efficiency monitoring
+- Narrow-band utilization tracking
+- Zone-based memory analysis
+- Detailed allocation tracking with anomaly detection
+- Leak identification with callstack tracking
+- Memory pressure visualization with hotspot detection
+- Real-time memory analytics with optimization suggestions
+
+REQUIRED FILES
+[From Source/MiningSystem/Memory/]
+Public/Interfaces/
+- IMemoryManager.h
+- IBufferProvider.h
+- IPoolAllocator.h
+- IMemoryTracker.h
+
+Public/
+- MemoryPoolManager.h
+- SVOAllocator.h
+- NarrowBandAllocator.h
+- SharedBufferManager.h
+- ZeroCopyBuffer.h
+- CompressionUtility.h
+- MemoryDefragmenter.h
+- MemoryTelemetry.h
+
+Private/
+- MemoryPoolManager.cpp
+- SVOAllocator.cpp
+- NarrowBandAllocator.cpp
+- SharedBufferManager.cpp
+- ZeroCopyBuffer.cpp
+- CompressionUtility.cpp
+- MemoryDefragmenter.cpp
+- MemoryTelemetry.cpp
+
+// Additional critical headers for optimized memory management
+#include "HAL/LowLevelMemTracker.h"
+#include "HAL/MallocAnsi.h"
+#include "HAL/PlatformMemory.h"
+#include "Misc/ScopeLock.h"
+#include "Math/AlignmentTemplates.h"
+#include "Math/SIMDFloat.h"
+#include "HAL/PlatformMath.h"
+#include "Misc/SpinLock.h"
+
+IMPLEMENTATION NOTES
+- Implement narrow-band cache-coherent memory layout using Z-order curve mapping
+- Design hierarchical memory tiers with precision levels based on distance from material interfaces
+- Create mining-aware access patterns optimized for different tool types (drill, explosive, precision)
+- Implement active defragmentation system that operates during gameplay pauses
+- Design specialized allocators for SVO nodes and SDF field data with appropriate pooling
+- Create zero-copy buffer sharing for GPU/CPU operations on distance fields
+- Implement thread-safe allocation strategies using atomic operations
+- Design cache-friendly data packing to minimize cache line crossings in critical paths
+- Create SIMD-aligned allocations (16/32/64-byte) for vectorized SDF operations
+- Implement explicit hot/cold data separation for improved cache utilization
+- Design band-specific allocation pools for different precision tiers of distance fields
+- Create NUMA-aware memory management for multi-socket systems
+- Implement memory tracking and budgeting for SVO+SDF data structures
+- Design efficient compression strategies for inactive regions
+- Create specialized compression for homogeneous SDF regions using run-length encoding
+- Implement delta compression for mining modifications to reduce memory footprint
+- Design incremental defragmentation system to minimize pause times
+- Create memory telemetry for tracking SVO+SDF memory usage patterns
+- Implement adaptive allocation strategies based on mining activity
+- Design memory mapping with prefetching hints for mining operations
+- Create sliding window allocation for active mining areas
+- Implement buffer versioning for consistent SDF field access
+- Design platform-specific buffer creation for D3D12/Vulkan compatibility
+- Create zone-based buffer coordination for transactional mining operations
+- Implement material-aware compression strategies for multi-channel SDF data
+- Design distance-based precision encoding for adaptive SDF resolution
+- Create visualization tools for memory usage and fragmentation analysis
+- Implement SDF-specialized caching strategies with preemptive fetching
+- Design related-data clustering for improved cache locality during operations
+- Create graceful degradation strategies for memory pressure situations
+- Implement per-region dynamic budget allocation with priority enforcement
+- Design custom containers optimized specifically for SDF field operations
+- Create adaptive pool sizing based on observed operation patterns
+- Implement real-time memory pressure monitoring with quality scaling
+
+*
+
+# MINING SYSTEM IMPLEMENTATION
+# SYSTEM 2.1 OF 153: Tiered Compression Management System
+Reference: Foundation Systems - Tiered Compression Management
+Category: Foundation Systems
+
+PURPOSE
+Provide multi-level compression tailored for the SVO+SDF hybrid system, dynamically adjusting compression ratios and techniques based on distance from material interfaces, region activity, and mining operations, enabling larger and more detailed worlds by maximizing memory efficiency while ensuring fast access to actively mined areas.
+
+ARCHITECTURAL POSITION
+- Category: Foundation Systems
+- Dependencies: Memory Management (2), Region Management (18), Performance Monitoring (8)
+- Dependent Systems: SVO+SDF Volume (25), Region Streaming (20), Memory Optimization (111)
+
+KEY REQUIREMENTS
+- SDF-specific compression techniques optimized for distance field data
+- Multi-tiered compression system with distinct levels for different precision zones
+- Distance-based compression with preservation of detail at material interfaces
+- Activity state tracking and classification for regions based on player interaction
+- Dynamic compression level transitions during activity state changes
+- Memory usage optimization with adaptive compression strategies
+- Fast decompression paths for narrow-band active regions
+- Material-aware compression for multi-channel SDF fields
+- Memory budget enforcement with compression level adjustment
+- Performance monitoring for compression/decompression overhead
+- Specialized algorithms for different data types (octree nodes, distance fields, materials)
+- Delta compression for mining modifications to minimize memory impact
+
+CORE COMPONENTS
+
+FTieredCompressionManager
+- Multi-level compression system for SVO+SDF data based on precision and activity
+- Distance-based compression tiers from material interfaces
+- Fully active region handling with minimal compression for narrow band
+- Recently active region compression with fast access patterns
+- Visible inactive region compression with balanced strategy
+- Fully inactive region compression with maximum ratio
+- Archival compression for long-term storage regions
+- Dynamic compression level transitions during activity changes
+- Memory usage optimization with adaptive compression
+- Integration with FRegionManager from System (18)
+- Performance monitoring for compression overhead
+- Region activity classification and tracking
+- Compression strategy selection for different data types
+- Budget enforcement through compression level adjustment
+- Enhanced transition handling for multiple compression tiers
+- Specialized compression policy for material boundaries
+
+FSDFCompressionSystem
+- SDF-specific compression techniques optimized for distance field data
+- Distance-based precision encoding with adaptive resolution
+- Run-length encoding for homogeneous regions
+- Multi-channel compression for material-specific SDF fields
+- Gradient preservation at important boundaries
+- Integration with MultiChannelDistanceField from System (26)
+- Fast decompression paths for narrow-band regions
+- Progressive decompression for quality transitions
+- Material-aware compression strategies
+- Delta compression for field modifications
+- Lossy compression for distant/inactive regions
+- Lossless compression for critical material interfaces
+
+FOctreeCompressionSystem
+- Octree-specific compression techniques for SVO structure
+- Node type-based compression (Homogeneous/Interface/Empty)
+- Hierarchical encoding with parent-child relationships
+- Node instancing for repeating patterns
+- Integration with SVOHybridVolume from System (25)
+- Structure-preserving compression for traversal efficiency
+- LOD-compatible compression for streaming
+- Material identifier compression for homogeneous regions
+- Node pruning for empty or uniform areas
+- Node merging for similar content
+- Compression ratio monitoring and optimization
+- Priority-based compression selection
+
+FRegionActivityTracker
+- Region activity state tracking and classification
+- Player interaction monitoring for activity determination
+- Mining operation tracking for active region identification
+- View relevance assessment for visibility classification
+- Integration with FRegionManager from System (18)
+- Activity history tracking for state transitions
+- Activity prediction for proactive state changes
+- Transition scheduling for gradual compression changes
+- Activity visualization for debugging and analysis
+- Performance impact monitoring for active regions
+- Extended activity classification for fine-grained control
+- Mining pattern analysis for activity prediction
+- Player focus detection for priority determination
+- Historical activity analysis for pattern recognition
+- Portal-based activity propagation in cave networks
+- Activity heat mapping for visualization
+
+FCompressionStrategySelector
+- Compression strategy selection for different data types and activity levels
+- Strategy evaluation for compression ratio vs. speed
+- SDF-specific strategies for distance field data
+- Octree-specific strategies for node hierarchies
+- Material-aware strategies for multi-channel compression
+- Adaptive strategy selection based on content characteristics
+- Integration with FCompressionUtility from System (2)
+- Strategy performance monitoring and feedback
+- Strategy registration and management system
+- Custom strategy support for specialized data
+- Compression quality configuration for different tiers
+- Hardware-aware strategy selection for different platforms
+- Advanced strategy optimization for different data types
+- Algorithm selection based on content analysis
+- Compression ratio prediction for budgeting
+- Strategy effectiveness tracking and refinement
+- Material boundary preservation techniques
+- Narrow-band optimization strategies
+
+FCompressionTransitionManager
+- Seamless transition management between compression levels
+- Incremental compression/decompression for smooth transitions
+- Transition scheduling based on memory pressure and activity
+- Transition prioritization for critical regions
+- Integration with FRegionStreamer from System (20)
+- Transition cancellation for sudden activity changes
+- Background processing for transitions
+- Memory spike prevention during transitions
+- Transition progress tracking and visualization
+- Performance impact monitoring during transitions
+- Enhanced transition handling for multiple compression tiers
+- Progressive transition for smooth memory utilization
+- Transition batching for performance optimization
+- Priority-based transition queue management
+- SDF-specific transition handling
+- Material-aware transition strategies
+
+FCompressionMetricsCollector
+- Compression performance and ratio tracking
+- Memory savings calculation and visualization
+- Strategy effectiveness analysis over time
+- Overhead measurement for different strategies
+- Integration with FPerformanceMonitoringSystem from System (8)
+- Compression ratio reporting for different data types
+- Transition performance measurement and analysis
+- Memory usage visualization with compression impact
+- Strategy recommendation based on metrics
+- Compressed vs. uncompressed size tracking
+- Access pattern analysis for strategy refinement
+- Decompression performance tracking by data type
+- Compression tier effectiveness reporting
+- SDF-specific metrics collection
+- Material-aware compression analysis
+- Distance-based compression effectiveness
+
+REQUIRED FILES
+[From Source/MiningSystem/Memory/]
+Public/Compression/
+- TieredCompressionManager.h
+- SDFCompressionSystem.h
+- OctreeCompressionSystem.h
+- RegionActivityTracker.h
+- CompressionStrategySelector.h
+- CompressionTransitionManager.h
+- CompressionMetricsCollector.h
+
+Private/Compression/
+- TieredCompressionManager.cpp
+- SDFCompressionSystem.cpp
+- OctreeCompressionSystem.cpp
+- RegionActivityTracker.cpp
+- CompressionStrategySelector.cpp
+- CompressionTransitionManager.cpp
+- CompressionMetricsCollector.cpp
+
+IMPLEMENTATION NOTES
+- Implement multi-tiered compression system with these distinct levels:
+  * Tier 0 (Active Narrow Band): Minimal/no compression with direct access for active mining interfaces
+  * Tier 1 (Extended Narrow Band): Light compression with fast decompression for recently mined areas
+  * Tier 2 (Visible Region): Medium compression with balanced access for visible non-mining areas
+  * Tier 3 (Inactive Region): Heavy compression for distant/out-of-view regions with slower access
+  * Tier 4 (Archived): Maximum compression for long-term storage of unexplored regions
+  * Tier 5 (Hibernated): Serialized to disk with minimal memory footprint for ultra-distant regions
+- Design SDF-specific compression techniques that preserve accuracy at material interfaces
+- Create distance-based precision encoding with higher precision near interfaces
+- Implement run-length encoding for homogeneous SDF regions
+- Design multi-channel compression for material-specific SDF fields
+- Support gradient preservation at important boundaries for visual quality
+- Implement fast decompression paths for narrow-band regions with critical access patterns
+- Create progressive decompression for smooth quality transitions
+- Design material-aware compression strategies that understand material relationships
+- Implement delta compression for field modifications to minimize memory impact
+- Create lossy compression for distant/inactive regions with acceptable detail loss
+- Support lossless compression for critical material interfaces
+- Design octree-specific compression techniques that preserve traversal efficiency
+- Implement node type-based compression for different octree node types
+- Create hierarchical encoding that leverages parent-child relationships
+- Support node instancing for repeating patterns to reduce memory footprint
+- Design structure-preserving compression for efficient traversal
+- Implement LOD-compatible compression for streaming scenarios
+- Create node pruning and merging for empty or uniform areas
+- Design region activity tracking with mining operation monitoring
+- Implement view relevance assessment for visibility-based activity classification
+- Create activity prediction for proactive state changes
+- Design transition scheduling for gradual compression changes
+- Support detailed activity visualization for debugging and analysis
+- Implement extended activity classification for fine-grained control
+- Create mining pattern analysis for activity prediction
+- Design player focus detection for priority determination
+- Implement historical activity analysis for pattern recognition
+- Create portal-based activity propagation for cave networks
+- Design compression strategy selection with ratio vs. speed evaluation
+- Implement hardware-aware strategy selection for different platforms
+- Create content-based algorithm selection for optimal compression
+- Design compression ratio prediction for accurate budgeting
+- Support strategy effectiveness tracking and refinement
+- Implement material boundary preservation techniques
+- Create seamless transition management between compression levels
+- Design incremental compression/decompression for smooth transitions
+- Implement transition scheduling based on memory pressure and activity
+- Create background processing for transitions with minimal impact
+- Design memory spike prevention during transitions
+- Support transition progress tracking and visualization
+- Implement comprehensive compression metrics collection
+- Create memory savings visualization and reporting
+- Design strategy recommendation based on historical metrics
+- Implement access pattern analysis for strategy refinement
+
+*
+
+# MINING SYSTEM IMPLEMENTATION
+# SYSTEM 2.2 OF 153: Region Hibernation System
+Reference: Foundation Systems - Region Hibernation System
+Category: Foundation Systems
+
+PURPOSE
+Provide aggressive memory reclamation for inactive SVO+SDF regions through sophisticated serialization and disk offloading, implementing multi-tier compression with specialized SDF encoding, portal-based streaming prediction, and rapid reactivation capabilities to maintain seamless player exploration of vast mining worlds with minimal memory footprint.
+
+ARCHITECTURAL POSITION
+- Category: Foundation Systems
+- Dependencies: Memory Management (2), Tiered Compression (2.1), Region Manager (18)
+- Dependent Systems: Region Streaming (20), SVO+SDF Volume (25), Performance Optimization (111)
+
+KEY REQUIREMENTS
+- Aggressive memory reclamation for inactive SVO+SDF regions
+- Multi-tier serialization with precision-appropriate compression
+- Complete SDF field serialization with minimal memory footprint
+- Portal-based hibernation prediction using cave network topology
+- Fast reactivation with essential data prioritization
+- Incremental serialization for large regions with frame budgeting
+- Background processing for minimal performance impact
+- Memory usage tracking with adaptive hibernation thresholds
+- Reactivation prediction based on player movement and topology
+- Sophisticated cache management for recently accessed regions
+- Priority-based hibernation decision making
+- Delta serialization for mining-modified regions
+- Material-specific hibernation strategies
+- Mining activity analysis for hibernation decisions
+- SVO hierarchy-aware serialization with progressive reactivation
+
+CORE COMPONENTS
+
+FRegionHibernationManager
+- Core region hibernation management for SVO+SDF data
+- Multi-tier serialization coordination with compression integration
+- Hibernation candidate selection based on comprehensive priority system
+- Memory reclamation tracking and reporting with detailed metrics
+- Integration with RegionManager from System (18)
+- Background processing coordination with frame budgeting
+- Performance impact monitoring and throttling
+- Reactivation handling with priority-based loading
+- Hibernation state tracking and management
+- Memory threshold management for hibernation decisions
+- Portal-based prediction for preemptive reactivation
+- Mining activity influence on hibernation decisions
+- Topology-aware hibernation for cave networks
+- Adaptive hibernation thresholds based on system pressure
+- Material significance consideration for hibernation priority
+
+FSVOSDFHibernationSerializer
+- Optimized serialization of SVO+SDF structures for disk storage
+- Multi-tier compression with precision-appropriate strategies
+- Incremental serialization for large regions with frame distribution
+- Differential encoding for mining-modified regions
+- Integration with Tiered Compression Manager from System (2.1)
+- Format optimization for fast essential data reactivation
+- Serialization error handling and recovery
+- Critical data prioritization for partial reactivation
+- Format versioning for compatibility across game versions
+- Checksum validation for data integrity
+- SVO hierarchy-aware serialization with node dependencies
+- Material channel-specific serialization with prioritization
+- Narrow-band preservation for critical interfaces
+- Mining impact zone tracking for differential updates
+- Performance optimization for serialization operations
+
+FHibernationCache
+- Hibernation cache management for SVO+SDF regions
+- Cache size control based on memory budget and hardware capabilities
+- Priority-based caching decisions with topology awareness
+- Multi-tier caching with precision-appropriate storage
+- Integration with Memory Optimization Manager from System (111)
+- Cache hit tracking for effectiveness analysis and optimization
+- Predictive caching based on player movement and portal visibility
+- Memory-efficient cache implementation with compressed representation
+- Cache coherence with region dependencies and connections
+- Performance impact monitoring for cache operations
+- Topology-based cache prioritization for cave networks
+- Portal-connection based caching for connected regions
+- Mining pattern influence on cache retention
+- Adaptive cache sizing based on available memory
+- Progressive load caching for streaming optimization
+
+FTopologicalReactivationPredictor
+- Region reactivation prediction based on cave topology and player movement
+- Portal-based prediction for connected cave chambers
+- Preemptive reactivation for seamless cave exploration
+- Priority assignment for reactivation queue based on topology
+- Cave network analysis for prediction confidence
+- Integration with Cave Topology Graph from System (39)
+- Portal importance assessment for prediction weighting
+- Cache warming based on prediction confidence
+- Prediction accuracy tracking for system improvement
+- Player behavior pattern recognition for movement prediction
+- Mining tool selection analysis for intention prediction
+- Path planning integration for long-distance prediction
+- Visibility chain analysis through connected portals
+- Connection difficulty assessment for timing prediction
+- Adaptive prediction horizon based on movement speed
+
+FPrioritizedReactivationCoordinator
+- Multi-tier reactivation coordination for hibernated regions
+- Essential data prioritization for immediate gameplay functionality
+- Progressive detail loading for visual and behavior fidelity
+- Memory budget management for reactivation operations
+- Integration with Region Streaming from System (20)
+- Reactivation dependency resolution for connected regions
+- Frame budget allocation for reactivation tasks
+- Background loading task management with priority control
+- Task scheduling for frame-distributed reactivation
+- Cancellation handling for prediction changes
+- Progressive reactivation visualization for debugging
+- Loading state tracking with progress reporting
+- Performance impact monitoring during reactivation
+- Hardware-aware scaling for different platforms
+- Material-specific prioritization for resource-rich regions
+
+REQUIRED FILES
+[From Source/MiningSystem/Memory/]
+Public/Hibernation/
+- RegionHibernationManager.h
+- SVOSDFHibernationSerializer.h
+- HibernationCache.h
+- TopologicalReactivationPredictor.h
+- PrioritizedReactivationCoordinator.h
+
+Private/Hibernation/
+- RegionHibernationManager.cpp
+- SVOSDFHibernationSerializer.cpp
+- HibernationCache.cpp
+- TopologicalReactivationPredictor.cpp
+- PrioritizedReactivationCoordinator.cpp
+
+IMPLEMENTATION NOTES
+- Implement multi-tier hibernation serialization for SVO+SDF regions with precision-appropriate compression
+- Design portal-based prediction system for cave networks with topology-aware reactivation
+- Create incremental serialization for large regions with frame-distributed processing
+- Implement delta serialization for mining-modified regions to minimize disk usage
+- Design fast reactivation paths for essential gameplay data with priority-based loading
+- Support background processing for serialization and reactivation with minimal frame impact
+- Create hibernation cache for recently accessed regions with topology-based prioritization
+- Implement memory threshold management with adaptive hibernation based on system pressure
+- Design differential encoding for efficient storage of mining modifications
+- Create material channel-specific serialization with prioritization for valuable resources
+- Implement narrow-band preservation for critical interfaces during serialization
+- Design progressive reactivation with multi-tier loading sequence for smooth transitions
+- Create prediction accuracy tracking for system self-improvement over time
+- Implement cache coherence with region dependencies and portal connections
+- Design adaptive cache sizing based on available memory and hardware capabilities
+- Create mining pattern analysis for hibernation decision influence
+- Implement path planning integration for long-distance prediction and preloading
+- Design visibility chain analysis through connected portals for optimal prediction
+- Create cancellation handling for rapid priority changes during exploration
+- Implement frame-distributed reactivation with budget control for smooth performance
+- Design material-specific prioritization for resource-rich regions during reactivation
+- Create SVO hierarchy-aware serialization with node dependencies for optimal loading
+- Implement performance monitoring during hibernation and reactivation operations
+- Design visualization tools for hibernation state, prediction accuracy, and cache efficiency
+- Create adaptive prediction horizon based on player movement speed and patterns
+
+*
+
+# MINING SYSTEM IMPLEMENTATION
+# SYSTEM 2.3 OF 153: Zone-Based Concurrent Mining System
+Reference: Foundation Systems - Zone-Based Concurrent Mining System
+Category: Foundation Systems
+
+PURPOSE
+Provide a specialized concurrency control framework for mining operations using a zone-based transactional approach, enabling high-performance parallel mining with minimal contention through optimistic concurrency control, material-specific versioning, and intelligent fast-path selection based on operation characteristics and conflict history.
+
+ARCHITECTURAL POSITION
+- Category: Foundation Systems
+- Dependencies: Memory Management (2), Threading (3), Tiered Compression (2.1)
+- Dependent Systems: Mining Operations (44), Cross-Region Operations (23), SVO+SDF Volume (25)
+
+KEY REQUIREMENTS
+- Zone-based partitioning of the world into 2-4m³ zones for optimal concurrency
+- Material-specific version tracking for fine-grained conflict detection
+- Optimistic concurrency with version validation for minimal locking
+- Fast-path selection based on operation characteristics and conflict history
+- Transaction read set construction and validation for consistency
+- Thread-safe operation execution with minimal synchronization overhead
+- Conflict detection and resolution with efficient retry strategies
+- Priority-based scheduling for player-focused mining operations
+- Memory-efficient zone and version representation
+- Cross-region transaction coordination for seamless operations
+- Performance monitoring for transaction throughput and conflicts
+- Learning-based optimization for transaction strategies
+
+CORE COMPONENTS
+
+FZoneManager
+- Zone grid management with 2-4m³ granularity
+- Zone creation and lifecycle management
+- Spatial mapping from world coordinates to zones
+- Material tracking within zones for version control
+- Zone metrics collection for conflict analysis
+- Integration with RegionManager from System (18)
+- Hierarchical zone organization for efficient access
+- Memory-efficient zone representation
+- Zone ownership tracking for transactions
+- Cross-region zone coordination
+- Cache-coherent zone indexing using Z-order curves
+- Dynamic zone adjustment based on mining patterns
+
+FMaterialVersionTable
+- Material-specific version tracking for conflict detection
+- Version counter management for different materials
+- Thread-safe version updates with atomic operations
+- Version history tracking for conflict analysis
+- Integration with MaterialPropertyManager from System (53)
+- Memory-efficient version representation
+- Version synchronization across region boundaries
+- Temporal version coherence for stability
+- Version compression for inactive materials
+- Hierarchical version tracking for material groups
+- Performance optimization for version checking
+- Material relationship tracking for dependent versions
+
+FTransactionManager
+- Transaction creation and management for mining operations
+- Read set construction with version capturing
+- Transaction validation with version checking
+- Optimistic concurrency implementation with minimal locking
+- Fast-path detection based on operation characteristics
+- Conflict resolution with retry strategies
+- Priority-based transaction scheduling
+- Integration with MiningOperationProcessor from System (44)
+- Performance monitoring for transaction throughput
+- Conflict metrics collection and analysis
+- Learning-based transaction optimization
+- Memory-efficient transaction representation
+
+FConflictHistoryAnalyzer
+- Conflict pattern analysis for mining operations
+- Zone conflict rate tracking for fast-path decisions
+- Material conflict correlation for version optimization
+- Mining pattern recognition for conflict prediction
+- Integration with PerformanceMonitoringSystem from System (8)
+- Conflict visualization for debugging and analysis
+- Threshold adjustment for fast-path selection
+- Conflict reduction recommendation generation
+- Temporal pattern analysis for conflict prediction
+- Hardware-specific conflict thresholds
+- Learning-based conflict prediction improvement
+- Cross-region conflict analysis
+
+FTransactionReadSet
+- Efficient read set construction for transaction validation
+- Zone and material version tracking
+- Read set validation with minimal overhead
+- Memory-efficient read set representation
+- Integration with ZoneManager
+- Performance optimization for validation checking
+- Partial validation support for incremental checking
+- Read set compression for large transactions
+- Read set reuse for similar operations
+- Material-specific read set optimization
+- Cache-friendly read set layout
+- Hierarchical read set organization
+
+REQUIRED FILES
+[From Source/MiningSystem/Memory/]
+Public/Transaction/
+- ZoneManager.h
+- MaterialVersionTable.h
+- TransactionManager.h
+- ConflictHistoryAnalyzer.h
+- TransactionReadSet.h
+
+Private/Transaction/
+- ZoneManager.cpp
+- MaterialVersionTable.cpp
+- TransactionManager.cpp
+- ConflictHistoryAnalyzer.cpp
+- TransactionReadSet.cpp
+
+// Additional critical headers for concurrent operations
+#include "HAL/ThreadSafeBool.h"
+#include "HAL/ThreadSafeCounter64.h"
+#include "Containers/LockFreeList.h"
+#include "Async/TaskGraphInterfaces.h"
+#include "Templates/Atomic.h"
+
+IMPLEMENTATION NOTES
+- Implement zone partitioning with 2-4m³ granularity for optimal concurrency control
+- Design material-specific version tracking using atomic counters for conflict detection
+- Create optimistic concurrency validation with efficient retry strategies
+- Implement fast-path selection based on operation characteristics and conflict history
+- Design thread-safe zone access using atomic operations for minimal locking
+- Support transaction read set construction and validation for consistency checks
+- Create conflict metrics collection for optimization and fast-path decision making
+- Implement priority-based scheduling for player-focused operations
+- Design cross-region transaction coordination for seamless boundary operations
+- Support material relationship tracking for dependent version updates
+- Create learning-based optimization for transaction strategies and conflict prediction
+- Implement memory-efficient zone and version representation for large worlds
+- Design cache-coherent zone indexing using Z-order curves for optimal access patterns
+- Support dynamic zone adjustment based on observed mining patterns
+- Create hierarchical version tracking for efficient material group updates
+- Implement temporal version coherence for stability across related operations
+- Design visualization tools for transactions and conflict patterns
+- Support version compression for inactive materials to reduce memory overhead
+- Create cross-region conflict analysis for boundary operation optimization
+- Implement partial validation support for incremental transaction checking
+- Design cache-friendly read set layout for efficient validation
+- Support transaction read set reuse for similar operations to improve performance
+- Create hardware-specific conflict thresholds with automatic adjustment
+- Implement adaptive fast-path thresholds based on observed conflict rates
+- Design efficient conflict resolution strategies with minimal retries
+
+*
+
+# MINING SYSTEM IMPLEMENTATION
+# SYSTEM 3 OF 153: Threading and Async Task System
+Reference: Foundation Systems - Threading and Async Task System
+Category: Foundation Systems
+
+PURPOSE
+Provide comprehensive threading and asynchronous task processing capabilities optimized for SVO+SDF mining operations, implementing a zone-based transactional framework with optimistic concurrency control, fine-grained synchronization primitives, and material-specific version tracking to enable high-performance parallel processing with minimal contention.
+
+ARCHITECTURAL POSITION
+- Category: Foundation Systems
+- Dependencies: Core Registry (1), Memory Management (2)
+- Dependent Systems: Mining Operation Processing (44), Region Streaming (20), Mesh Generation (32)
+
+KEY REQUIREMENTS
+- Zone-based transactional framework for SVO+SDF mining operations
+- Material-specific version tracking for fine-grained concurrency control
+- Optimistic concurrency with efficient validation and retry strategies
+- Fast-path selection based on operation characteristics and conflict history
+- Thread-safe data structures for shared SDF field state
+- Fine-grained synchronization primitives with minimal contention for parallel mining
+- Thread safety boundary definitions with minimal locking zones
+- NUMA-aware thread affinity for optimal core utilization on multi-socket systems
+- Lock-free algorithms for performance-critical data structures in the SVO+SDF system
+- Fine-grained task dependency graph for optimal parallelism in mining operations
+- Priority-based task scheduling for player-focused operations
+- Hardware-specific thread assignment strategy for heterogeneous cores
+- Adaptive Thread Pools: Workload-aware thread allocation with hardware scaling
+- Task Dependency Visualization: Runtime visualization of task graphs for debugging complex dependencies
+- Thread Specialization: Purpose-specific worker threads optimized for different operation types
+- Hybrid Priority Model: Combined preemptive and cooperative scheduling for optimal throughput
+- NUMA Topology Awareness: Thread affinity management for cross-socket tasks with data locality
+- Deadlock Prevention: Hierarchical resource acquisition with timeout-based detection and recovery
+- Wait-Free Algorithms: Critical-path optimizations using wait-free data structures
+- Background Task Throttling: Adaptive throttling based on foreground performance needs
+
+CORE COMPONENTS
+
+FTaskScheduler : public ITaskScheduler
+- Task creation and scheduling for SVO+SDF mining operations
+- Thread pool management with NUMA-aware affinity
+- Task dependency tracking and resolution for mining operation chains
+- Priority-based scheduling for player-visible operations
+- Performance monitoring and thread utilization tracking
+- Integration with UE5's task graph system
+- Zone-based task assignment for locality
+- Mining-specific task categories and priorities
+- Hardware-aware thread assignment for heterogeneous cores
+- Thread affinity optimization for cache coherence
+- Worker thread specialization for different mining operations
+- Task stealing with spatial locality preservation
+- Adaptive scheduling with operation-specific priority adjustments
+- Workload-aware thread allocation with hardware capability detection
+- Dynamic pool sizing based on system load and operation complexity
+- Task graph visualization for dependency debugging
+
+FTransactionManager : public ITransactionManager
+- Zone-based transaction management for SVO+SDF operations
+- Material-specific version tracking for fine-grained concurrency
+- Transaction context creation with affected zone determination
+- Optimistic concurrency with efficient validation
+- Fast-path selection based on conflict probability
+- Retry strategy implementation with exponential backoff
+- Transaction prioritization for player-focused operations
+- Conflict metrics collection for optimization
+- Transaction atomicity guarantee for complex operations
+- Deadlock prevention with ordered resource acquisition
+- Thread coordination for cross-zone transactions
+- Read/write set tracking for validation
+- Predictive conflict resolution based on historical patterns
+- Conflict avoidance through advanced zone partitioning
+- Hierarchical resource acquisition with deadlock prevention
+- Zone-specific transaction strategies based on content type
+
+FThreadSafeOperationQueue : public IThreadSafeQueue
+- Thread-safe queue for mining operations
+- Atomic operations for concurrent access
+- Wait-free implementation for high-performance scenarios
+- Batched operations for improved throughput
+- Priority queuing for important mining operations
+- Integration with Operation Batching System (16)
+- Queue metrics for performance monitoring
+- Queue depth management for memory control
+- Operation reordering for cache coherence
+- Age-based promotion for starvation prevention
+- Material-aware operation grouping
+- Tool-specific queue optimization
+- Lock-free implementation for high-throughput scenarios
+- Cache-line aligned memory layout to prevent false sharing
+- Specialized queuing strategies for different operation types
+- Performance-optimized enqueue/dequeue paths with SIMD assistance
+
+FPriorityTaskQueue : public IThreadSafeQueue
+- Priority-based task queuing for mining operations
+- Multiple priority levels for operation categorization
+- Player-focused operation prioritization
+- Starvation prevention for low-priority tasks
+- Throttling for excessive high-priority operations
+- Integration with Task Scheduler for execution
+- Priority inheritance for dependent operations
+- Runtime priority adjustment based on context
+- Performance-based priority boosting
+- Feedback-driven priority adjustment
+- Zone-aware priority assignment
+- Material-specific priority handling
+- Starvation prevention with priority aging and inheritance
+- Dynamic priority adjustment based on operation context
+- Performance-based priority boosting for critical paths
+- Multi-level feedback queuing for adaptive scheduling
+
+FParallelExecutor
+- Parallel execution of similar mining operations
+- Work distribution across available cores with NUMA awareness
+- SIMD-optimized execution for SDF field operations
+- Load balancing for uneven workloads during mining
+- Work stealing for improved utilization
+- Integration with Operation Batching System (16)
+- Performance tracking for parallel efficiency
+- Automatic parallelization decision based on workload
+- Cache-aware work distribution for SDF operations
+- Adaptive parallelism based on hardware capabilities
+- Specialized executors for common mining patterns
+- Material-aware parallelization strategies
+- Automatic parallelization decisions based on workload characteristics
+- Dynamic work distribution based on system load and capabilities
+- Thread specialization for different operation types
+- Adaptive batch sizing based on operation complexity
+
+FAsyncTaskManager : public IAsyncOperation
+- Asynchronous task management for SVO+SDF operations
+- Completion callback handling for async mining operations
+- Cancellation support for abandoned operations
+- Progress tracking and reporting for long-running tasks
+- Coordination with Region Streaming System (20)
+- Exception handling and error recovery
+- Task chaining for complex operation sequences
+- Background processing for resource-intensive operations
+- Predictive execution for anticipated operations
+- Incremental result availability for progressive updates
+- Frame-distributed execution for consistent performance
+- Adaptive task scheduling based on current workload
+- Progressive result availability with incremental callbacks
+- Background task throttling based on foreground performance
+- Predictive task scheduling based on player behavior patterns
+- Resource-aware task prioritization for complex operations
+
+FZoneManager
+- Zone grid management for mining operations
+- Spatial partitioning of the world into 2-4m³ zones
+- Zone ownership tracking for transaction coordination
+- Material tracking within zones for version control
+- Zone metrics collection for fast-path decision making
+- Integration with RegionManager from System (18)
+- Zone allocation and lifecycle management
+- Performance optimization for zone lookups
+- Memory-efficient zone representation
+- Cross-region zone coordination
+- Zone conflict tracking for optimization
+- Material-specific zone granularity
+- Hardware-aware zone sizing and dynamic adjustment
+- Conflict prediction based on zone access patterns
+- Spatially-aware zone allocation for locality optimization
+- Dynamic zone partitioning based on mining patterns
+
+FThreadSafety
+- Thread synchronization primitives optimized for SVO+SDF mining
+- Atomic operations for lock-free algorithms
+- Reader-writer locks for shared distance field state
+- Specialized locks for different contention patterns
+- Lock-free algorithms for common mining patterns
+- Deadlock detection and prevention tools
+- Thread-safe initialization patterns
+- Memory barriers for CPU/GPU synchronization
+- Optimistic locking strategies for low-contention scenarios
+- Hybrid synchronization for different access patterns
+- Fine-grained locking for material-specific access
+- Read-mostly optimizations for distance field queries
+- Hybrid synchronization strategies optimized for different contention patterns
+- Wait-free alternatives for critical paths and high-contention scenarios
+- Lock elision techniques for common access patterns
+- Thread contention analysis with visualization tools
+
+REQUIRED FILES
+[From Source/MiningSystem/Threading/]
+Public/Interfaces/
+- ITaskScheduler.h
+- ITransactionManager.h
+- IAsyncOperation.h
+- IThreadSafeQueue.h
+
+Public/
+- TaskScheduler.h
+- TransactionManager.h
+- ThreadSafeOperationQueue.h
+- PriorityTaskQueue.h
+- ParallelExecutor.h
+- AsyncTaskManager.h
+- ZoneManager.h
+- ThreadSafety.h
+
+Private/
+- TaskScheduler.cpp
+- TransactionManager.cpp
+- ThreadSafeOperationQueue.cpp
+- PriorityTaskQueue.cpp
+- ParallelExecutor.cpp
+- AsyncTaskManager.cpp
+- ZoneManager.cpp
+- ThreadSafety.cpp
+
+// Additional critical headers for threading optimizations
+#include "HAL/ThreadManager.h"
+#include "HAL/RunnableThread.h"
+#include "Misc/ScopeLock.h"
+#include "Containers/LockFreeList.h"
+#include "Containers/LockFreeFixedSizeAllocator.h"
+#include "HAL/PlatformAffinity.h"
+#include "Async/TaskGraphInterfaces.h"
+#include "HAL/ThreadSafeCounter.h"
+#include "Misc/SpinLock.h"
+#include "HAL/ThreadHeartBeat.h"
+
+IMPLEMENTATION NOTES
+- Implement zone-based transactional framework with 2-4m³ zones for optimal concurrency
+- Design material-specific version tracking for fine-grained concurrency in SDF operations
+- Create optimistic concurrency validation with efficient retry strategies
+- Implement fast-path selection based on operation characteristics and conflict history
+- Design thread-safe data structures for shared SDF field state with minimal contention
+- Support fine-grained synchronization primitives for different access patterns
+- Create thread safety boundary definitions with minimal locking zones
+- Implement NUMA-aware thread affinity for optimal core utilization
+- Design lock-free algorithms for performance-critical SDF operations
+- Create fine-grained task dependency graph for optimal parallelism
+- Implement priority-based task scheduling for player-focused mining operations
+- Design thread assignment strategies for heterogeneous core architectures
+- Create wait-free implementations for high-throughput queues
+- Implement batched operations for improved throughput and cache coherence
+- Design priority queuing with multiple levels for operation categorization
+- Create starvation prevention mechanisms for low-priority tasks
+- Implement priority inheritance for dependent operations
+- Design parallel execution strategies with SIMD optimization for SDF fields
+- Create load balancing with work stealing for optimal utilization
+- Implement automatic parallelization decisions based on workload characteristics
+- Design cache-aware work distribution for improved performance
+- Create cancellation support for abandoned operations
+- Implement exception handling and error recovery for robust operation
+- Design background processing for resource-intensive operations
+- Create predictive execution for anticipated mining operations
+- Implement zone grid management with spatial partitioning
+- Design zone ownership tracking for transaction coordination
+- Create zone metrics collection for optimization and fast-path decisions
+- Implement cross-region zone coordination for seamless mining
+- Design specialized synchronization primitives for SDF operations
+- Create hybrid synchronization strategies for different access patterns
+- Implement read-mostly optimizations for distance field queries
+- Design deadlock prevention with ordered resource acquisition
+- Implement adaptive thread pools with workload-aware allocation
+- Design task dependency visualization for debugging complex operations
+- Create purpose-specific worker threads for different operation types
+- Implement hybrid priority scheduling for optimal throughput
+- Design thread affinity management for cross-socket operations
+- Create hierarchical resource acquisition with timeout detection
+- Implement critical-path optimization with wait-free algorithms
+- Design background task throttling based on foreground performance
+
+*
+
+# MINING SYSTEM IMPLEMENTATION
+# SYSTEM 4 OF 153: Event System
+Reference: Foundation Systems - Event System
+Category: Foundation Systems
+
+PURPOSE
+Provide a robust, high-performance event distribution system that enables loose coupling between mining system components, with specialized support for SVO+SDF operations, material boundary events, and zone-based transactions, ensuring efficient synchronous and asynchronous event delivery with proper threading semantics and priority management.
+
+ARCHITECTURAL POSITION
+- Category: Foundation Systems
+- Dependencies: Core Registry (1), Threading (3)
+- Dependent Systems: Mining Operation (44), SVO+SDF Volume (25), Zone Manager (44)
+
+KEY REQUIREMENTS
+- High-performance event distribution optimized for SVO+SDF operations
+- Material-specific event categorization for fine-grained subscriptions
+- Zone-based event scoping with transactional semantics
+- Priority-based event processing for critical mining events
+- Thread-safe event distribution with proper synchronization
+- Local and global event scopes for region-specific events
+- Minimal-overhead event generation for high-frequency field updates
+- Batched event processing for similar operations
+- Topologically-aware event propagation for connected cave regions
+- Memory-efficient event payloads for frequently triggered events
+- Event Coalescing: Intelligent combining of similar events to reduce processing overhead
+- Priority Channels: Dedicated processing paths for critical gameplay events with guaranteed latency
+- Directed Event Routing: Spatial and material-aware event delivery to minimize irrelevant processing
+- Event Payload Optimization: Memory-efficient event construction with move semantics and pooling
+- Predictive Subscription: Anticipatory subscription based on player proximity and activity patterns
+- Debug Event Recording: Circular buffer of recent events with filtering for post-mortem analysis
+- Batched Event Processing: Frame-coherent event processing with optimal ordering
+- Context-Aware Throttling: Event frequency control based on recipient importance and visibility
+
+CORE COMPONENTS
+
+FEventBus : public IEventPublisher, public IEventSubscriber
+- Core event publishing and subscription management
+- Event type registration and validation with material-specific categories
+- Multi-tier event delivery coordination for different priority levels
+- Thread-safety for concurrent event processing with atomic operations
+- Priority-based event queuing and processing for mining-critical events
+- Integration with FTypeRegistry from System (1) for event type management
+- Event filtering and categorization with material-specific granularity
+- Event replay for diagnostic purposes and transaction recovery
+- Zone-based event scoping for localized operations
+- Batched event processing for similar operations
+- SDF update event optimization for high-frequency field changes
+- Material boundary event specialization for interface updates
+- Spatial partitioning for efficient event distribution with Z-order indexing
+- Event coalescing for similar updates to reduce processing overhead
+- Context-aware throttling based on recipient importance
+- Advanced filtering with multi-factor subscription matching
+
+FEventDispatcher
+- Event delivery to registered subscribers with priority handling
+- Synchronous and asynchronous delivery options based on event type
+- Thread context management for event delivery with proper ownership
+- Event batching for SDF field updates and material boundary changes
+- Exception handling during event delivery with recovery options
+- Delivery confirmation for critical events like transaction completion
+- Performance tracking for event throughput with adaptive throttling
+- Integration with FTaskScheduler from System (3) for async delivery
+- Zone-aware dispatching for mining transactions
+- Path optimization for event propagation across connected regions
+- SIMD-friendly event packet structure for vectorized processing
+- Temporal coherence for related event sequences
+- Priority-based dispatching and batched delivery optimizations
+- Dedicated fast-paths for critical gameplay events
+- Thread-safe dispatching with minimal synchronization overhead
+- Performance monitoring with automatic throttling for congestion
+
+FSVOEvents
+- SVO+SDF-specific event definitions with specialized payloads
+- Node modification events (creation, splitting, merging)
+- Hierarchical event propagation through the octree structure
+- Level-of-detail change notifications with dependency tracking
+- Material boundary transition events with gradient information
+- Narrow-band precision change events for visualization updates
+- Direct integration with SVOHybridVolume from System (25)
+- Memory-efficient event payloads for high-frequency updates
+- Material-level event granularity for selective processing
+- Cross-region event coordination for boundary operations
+- Specialized pooling for high-frequency node events
+- Optimized event data structures for minimal memory overhead
+- Batched propagation for related node modifications
+- Dependency tracking for cascading event sequences
+
+FMaterialBoundaryEvents
+- Material boundary and interface event definitions
+- Material intersection and transition events with gradient data
+- Material property change notifications for mining responses
+- Multi-channel SDF update events with field modification data
+- Integration with MultiChannelDistanceField from System (26)
+- Material-specific subscription support for selective handling
+- Memory-efficient boundary event representation for frequent updates
+- Boundary change classification for appropriate handling
+- Material erosion and deposition event specialization
+- CSG operation result events for mining feedback
+- Delta encoding for efficient material transition events
+- Boundary event batching for similar material updates
+- Compressed event payloads for high-frequency transitions
+- Priority-based processing for gameplay-critical materials
+
+FZoneTransactionEvents
+- Zone-based transaction events for concurrency management
+- Transaction state change notifications (begin, commit, abort)
+- Conflict detection and resolution events for monitoring
+- Version change notifications for optimistic concurrency
+- Integration with MiningTransactionManager from System (44)
+- Batched transaction event processing for performance
+- Transaction dependency tracking across zones
+- Rollback event coordination for aborted transactions
+- Material-specific version events for fine-grained tracking
+- Transaction performance metrics for optimization
+- Conflict prediction based on historical event patterns
+- Transaction grouping for related zone operations
+- Optimized event payload for high-frequency transactions
+- Transaction visualization events for debugging
+
+FMiningOperationEvents
+- Mining operation event definitions with tool and material context
+- Operation result events with resource extraction data
+- Mining impact events with force and deformation information
+- Tool-specific event specialization for different mining equipment
+- Integration with MiningOperationProcessor from System (44)
+- Importance-scored events for priority-based processing
+- Batched operation events for similar mining patterns
+- Mining sequence tracking for related operations
+- Region and zone context for spatial organization
+- Material-specific extraction events with quality data
+- Tool-specific event specialization and batching
+- Mining pattern recognition with event sequences
+- Payload optimization for high-frequency mining events
+- Performance-scaled event detail based on distance
+
+FStateChangeLogger
+- Circular event buffer with filtering and visualization
+- Event history recording for debugging and analysis
+- Selective event filtering based on type and importance
+- Post-mortem analysis tools for transaction debugging
+- Integration with DebugVisualizer from System (11)
+- Memory-efficient event storage with compression
+- Prioritized retention for critical event sequences
+- Event pattern analysis for system optimization
+- Temporal correlation between related events
+- Zone-specific event filtering for targeted analysis
+- Material-specific event recording for resource debugging
+- Mining operation event tracking for pattern analysis
+
+FEventPathOptimizer
+- Spatial event path optimization for localized operations
+- Subscriber clustering for efficient delivery routing
+- Path caching for frequent event delivery patterns
+- Performance analysis for routing optimization
+- Integration with RegionManager from System (18)
+- Zone-based routing with spatial indexing
+- Material-specific path optimization for channel events
+- Cross-region path coordination for boundary events
+- Predictive path preparation for common event sequences
+- Path compression for efficiency in deep hierarchies
+- SIMD-optimized path traversal for vectorized delivery
+- Adaptive path selection based on subscription density
+
+REQUIRED FILES
+[From Source/MiningSystem/Events/]
+Public/Interfaces/
+- IEventSubscriber.h
+- IEventPublisher.h
+- IEventHandler.h
+
+Public/
+- EventBus.h
+- EventDispatcher.h
+- StateChangeLogger.h
+- EventPathOptimizer.h
+
+Public/Events/
+- SVOEvents.h
+- MaterialBoundaryEvents.h
+- ZoneTransactionEvents.h
+- MiningOperationEvents.h
+- RegionEvents.h
+- ResourceEvents.h
+
+Private/
+- EventBus.cpp
+- EventDispatcher.cpp
+- StateChangeLogger.cpp
+- EventPathOptimizer.cpp
+
+IMPLEMENTATION NOTES
+- Implement high-performance event distribution with minimal overhead for SVO+SDF operations
+- Design thread-safe subscription and publishing using atomic operations from Threading System (3)
+- Create type-safe event subscription mechanism for material-specific events
+- Implement event prioritization for critical mining events (stability warnings, transaction conflicts)
+- Design local event scopes for zone-based transactions with proper isolation
+- Support asynchronous event delivery for non-time-critical updates
+- Create event batching for similar SDF field updates to improve performance
+- Implement event filtering for subscribers to minimize processing overhead
+- Design event replay capability for debugging and transaction recovery
+- Create exception handling and recovery during event processing
+- Implement performance tracking for event throughput and latency
+- Design memory-efficient event payloads for high-frequency SDF updates
+- Support event payload moving for large data structures
+- Create event visualization tools for debugging transaction conflicts
+- Implement event logging for post-mortem analysis and debugging
+- Design specialized event paths for common mining operations
+- Create zone-aware event propagation for transaction coordination
+- Implement material-specific event categorization for selective subscription
+- Design batched event processing for similar field updates
+- Support cross-region event coordination for boundary operations
+- Implement importance-based event prioritization for player-focused mining
+- Design event coalescing for similar operations to reduce overhead
+- Create dedicated processing paths for critical gameplay events
+- Implement spatial and material-aware event delivery for efficiency
+- Design memory-efficient event construction with move semantics and pooling
+- Create anticipatory subscription based on player proximity and patterns
+- Implement debug event recording with circular buffering and filtering
+- Design frame-coherent event processing with optimal ordering
+- Create event frequency control based on recipient importance and visibility
+- Implement spatial event partitioning for efficient distribution
+- Design thread-safe dispatching with minimal synchronization overhead
+
+*
+
+# MINING SYSTEM IMPLEMENTATION
+# SYSTEM 5 OF 153: Configuration Management System
+Reference: Foundation Systems - Configuration Management System
+Category: Foundation Systems
+
+PURPOSE
+Provide centralized configuration handling for all SVO+SDF mining system components, supporting runtime configuration changes, hardware-specific optimizations, and data-driven tuning of material properties, field precision, and performance characteristics with specialized profiles for different mining environments and hardware capabilities, ensuring optimal performance across diverse systems through automatic detection and adaptation.
+
+ARCHITECTURAL POSITION
+- Category: Foundation Systems
+- Dependencies: Core Registry (1), Event System (4)
+- Dependent Systems: All other systems (primary: Performance 8, Adaptive Quality 105, SVO+SDF Volume 25)
+
+KEY REQUIREMENTS
+- Centralized configuration for all SVO+SDF hybrid system components
+- Hierarchical configuration structure with component-specific settings
+- Runtime configuration changes with proper event propagation and state validation
+- Hardware-specific profiles for SIMD optimization and GPU acceleration with automatic detection
+- Material-specific configuration for SDF channels and properties with specialized parameter sets
+- Narrow-band precision configuration for different distance tiers
+- Zone-based transaction configuration for concurrency control
+- Proxy system configuration for hierarchical-topological streaming
+- Data-driven configuration via external files with validation and constraint checking
+- Configuration serialization for persistence across sessions with version-aware migration
+- Adaptive configuration updates based on performance telemetry
+- Hot-reload support for development-time configuration changes without restarts
+- UE5 Project Settings integration for seamless editor configuration
+- Performance presets for different hardware capabilities and targets
+- Configuration validation with dependency resolution and constraint checking
+
+CORE COMPONENTS
+
+FConfigProvider : public IConfigProvider
+- Core configuration management for SVO+SDF hybrid system
+- Hierarchical configuration structure with inheritance
+- Configuration loading and validation with error correction
+- Default configuration generation for different hardware profiles
+- Change event propagation using Event System (4)
+- Runtime modification with proper propagation and state validation
+- Configuration serialization for persistence with version migration
+- Editor support for configuration visualization and tuning
+- Thread-safe configuration access for concurrent operations
+- Hot-reload support for rapid development iteration
+- Hardware detection with capability-based profile selection
+- Material-specific configuration sections for SDF parameters
+- Performance preset management with target-based optimization
+- Configuration dependency tracking with validation
+- UE5 settings panel integration for editor configuration
+
+FSVOSDFConfig : public IConfigProvider
+- SVO+SDF hybrid volume configuration
+- Octree hierarchy parameters (node size, max depth)
+- Narrow-band precision settings for different distance tiers
+- Material channel allocation and limits
+- Field operation parameters for CSG operations
+- Cross-region boundary handling configurations
+- SDF function parameters for different materials
+- Memory budget allocation for octree nodes and field data
+- Integration with SVO+SDF Volume System (25)
+- Field serialization parameters for persistence and streaming
+- Material-specific SDF parameters with property-driven behavior
+- SIMD optimization parameters with instruction set detection
+- Memory layout configuration for cache optimization
+- Field operation tuning for different hardware capabilities
+- Performance scaling parameters for adaptive quality
+
+FPerformanceConfig : public IConfigProvider
+- Performance-related configuration for SVO+SDF operations
+- Hardware capability detection and adaptation with automatic profiling
+- SIMD optimization settings (AVX2/AVX-512/NEON)
+- GPU acceleration parameters with fallback thresholds
+- Quality preset management for different hardware profiles
+- Thread allocation and affinity settings for mining operations
+- Memory layout and access pattern configurations
+- Zone-based transaction parameters (zone size, conflict thresholds)
+- Integration with Performance System (8)
+- Runtime performance adaptation settings based on telemetry
+- Hardware-specific optimization paths with capability detection
+- Performance target presets with adaptive quality scaling
+- Resource allocation strategies for different hardware
+- Performance monitoring triggers for configuration adaptation
+- Thermal management integration for mobile and laptop systems
+
+FQualitySettings : public IConfigProvider
+- Visual quality configuration for SVO+SDF rendering
+- Field precision settings for different distance bands
+- Material quality and transition parameters
+- Mesh extraction quality for dual contouring
+- LOD distance and transition settings for octree levels
+- Visual effects quality for mining operations
+- Portal and visibility settings for cave environments
+- Integration with Adaptive Quality System (105)
+- Platform-specific quality optimizations with fallbacks
+- Frame rate targets with adaptive quality thresholds
+- Hardware-aware quality scaling with capability detection
+- Material-specific quality parameters for important resources
+- Visual quality presets with memory and performance budgets
+- Effect density scaling for different hardware capabilities
+- Transition quality parameters for smooth LOD changes
+
+FMaterialConfigProvider : public IConfigProvider
+- Material-specific configuration for SDF channels
+- Material property parameters for mining responses
+- Material blending and transition settings
+- Material relationship configuration for interactions
+- SDF function parameters for different materials
+- Material importance weighting for streaming prioritization
+- Physical property configuration for simulation
+- Resource yield and quality parameters
+- Integration with Material Property System (53)
+- Data-driven configuration via external material libraries
+- Material-specific interaction rules with cross-material behaviors
+- SDF channel quality settings for material-specific detail
+- Material LOD parameters for distance-based simplification
+- Performance-scaled material detail with hardware awareness
+- Physics response configuration for different materials
+
+FStreamingConfigProvider : public IConfigProvider
+- Streaming configuration for hierarchical-topological system
+- Proxy tier settings and memory budgets
+- Portal detection and importance parameters
+- Chamber and passage configuration for cave networks
+- Movement prediction parameters for streaming prioritization
+- Combined visibility scoring weights for different environments
+- Cross-region streaming coordination settings
+- Detail level transition thresholds for different proxies
+- Integration with Region Streaming System (20)
+- Memory budget settings for different proxy tiers
+- Hardware-specific streaming parameters for memory constraints
+- Quality scaling for streaming with performance targets
+- Bandwidth allocation for multiplayer streaming scenarios
+- Priority-based loading with player-focused importance
+- Cache configuration for streaming efficiency
+
+FMiningConfigProvider : public IConfigProvider
+- Mining operation configuration for SDF field modifications
+- Tool-specific parameter configuration for different mining equipment
+- Zone-based transaction settings (zone size, version thresholds)
+- Fast-path selection parameters for transaction optimization
+- Mining impact propagation settings for field updates
+- Operation batching parameters for performance optimization
+- Material-specific mining response configuration
+- Mining priority settings for operation scheduling
+- Integration with Mining Operation System (44)
+- Mining effect configuration for visual and audio feedback
+- Tool-specific optimization paths for different hardware
+- Performance scaling for mining operations based on hardware
+- Memory allocation strategies for mining transactions
+- CSG operation configuration for different materials
+- Mining pattern optimization for common operations
+
+FConfigValidator
+- Configuration constraint checking and validation
+- Parameter dependency resolution with validation
+- Value range verification with error correction
+- Configuration integrity checking for system boot
+- Integration with core registry for type validation
+- Parameter relationship validation for consistent settings
+- Configuration migration for version updates
+- Error reporting with correction suggestions
+- Hardware capability verification for selected profiles
+- Cross-system parameter validation for compatibility
+- Material-specific constraint checking for field parameters
+- Performance impact analysis for configuration changes
+- Validation visualization for parameter relationships
+- Configuration comparison with performance analysis
+- Constraint definition system for parameter validation
+
+FRuntimeConfigUpdater
+- Live parameter adjustment during gameplay 
+- State validation for configuration changes
+- Graceful parameter transition with state preservation
+- Performance monitoring with adaptive configuration
+- Integration with Performance System (8) for feedback
+- Change propagation coordination across systems
+- Change impact prediction before application
+- Rollback capability for problematic changes
+- Configuration checkpointing for reversion
+- Optimization strategy selection based on telemetry
+- User-triggered configuration changes with validation
+- A/B testing support for configuration optimization
+- Configuration transition visualization for debugging
+- Parameter grouping for atomic changes
+- Thread-safe update coordination with synchronization
+
+REQUIRED FILES
+[From Source/MiningSystem/Core/]
+Public/Interfaces/
+- IConfigProvider.h
+- IConfigValidator.h
+- IConfigUpdater.h
+
+Public/Config/
+- ConfigProvider.h
+- SVOSDFConfig.h
+- PerformanceConfig.h
+- QualitySettings.h
+- MaterialConfigProvider.h
+- StreamingConfigProvider.h
+- MiningConfigProvider.h
+- ConfigValidator.h
+- RuntimeConfigUpdater.h
+- HardwareProfileSelector.h
+- ConfigVisualizer.h
+
+Private/Config/
+- ConfigProvider.cpp
+- SVOSDFConfig.cpp
+- PerformanceConfig.cpp
+- QualitySettings.cpp
+- MaterialConfigProvider.cpp
+- StreamingConfigProvider.cpp
+- MiningConfigProvider.cpp
+- ConfigValidator.cpp
+- RuntimeConfigUpdater.cpp
+- HardwareProfileSelector.cpp
+- ConfigVisualizer.cpp
+
+IMPLEMENTATION NOTES
+- Implement hierarchical configuration system with inheritance for specialized subsystems
+- Design thread-safe configuration access for concurrent mining operations
+- Create hardware detection system for automatic profile selection with capability-based optimization
+- Implement configuration validation with correction for invalid settings and constraint checking
+- Design efficient serialization for persistence with versioning support and migration paths
+- Create delta serialization for configuration changes to reduce storage overhead
+- Implement event-based propagation for runtime configuration changes with state validation
+- Design editor tools for configuration visualization and tuning with UE5 integration
+- Support data-driven configuration loading from external files (JSON, XML) with validation
+- Create migration system for configuration updates between versions with backward compatibility
+- Implement default configuration generation for different hardware profiles with automatic detection
+- Design configuration presets for common scenarios (performance, quality, balanced) with hardware targeting
+- Create debugging tools for configuration state visualization and relationship analysis
+- Implement analytics integration for usage pattern tracking and optimization
+- Design A/B testing support for configuration optimization with performance metrics
+- Support hot-reloading for rapid development iteration without game restarts
+- Implement platform-specific configuration defaults and constraints with hardware awareness
+- Design SDF-specific configuration validators for field parameters and material interactions
+- Create memory budget allocation system for different SVO+SDF components with hardware scaling
+- Implement adaptive configuration updates based on performance metrics with feedback loops
+- Design constraint-based validation system for parameter relationships and dependencies
+- Create parameter relationship visualization for configuration debugging and analysis
+- Implement hardware-specific optimization paths with capability detection for SIMD and GPU features
+- Design performance target presets with adaptive quality scaling based on hardware capabilities
+- Create runtime configuration adjustment with state validation and graceful transitions
+- Implement configuration checkpointing for problematic change reversion with minimal disruption
+- Design parameter grouping for atomic configuration changes with consistency preservation
+- Create thread-safe update coordination with proper synchronization for concurrent access
+- Implement material-specific parameter sets with property-driven behavior configuration
+- Design performance monitoring integration with adaptive configuration feedback
+
+*
+
+# MINING SYSTEM IMPLEMENTATION
+# SYSTEM 6 OF 153: Service Registry and Dependency Management
+Reference: Foundation Systems - Service Registry and Dependency Management
+Category: Foundation Systems
+
+PURPOSE
+Provide comprehensive service registration, discovery, and dependency management for SVO+SDF mining system components, enabling loose coupling while maintaining proper initialization order and lifecycle management, with specialized support for hierarchical services, cross-zone coordination, runtime health monitoring, and dynamic service reconfiguration to ensure system resilience and adaptability during intensive mining operations.
+
+ARCHITECTURAL POSITION
+- Category: Foundation Systems
+- Dependencies: Core Registry (1), Event System (4)
+- Dependent Systems: SVO+SDF Volume (25), Mining Operations (44), Zone Manager (44)
+
+KEY REQUIREMENTS
+- Service registration and discovery for SVO+SDF subsystems with proper dependencies
+- Hierarchical service registration for region-specific and zone-specific services
+- Material-specific service interfaces for multi-channel field operations
+- Dependency resolution and management for complex service relationships
+- Initialization ordering enforcement for proper system startup
+- Lifecycle management with dependency-aware shutdown sequencing
+- Thread-safe service resolution with performance optimization
+- Dynamic service reconfiguration for adaptive performance management
+- Service interface versioning for compatibility assurance
+- Granular dependency tracking for minimal service coupling
+- Service health monitoring with automatic recovery for critical services
+- Dynamic service replacement with minimal dependency disruption
+- Dependency visualization for system analysis and debugging
+- Lazy service initialization for better startup performance and memory usage
+- Service metrics collection for performance tracking and optimization
+- Thread context awareness for service resolution with proper ownership
+- Service versioning with compatibility checking and migration support
+- Blueprint service access for gameplay code integration
+
+CORE COMPONENTS
+
+FServiceLocator : public IServiceLocator
+- Service registration and resolution for SVO+SDF subsystems
+- Hierarchical service support for global, region, and zone scopes
+- Material-specific service resolution with type safety
+- Thread-safe singleton access with atomic operation support
+- Service dependency resolution with validation and cycle detection
+- Integration with UE5's subsystem framework for engine consistency
+- Support for per-Region and per-Zone service instances via hierarchy
+- Fallback resolution for alternative service implementations
+- Dependency-aware initialization and shutdown sequencing
+- Performance-optimized service cache with version validation
+- Runtime service configuration based on hardware capabilities
+- Cross-region service coordination for boundary operations
+- Context-aware service resolution with thread safety optimizations
+- Layered resolution supporting global, region, and zone scopes
+- Service health monitoring integration for critical services
+- Thread context awareness with ownership and isolation
+- Blueprint-friendly service resolution for gameplay code
+- Service metrics collection for performance analysis
+
+FDependencyResolver
+- Service dependency resolution and validation with graph analysis
+- Initialization order determination based on dependency relationships
+- Circular dependency detection with resolution strategies
+- Optional dependency handling with graceful fallbacks
+- Integration with SystemRegistry from System (1) for type information
+- Dependency validation during system initialization and reconfiguration
+- Runtime dependency resolution for dynamic services with lazy loading
+- Diagnostic tools for dependency visualization and analysis
+- Material dependency tracking for field operation sequencing
+- Zone dependency management for transaction coordination
+- Service group dependency handling for related components
+- Conditional dependency resolution based on hardware capabilities
+- Cycle detection with automatic resolution strategies
+- Dependency graph visualization for system analysis
+- Layered dependency resolution with scope awareness
+- Performance impact analysis for dependency chains
+- Dependency pruning for minimal coupling between services
+- Change impact prediction for service modifications
+
+FServiceManager
+- Service lifecycle management from creation to destruction
+- Service startup and shutdown sequencing with dependency awareness
+- Resource cleanup during service shutdown with proper ordering
+- Health monitoring for critical SVO+SDF services with recovery options
+- Service reinitialization after failure with state preservation
+- Integration with the Event System (4) for lifecycle event notification
+- Service instance pooling for region-local and zone-local services
+- Performance monitoring for service operations with throttling
+- Service state persistence for seamless recovery
+- Dynamic service reconfiguration based on performance metrics
+- Thread safety management for concurrent service access
+- Material-specific service group management for field operations
+- Automatic recovery for critical services with minimal disruption
+- Proactive health checking with failure prediction
+- Service initialization optimization with lazy loading
+- Service group management for related operations
+- Runtime service replacement with dependency updates
+- Service metrics collection and performance analysis
+
+FSVOServiceProvider
+- Specialized service provider for SVO+SDF hybrid volume components
+- Registration of node managers, field operators, and serializers
+- Component-specific dependency management for SVO hierarchy
+- Octree level services with parent-child relationships
+- Integration with MaterialServiceProvider for boundary operations
+- Performance-optimized service resolution for high-frequency queries
+- Resolution caching for commonly accessed services
+- Cross-region service coordination for boundary operations
+- Service configuration based on volume characteristics
+- Specialized service interfaces for different node types
+- Runtime service adaptation based on memory constraints
+- Level-of-detail service management for adaptive resolution
+- Node-specific service optimization for performance
+- Field operation service specialization for different materials
+- Narrow-band service optimization for interface operations
+- Service versioning for SVO compatibility across updates
+- SDF field service resolution with channel awareness
+- Mining operation service coordination for field modification
+
+FZoneServiceProvider
+- Specialized service provider for zone-based transaction components
+- Zone-specific service registration and resolution with spatial context
+- Transaction service coordination across zone boundaries
+- Zone group services for related mining operations
+- Integration with RegionServiceProvider for cross-region operations
+- Fast path service resolution for critical mining paths
+- Conflict resolution services for transaction management
+- Performance monitoring for zone service operations
+- Dynamic service reconfiguration based on conflict metrics
+- Service invalidation for aborted transactions
+- Specialized service interfaces for different transaction types
+- Material-specific service resolution for zone operations
+- Cross-zone service coordination and boundary handling
+- Transaction-aware service resolution with versioning
+- Zone authority service management for multiplayer
+- Service locality optimization for cache coherence
+- High-frequency service caching for mining operations
+- Zone operation services with tool specialization
+
+FMaterialServiceProvider
+- Specialized service provider for material-specific components
+- Material-specific service registration and resolution
+- Multi-channel field service coordination for complex materials
+- Material property services with dependency tracking
+- Integration with SVOServiceProvider for field operations
+- Performance-optimized resolution for high-frequency material queries
+- Material group services for related material types
+- Cross-material service coordination for boundary operations
+- Service configuration based on material properties
+- Specialized service interfaces for different material categories
+- Runtime service adaptation based on material importance
+- Material dependency tracking for interaction modeling
+- Channel-specific service resolution for material operations
+- Material interface services for boundary operations
+- Resource-specific services for valuable materials
+- Service prioritization based on material importance
+- Field operation services specialized for material types
+- Material relationship services for interaction modeling
+
+FServiceHealthMonitor
+- Real-time service health monitoring for system resilience
+- Critical service identification with importance classification
+- Automatic failure detection with diagnostic analysis
+- Service recovery coordination with state preservation
+- Performance baseline establishment for health assessment
+- Integration with Performance System (8) for telemetry
+- Dependency-aware recovery for related service failures
+- Proactive health checking with failure prediction
+- Service degradation detection with early warning
+- Recovery strategy selection based on failure type
+- Service runtime metrics collection and analysis
+- Health status visualization for debugging and analysis
+- Failure impact assessment for related services
+- Recovery prioritization based on service importance
+- Resource consumption monitoring for service health
+- Thread deadlock detection with recovery actions
+- Service operation timeout monitoring with failover
+- Periodic health verification with trend analysis
+
+FServiceDebugVisualizer
+- Service relationship visualization for system analysis
+- Dependency graph rendering with importance highlighting
+- Performance hotspot identification in service chains
+- Runtime service interaction visualization
+- Integration with Debug System (11) for visualization tools
+- Service call frequency analysis with heatmaps
+- Dependency chain analysis for bottleneck identification
+- Service health status visualization with real-time updates
+- Material-specific service visualization for channel operations
+- Zone-based service activity mapping for transaction analysis
+- Service metrics visualization with historical trends
+- Blueprint service usage tracking and visualization
+- Service initialization sequence visualization
+- Dependency cycle visualization with resolution suggestions
+- Service load balancing analysis with distribution mapping
+- Critical path identification for performance optimization
+- Service version compatibility visualization
+- Runtime service reconfiguration visualization
+
+REQUIRED FILES
+[From Source/MiningSystem/Core/]
+Public/Registry/
+- ServiceLocator.h
+- DependencyResolver.h
+- ServiceManager.h
+- SVOServiceProvider.h
+- ZoneServiceProvider.h
+- MaterialServiceProvider.h
+- ServiceHealthMonitor.h
+- ServiceDebugVisualizer.h
+
+Private/Registry/
+- ServiceLocator.cpp
+- DependencyResolver.cpp
+- ServiceManager.cpp
+- SVOServiceProvider.cpp
+- ZoneServiceProvider.cpp
+- MaterialServiceProvider.cpp
+- ServiceHealthMonitor.cpp
+- ServiceDebugVisualizer.cpp
+
+Public/Interfaces/
+- IServiceLocator.h
+- IServiceProvider.h
+- IServiceMonitor.h
+- IServiceVisualizer.h
+
+IMPLEMENTATION NOTES
+- Implement service registry using type-safe interface-based registration with template specialization
+- Design hierarchical service resolution for global, region, and zone-scoped services
+- Create dependency graph analysis for initialization order determination and cycle detection
+- Implement thread-safe service resolution with atomic operations and read-write locks
+- Design service caching strategy with version validation for performance optimization
+- Support runtime service reconfiguration for adaptive performance management
+- Create service interface versioning for compatibility assurance across updates
+- Implement service health monitoring with automatic recovery for critical components
+- Design diagnostic tools for service dependency visualization and analysis
+- Support conditional dependencies based on hardware capabilities and configuration
+- Create specialized service providers for SVO+SDF components with optimized resolution
+- Implement material-specific service interfaces for multi-channel field operations
+- Design zone-based service coordination for transaction management
+- Support cross-region service resolution for boundary operations
+- Create service lifecycle event notification using Event System (4)
+- Implement service instance pooling for region-local and zone-local services
+- Design efficient service lookup with minimal overhead for high-frequency operations
+- Support fallback resolution chains for graceful degradation
+- Create service metrics collection for performance monitoring and optimization
+- Implement service dependency pruning for minimal coupling between components
+- Design thread context awareness for service resolution with proper ownership
+- Support service group registration and resolution for related components
+- Implement lazy service initialization for better startup performance and memory usage
+- Design dynamic service replacement with minimal disruption to dependencies
+- Create proactive health checking with failure prediction for critical services
+- Implement automatic service recovery with state preservation after failures
+- Design context-aware service resolution with thread safety optimizations
+- Create blueprint-friendly service interfaces for gameplay code integration
+- Implement service version compatibility checking with migration support
+- Design dependency cycle detection with automatic resolution strategies
+- Create critical service identification with importance-based recovery prioritization
+- Implement service degradation detection with early warning systems
+- Design visual debugging tools for service relationships and performance analysis
+- Create comprehensive service metrics collection for optimization
+- Implement service operation timeout monitoring with failover capabilities
+- Design resource consumption monitoring for service health assessment
+- Create thread deadlock detection with recovery actions for system stability
+- Implement service call frequency analysis for optimization opportunities
+- Design dependency chain analysis for bottleneck identification and resolution
+
+*
+
+# MINING SYSTEM IMPLEMENTATION
+# SYSTEM 7 OF 153: Factory System for Component Creation
+Reference: Foundation Systems - Factory System for Component Creation
+Category: Foundation Systems
+
+PURPOSE
+Provide a robust factory system for creating SVO+SDF mining system components, ensuring proper initialization, configuration, and integration with the broader system while supporting runtime variability, specialized implementations, efficient component pooling, and performance-optimized creation patterns for different node types, field configurations, material combinations, and zone-based transactions throughout the mining system.
+
+ARCHITECTURAL POSITION
+- Category: Foundation Systems
+- Dependencies: Core Registry (1), Service Registry (6), Configuration (5)
+- Dependent Systems: SVO+SDF Volume (25), Multi-Channel Distance Field (26), Mining Transaction (44)
+
+KEY REQUIREMENTS
+- Generic factory mechanism for SVO+SDF component creation with type safety
+- Specialized factories for different node types and field configurations
+- Configuration-driven component creation with material-specific parameters
+- Runtime component variation based on context and hardware capabilities
+- Memory-efficient instance creation for high-frequency components
+- Thread-safe factory operations for concurrent creation requests
+- Pooled instance management for frequently created objects
+- Zone-aware component creation for transaction management
+- Template-based optimization for performance-critical factories
+- Cross-region component coordination for boundary operations
+- Specialized component pools with type-specific pre-allocation
+- Creation pattern identification and optimization for frequent scenarios
+- Factory performance metrics for bottleneck identification
+- Template-based factory specialization for critical component types
+- Blueprint-friendly creation interface for gameplay code
+- Construction validation with parameter and constraint checking
+- Component reuse with efficient recycling and state reset
+- Factory selection strategy based on component type and context
+
+CORE COMPONENTS
+
+FMiningSystemFactory : public IFactory
+- Core factory implementation for mining system components
+- Component registration and instantiation with type safety
+- Hierarchical factory organization for component categories
+- Template-based component creation with specialized configurations
+- Integration with Core Registry for type information
+- Factory method registration for specialized components
+- Component lifecycle coordination with Service Registry
+- Configuration-driven component creation with validation
+- Runtime component variation based on context
+- Memory-efficient creation with pooling for frequent objects
+- Hardware-specific factory selection for optimal performance
+- Thread-safe creation with proper synchronization
+- Specialized creation paths for SDF components with type optimization
+- Performance monitoring for creation overhead and patterns
+- Component reuse strategies for common types
+- Pattern-based optimization for frequent creation scenarios
+- Creation pipeline customization for different components
+- Blueprint-friendly creation interfaces for gameplay code
+
+FSVONodeFactory : public IFactory
+- Specialized factory for SVO node creation and initialization
+- Node type-specific instantiation with appropriate configuration
+- Memory-optimized node creation with pooling for frequent types
+- Node configuration based on spatial location and content
+- Integration with SVOHybridVolume from System (25)
+- Template specialization for different node types
+- Material-aware node creation with field initialization
+- LOD-specific node configuration for adaptive resolution
+- Efficient serialization support for streaming and persistence
+- Thread-safe node creation for parallel operations
+- SIMD-friendly memory layouts for vectorized operations
+- Runtime optimization based on node characteristics
+- Node-type specific pooling and state management
+- Creation pattern recognition for octree operations
+- Memory alignment optimization for cache performance
+- Node instance recycling with proper state reset
+- High-frequency creation paths with minimal overhead
+- Performance metrics for node creation optimization
+
+FDistanceFieldFactory : public IFactory
+- Specialized factory for multi-channel distance field components
+- Field configuration based on material properties and precision requirements
+- Memory-optimized field allocation with narrow-band focus
+- Channel-specific initialization for multi-material interfaces
+- Integration with MultiChannelDistanceField from System (26)
+- Gradient field initialization for normal calculations
+- Template specialization for different field resolutions
+- Material-specific field configuration with property integration
+- Field compression setup for memory optimization
+- Thread-safe field creation for parallel operations
+- SIMD-optimized field layouts for vectorized operations
+- Field instance pooling for common configurations
+- SIMD-aware creation for optimized field components
+- Field precision configuration based on importance
+- Specialized creation paths for different field types
+- Field pooling with narrow-band optimization
+- Adaptive field allocation based on material complexity
+- Performance metrics for field creation optimization
+
+FMaterialSDFFactory : public IFactory
+- Specialized factory for material-specific SDF components
+- Material property integration for field behavior configuration
+- Material interaction rule initialization for boundaries
+- CSG operation configuration for different materials
+- Integration with MaterialPropertyManager from System (53)
+- Template specialization for different material categories
+- Material-specific field parameters with property inheritance
+- Blending rule configuration for material transitions
+- Thread-safe material component creation
+- Material instance pooling for common material types
+- Property-driven configuration for realistic behavior
+- Cross-material operation setup for boundaries
+- Material-specific optimization based on properties
+- Material relationship configuration during creation
+- Material parameter validation with constraints
+- Specialized creation paths for different material types
+- Material instance recycling with state reset
+- Performance metrics for material creation optimization
+
+FZoneFactory : public IFactory
+- Specialized factory for zone-based transaction components
+- Zone configuration based on spatial parameters and content
+- Transaction context creation with appropriate scope
+- Material-specific zone initialization for version tracking
+- Integration with ZoneManager from System (44)
+- Template specialization for different zone types
+- Conflict tracking setup for transaction management
+- Zone-specific state initialization for concurrent operations
+- Thread-safe zone creation with proper synchronization
+- Zone instance pooling for high-frequency transactions
+- Spatial indexing configuration for efficient lookup
+- Cross-zone reference setup for boundary operations
+- Specialized zone creation with transaction-aware initialization
+- Zone recycling with proper state cleanup
+- Authority configuration for multiplayer operations
+- Zone linking for cross-boundary transactions
+- Material-specific versioning setup for zones
+- Performance metrics for zone creation optimization
+
+FTransactionContextFactory : public IFactory
+- Specialized factory for mining transaction contexts
+- Transaction configuration based on operation parameters
+- Read/write set initialization for optimistic concurrency
+- Priority configuration for transaction scheduling
+- Integration with MiningTransactionManager from System (44)
+- Template specialization for different transaction types
+- Fast-path determination for transaction execution
+- Material-specific version tracking initialization
+- Thread-safe context creation for parallel operations
+- Context instance pooling for similar transactions
+- Transaction metrics configuration for performance analysis
+- Cross-zone transaction setup for boundary operations
+- Transaction context recycling with state reset
+- Optimized creation for high-frequency transactions
+- Operation-specific context configuration
+- Validation setup for transaction parameters
+- Performance monitoring for transaction creation
+- Blueprint-friendly transaction creation interface
+
+FComponentBuilder
+- Fluent API for component configuration with chainable methods
+- Parameter specification for component creation with validation
+- Multi-step initialization for complex components
+- Default parameter resolution from configuration
+- Integration with Configuration System (5)
+- Builder pattern implementation for complex components
+- Property inheritance for similar component configurations
+- Material-specific builder specialization for field components
+- Zone-aware builder for transaction components
+- Template-based builder optimization for type safety
+- Configuration validation before instantiation
+- Memory-efficient builder implementation for frequent use
+- Parameter validation with constraint checking
+- Blueprint-friendly builder interfaces for gameplay
+- Type-safe parameter specification with compile-time checking
+- Builder reuse for similar component creation
+- Configuration integration for default parameters
+- Performance optimization for builder operations
+
+FFactoryMetricsCollector
+- Factory performance monitoring and analysis
+- Creation time tracking for different component types
+- Pattern identification for common creation sequences
+- Bottleneck detection in creation pipelines
+- Pool utilization monitoring for instance reuse
+- Integration with Performance System (8)
+- Factory optimization recommendation generation
+- Creation statistics visualization for debugging
+- Thread contention analysis for concurrent creation
+- Cache performance analysis for memory layouts
+- Creation pattern visualization for optimization
+- Pool sizing recommendations based on usage
+- Material-specific creation metrics for field components
+- Zone creation performance analysis for transactions
+- Creation trend analysis for adaptive optimization
+- Component lifetime tracking for pool management
+- Creation hot path identification for optimization
+- Real-time metrics visualization for development
+
+REQUIRED FILES
+[From Source/MiningSystem/Core/]
+Public/Factory/
+- MiningSystemFactory.h
+- SVONodeFactory.h
+- DistanceFieldFactory.h
+- MaterialSDFFactory.h
+- ZoneFactory.h
+- TransactionContextFactory.h
+- ComponentBuilder.h
+- FactoryMetricsCollector.h
+
+Private/Factory/
+- MiningSystemFactory.cpp
+- SVONodeFactory.cpp
+- DistanceFieldFactory.cpp
+- MaterialSDFFactory.cpp
+- ZoneFactory.cpp
+- TransactionContextFactory.cpp
+- ComponentBuilder.cpp
+- FactoryMetricsCollector.cpp
+
+Public/Interfaces/
+- IFactory.h
+- IComponentBuilder.h
+- IFactoryMetrics.h
+
+IMPLEMENTATION NOTES
+- Implement generic factory system using template-based component creation with type safety
+- Design specialized factories for different SVO node types and field configurations
+- Create node pooling system for frequently created objects with type-specific pools
+- Implement configuration-driven component creation with validation and defaults
+- Design thread-safe factory operations with minimal synchronization overhead
+- Support runtime component variation based on context and requirements
+- Create template specialization for performance-critical factory operations
+- Implement material-specific factory logic for field components with property integration
+- Design zone-aware factory operations for transaction management
+- Support cross-region component coordination for boundary operations
+- Create efficient memory layouts for SIMD-friendly operations
+- Implement instance reuse for common component configurations
+- Design component builder pattern with fluent API for complex initialization
+- Support parameter inheritance for similar component configurations
+- Create factory method registration for specialized component creation
+- Implement factory metrics collection for optimization
+- Design factory selection based on hardware capabilities
+- Support pooled instance management for high-frequency objects
+- Create factory visualization tools for debugging and analysis
+- Implement thread-safe pool management for concurrent creation
+- Design specialized memory allocation for performance-critical components
+- Create specialized component pools with type-specific pre-allocation
+- Implement creation pattern identification and optimization for frequent scenarios
+- Design factory performance metrics with bottleneck identification
+- Create template-based factory specialization for critical component types
+- Implement blueprint-friendly creation interface for gameplay code
+- Design construction validation with parameter and constraint checking
+- Create component reuse system with efficient recycling and state reset
+- Implement factory selection strategy based on component type and context
+- Design node-type specific pooling with state management for octree operations
+- Create SIMD-aware field component creation for optimized operations
+- Implement material-specific optimization based on property characteristics
+- Design zone recycling with proper state cleanup for transaction components
+- Create transaction context recycling for high-frequency mining operations
+- Implement parameter validation with constraint checking during construction
+- Design type-safe parameter specification with compile-time checking
+- Create builder reuse for similar component creation patterns
+- Implement pool utilization monitoring for optimization recommendations
+- Design creation pattern visualization for factory analysis and debugging
+- Create component lifetime tracking for optimal pool management
+- Implement creation hot path identification for targeted optimization
+- Design real-time metrics visualization for development and tuning

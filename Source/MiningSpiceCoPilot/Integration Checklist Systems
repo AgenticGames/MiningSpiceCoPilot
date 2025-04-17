@@ -1,0 +1,38 @@
+IMPORTANT: As you complete an integration feature, mark it with a TICK!
+
+ICON LEGEND:
+Core Feature Icons (Items with this icon are 100% in the scope of the original system prompt --> Example, this one (Source\MiningSpiceCoPilot\# SYSTEM 2 Memory Management System REFINED.txt)):
+
+⚙️ - Required System Component / Core Integration Feature / Essential Functionality 
+
+Stretch Goal Icons (Beyond the scope of the original implementation and connection points of the system prompt documents):
+🚀 - Performance Enhancement
+✨ - Advanced Feature
+🔍 - Misc Optimization
+👀 - Visualization / Telemetry
+    
+
+
+Comprehensive list of integration points between the Core Registry (System1) and Memory Management System (System2) with specific function/member references (Each section should have at LEAST 6 entries, Core integration + Visualization & Telemetry having at least 8, list them in importance order, if appropriate you can make more per section (As a bonus, each category gets an extra 2 items that will heavily benefit the SVO/SDF system itself, mark these with an extra icon 🧊)):
+
+# Integration Points Between Core Registry and MemoryManagement
+
+System 1 documentation can be found at
+Source\MiningSpiceCoPilot\# SYSTEM 1 Core Registry and Type System REFINED.txt
+
+System 2 documentation can be found at
+Source\MiningSpiceCoPilot\# SYSTEM 2 Memory Management System REFINED.txt
+
+## TEMPLATE ENTRY FOR INTEGRATION CHECKLIST (Dont need to follow it religiously, just a guide)
+
+1. ⚙️ **TEMPLATE DESCRIPTIVE NAME** 
+   - `TEMPLATECLASS::TEMPLATEFUNCTION` needs synchronization with `FUNCTION` from `HEADER.h`
+   - Implementation: 
+     - In `TEMPLATECLASS::TEMPLATEFUNCTION`, replace `FUNCTION` with `FUNCTION2` from `HEADER.h`
+     - Update `PoolsLock` member to use `FSpinLock` instead of `FRWLock`
+     - Add contention tracking for memory pool creation using `FThreadSafety::RecordContention()`, allowing for xyz improvement
+     - Required files: `MemoryPoolManager.cpp`, `MemoryPoolManager.h`, `ThreadSafety.h`
+      - Laymans terms, relate it to mining game when possible.
+
+
+## LAST THING - IMPORTANT: As you complete an integration feature, mark it with a TICK!

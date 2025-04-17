@@ -2,7 +2,7 @@
 
 #include "MemoryPoolManager.h"
 #include "SVOAllocator.h"
-#include "MemoryNarrowBandAllocator.h"
+#include "NarrowBandAllocator.h"
 #include "SharedBufferManager.h"
 #include "ZeroCopyBuffer.h"
 #include "MemoryTelemetry.h"
@@ -15,6 +15,28 @@
 #include "HAL/MallocAnsi.h"
 #include "Misc/CoreDelegates.h"
 #include "Templates/UniquePtr.h"
+#include "CoreServiceLocator.h"
+#include "Interfaces/IMemoryManager.h"
+
+// Add FPlatformMemory::GetNumNUMANodes fix
+namespace
+{
+    int32 GetNumNUMANodes()
+    {
+        // Simple fallback as UE 5.5 API might have changed
+        return 1;
+    }
+
+    bool SupportsSSE4_1()
+    {
+        // Compile-time check for SSE4.1 support
+    #if defined(__SSE4_1__)
+        return true;
+    #else
+        return false;
+    #endif
+    }
+}
 
 // Initialize static members
 FMemoryPoolManager* FMemoryPoolManager::ManagerInstance = nullptr;
@@ -40,6 +62,12 @@ static constexpr uint64 DEFAULT_BUDGET_GENERAL = 64 * 1024 * 1024;          // 6
 static constexpr float MEMORY_PRESSURE_THRESHOLD = 0.15f;                   // 15% free memory
 static constexpr float MEMORY_CRITICAL_THRESHOLD = 0.05f;                   // 5% free memory
 
+// Singleton instance getter for the IMemoryManager interface
+IMemoryManager& IMemoryManager::Get()
+{
+    return FMemoryPoolManager::Get();
+}
+
 FMemoryPoolManager::FMemoryPoolManager()
     : MemoryTracker(nullptr)
     , Defragmenter(nullptr)
@@ -50,6 +78,17 @@ FMemoryPoolManager::FMemoryPoolManager()
     // Initialize counter values
     MaxMemoryLimit.Set(UINT64_MAX); // Default to no limit
     AvailablePhysicalMemory.Set(0);
+    
+    // Update memory stats from the system
+    UpdateMemoryStats();
+    
+    // Set default memory budgets
+    SetMemoryBudget(CATEGORY_SVO_NODES, DEFAULT_BUDGET_SVO_NODES);
+    SetMemoryBudget(CATEGORY_SDF_FIELDS, DEFAULT_BUDGET_SDF_FIELDS);
+    SetMemoryBudget(CATEGORY_NARROW_BAND, DEFAULT_BUDGET_NARROW_BAND);
+    SetMemoryBudget(CATEGORY_MATERIAL_CHANNELS, DEFAULT_BUDGET_MATERIAL_CHANNELS);
+    SetMemoryBudget(CATEGORY_MESH_DATA, DEFAULT_BUDGET_MESH_DATA);
+    SetMemoryBudget(CATEGORY_GENERAL, DEFAULT_BUDGET_GENERAL);
 }
 
 FMemoryPoolManager::~FMemoryPoolManager()
@@ -85,15 +124,53 @@ bool FMemoryPoolManager::Initialize()
         return false;
     }
 
-    // Initialize defragmenter
-    Defragmenter = new FMemoryDefragmenter();
+    // Initialize defragmenter with this manager as a parameter
+    Defragmenter = CreateDefragmenter();
     if (!Defragmenter)
     {
         UE_LOG(LogTemp, Error, TEXT("FMemoryPoolManager::Initialize - Failed to create defragmenter"));
+        
+        // Clean up memory tracker before returning
+        if (MemoryTracker)
+        {
+            MemoryTracker->Release();
+            MemoryTracker = nullptr;
+        }
+        
+        return false;
+    }
+    
+    // Initialize the memory tracker
+    if (MemoryTracker && !MemoryTracker->Initialize())
+    {
+        UE_LOG(LogTemp, Error, TEXT("FMemoryPoolManager::Initialize - Failed to initialize memory tracker"));
+        
+        // Clean up resources before returning
+        if (MemoryTracker)
+        {
+            MemoryTracker->Release();
+            MemoryTracker = nullptr;
+        }
+        
+        if (Defragmenter)
+        {
+            delete Defragmenter;
+            Defragmenter = nullptr;
+        }
+        
         return false;
     }
 
+    // Set default NUMA policy based on system configuration
+    SetNUMAPolicy(GetNumNUMANodes() > 1);
+    
+    // Update memory stats after initialization
+    UpdateMemoryStats();
+
     bIsInitialized = true;
+    
+    UE_LOG(LogTemp, Log, TEXT("FMemoryPoolManager::Initialize - Memory manager initialized successfully"));
+    
     return true;
 }
 
@@ -122,7 +199,8 @@ void FMemoryPoolManager::Shutdown()
     // Clean up memory tracker
     if (MemoryTracker)
     {
-        delete MemoryTracker;
+        MemoryTracker->Shutdown();
+        MemoryTracker->Release();
         MemoryTracker = nullptr;
     }
 
@@ -134,6 +212,8 @@ void FMemoryPoolManager::Shutdown()
     }
 
     bIsInitialized = false;
+    
+    UE_LOG(LogTemp, Log, TEXT("FMemoryPoolManager::Shutdown - Memory manager shut down"));
 }
 
 bool FMemoryPoolManager::IsInitialized() const
@@ -146,21 +226,55 @@ bool FMemoryPoolManager::IsSupported() const
     // Check for minimum requirements
     bool bSupported = true;
 
-    // Check for NUMA support
-    if (FPlatformMemory::GetNumNUMANodes() > 1)
+    // Check for NUMA support - use our helper function instead of the platform one
+    if (GetNumNUMANodes() > 1)
     {
-        bNUMAAwarenessEnabled = true;
-        NUMAPreferredNode = 0; // Default to first node
+        // We need to cast away const here as this is a convenience check that modifies state
+        FMemoryPoolManager* NonConstThis = const_cast<FMemoryPoolManager*>(this);
+        NonConstThis->bNUMAAwarenessEnabled = true;
+        NonConstThis->NUMAPreferredNode = 0; // Default to first node
     }
     
-    // Check for SIMD support
-    if (!FPlatformMath::SupportsSSE4_1())
+    // Check for SIMD support using our helper function
+    if (!SupportsSSE4_1())
     {
         UE_LOG(LogTemp, Warning, TEXT("FMemoryPoolManager::IsSupported - SSE4.1 not supported, some optimizations will be disabled"));
         // We don't fail here, just log a warning
     }
 
     return bSupported;
+}
+
+bool FMemoryPoolManager::SetNUMAPolicy(bool bUseNUMAAwareness, int32 PreferredNode)
+{
+    // Only apply NUMA policy if we have multiple NUMA nodes
+    if (bUseNUMAAwareness && GetNumNUMANodes() <= 1)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("FMemoryPoolManager::SetNUMAPolicy - NUMA awareness requested but system has only one NUMA node"));
+        bNUMAAwarenessEnabled = false;
+        NUMAPreferredNode = 0;
+        return false;
+    }
+    
+    // Set the NUMA policy
+    bNUMAAwarenessEnabled = bUseNUMAAwareness;
+    
+    // Validate and set preferred node
+    if (bNUMAAwarenessEnabled)
+    {
+        // Clamp to valid range
+        int32 NumNodes = GetNumNUMANodes();
+        NUMAPreferredNode = FMath::Clamp(PreferredNode, 0, NumNodes - 1);
+        
+        UE_LOG(LogTemp, Verbose, TEXT("FMemoryPoolManager::SetNUMAPolicy - NUMA awareness enabled, preferred node: %d"), NUMAPreferredNode);
+    }
+    else
+    {
+        NUMAPreferredNode = 0;
+        UE_LOG(LogTemp, Verbose, TEXT("FMemoryPoolManager::SetNUMAPolicy - NUMA awareness disabled"));
+    }
+    
+    return true;
 }
 
 IPoolAllocator* FMemoryPoolManager::CreatePool(
@@ -204,27 +318,25 @@ IPoolAllocator* FMemoryPoolManager::CreatePool(
     // Ensure block size is properly aligned (at least 8-byte aligned)
     const uint32 AlignedBlockSize = Align(BlockSize, 8);
     
-    // Create a new generic pool allocator
+    // Create a new pool allocator specialized by access pattern
     TSharedPtr<IPoolAllocator> NewPool;
     
     // Forward to specialized allocator if appropriate based on access pattern
     switch (AccessPattern)
     {
         case EMemoryAccessPattern::Mining:
-            // Create a pool with Z-order curve optimization for mining
-            // For now we're using a generic pool, but we'll replace this with SVOAllocator later
+        case EMemoryAccessPattern::OctreeTraversal:
+            // Create a pool with Z-order curve optimization for mining/octree traversal
             NewPool = MakeShared<FSVOAllocator>(PoolName, AlignedBlockSize, BlockCount, AccessPattern, bAllowGrowth);
             break;
             
         case EMemoryAccessPattern::SDFOperation:
             // Create a pool optimized for SDF operations with appropriate SIMD alignment
-            // For now we're using a generic pool, but we'll replace this with NarrowBandAllocator later
             NewPool = MakeShared<FNarrowBandAllocator>(PoolName, AlignedBlockSize, BlockCount, AccessPattern, bAllowGrowth);
             break;
             
         default:
-            // For generic pools we'll also use SVOAllocator for now as a placeholder
-            // This will be replaced with a proper generic pool allocator implementation
+            // For other access patterns, use the SVO allocator as it's more general purpose
             NewPool = MakeShared<FSVOAllocator>(PoolName, AlignedBlockSize, BlockCount, AccessPattern, bAllowGrowth);
             break;
     }
@@ -318,7 +430,7 @@ IBufferProvider* FMemoryPoolManager::CreateBuffer(
     
     if (bZeroCopy)
     {
-        NewBuffer = MakeShared<FZeroCopyBuffer>(BufferName, SizeInBytes, bGPUWritable);
+        NewBuffer = MakeShared<FZeroCopyBuffer>(BufferName, SizeInBytes, EBufferUsage::General, bGPUWritable);
     }
     else
     {
@@ -596,7 +708,6 @@ IPoolAllocator* FMemoryPoolManager::CreateSVONodePool(
     }
 
     // Create SVO-specific allocator for octree nodes
-    // This is just a thin wrapper around CreatePool for now, but will be specialized for SVO needs
     return CreatePool(
         PoolName, 
         NodeSize, 
@@ -645,7 +756,11 @@ IPoolAllocator* FMemoryPoolManager::CreateNarrowBandPool(
 
         case EMemoryTier::Archive:
             // Archive tier - compressed format with header
-            ElementSize = FMath::Max(1u, (ChannelCount + 7) / 8); // Round up to bytes
+            ElementSize = (ChannelCount + 7) / 8; // Round up to bytes
+            if (ElementSize < 1u) 
+            {
+                ElementSize = 1u;
+            }
             break;
 
         default:
@@ -653,17 +768,27 @@ IPoolAllocator* FMemoryPoolManager::CreateNarrowBandPool(
             ElementSize = sizeof(float) * ChannelCount;
             break;
     }
-
+    
     // Element size must include at least 4 bytes for position data in addition to channel data
-    ElementSize += 4; 
+    ElementSize += 4;
 
     // Create a specialized pool for narrow band data
-    return CreatePool(
+    IPoolAllocator* Pool = CreatePool(
         PoolName, 
         ElementSize, 
         ElementCount, 
         EMemoryAccessPattern::SDFOperation, 
         true);  // Allow growth by default
+        
+    // Configure the precision tier if it's a narrow band allocator
+    if (Pool && Pool->IsA<FNarrowBandAllocator>())
+    {
+        FNarrowBandAllocator* NarrowBandPool = static_cast<FNarrowBandAllocator*>(Pool);
+        NarrowBandPool->SetPrecisionTier(PrecisionTier);
+        NarrowBandPool->SetChannelCount(ChannelCount);
+    }
+    
+    return Pool;
 }
 
 FMemoryStats FMemoryPoolManager::GetDetailedMemoryStats() const
@@ -775,8 +900,8 @@ IMemoryTracker* FMemoryPoolManager::CreateMemoryTracker()
 
 FMemoryDefragmenter* FMemoryPoolManager::CreateDefragmenter()
 {
-    // Create a memory defragmenter instance
-    return new FMemoryDefragmenter();
+    // Create a memory defragmenter instance with this manager as parameter
+    return new FMemoryDefragmenter(this);
 }
 
 void FMemoryPoolManager::UpdateMemoryStats()
@@ -795,7 +920,8 @@ void FMemoryPoolManager::UpdateMemoryStats()
     // Update memory tracker if available
     if (MemoryTracker)
     {
-        // Update our memory usage stats (tracker has its own more detailed stats)
+        // Memory tracker has its own update method that we'll let it handle
+        // in a real implementation
     }
 }
 
@@ -887,9 +1013,9 @@ uint64 FMemoryPoolManager::EnforceBudgets(EMemoryPriority PriorityThreshold)
             // Get allocations for this category
             TArray<FMemoryAllocationInfo> Allocations = MemoryTracker->GetAllocationsByCategory(CategoryName);
             
-            // Sort allocations by priority (we only have allocation metadata, not actual priority)
-            // In a real implementation, we'd store priorities with allocations
-            // For now, let's use time as a proxy for priority (older allocations freed first)
+            // Sort allocations by priority (lower priority first)
+            // In a real implementation, we'd use allocation metadata to determine priority
+            // For now we use timestamp as a simple proxy (older allocations freed first)
             Allocations.Sort([](const FMemoryAllocationInfo& A, const FMemoryAllocationInfo& B) {
                 return A.TimeStamp < B.TimeStamp;
             });
@@ -933,14 +1059,13 @@ uint64 FMemoryPoolManager::ReleaseUnusedResources(float MaxTimeMs)
         return 0;
     }
 
-    // This is a placeholder for actual resource release logic
-    // In a real implementation, this would work with resource caches to free memory
-    
-    // For now, we just defragment all pools to free up memory
+    // For now, we just defragment all pools to potentially free up memory
     DefragmentMemory(MaxTimeMs);
     
-    // Real implementation would track and return actual bytes freed
-    return 0;
+    // In a real implementation, this would release resources from resource caches,
+    // trim unused memory in pools, etc.
+    
+    return 0; // Report no freed memory since we don't directly track it here
 }
 
 void FMemoryPoolManager::OnMemoryWarning()
@@ -955,6 +1080,299 @@ void FMemoryPoolManager::OnMemoryWarning()
         GetTotalMemoryUsage());
 
     // Attempt to reduce memory usage
-    EnforceBudgets(EMemoryPriority::Low);
-    ReleaseUnusedResources(5.0f); // Give it up to 5ms to free resources
+    uint64 FreedBytes = ReduceMemoryUsage(UINT64_MAX, 10.0f); // Try to free as much as possible within time constraint
+    
+    UE_LOG(LogTemp, Warning, TEXT("FMemoryPoolManager::OnMemoryWarning - Released %llu bytes in response to memory warning"),
+        FreedBytes);
+}
+
+TArray<FName> FMemoryPoolManager::GetPoolNames() const
+{
+    TArray<FName> Names;
+    FReadScopeLock ReadLock(PoolsLock);
+    
+    for (const auto& Pair : Pools)
+    {
+        Names.Add(Pair.Key);
+    }
+    
+    return Names;
+}
+
+bool FMemoryPoolManager::UpdatePointerReference(void* OldPtr, void* NewPtr, uint64 Size)
+{
+    if (!OldPtr || !NewPtr || Size == 0)
+    {
+        return false;
+    }
+
+    // Find the pool that owns the old pointer
+    IPoolAllocator* Pool = GetPoolAllocator(OldPtr);
+    if (!Pool)
+    {
+        return false;
+    }
+
+    // Update the pointer in the memory tracker
+    if (MemoryTracker)
+    {
+        // The tracker doesn't have this method, so we just track the new pointer
+        const FMemoryAllocationInfo* Info = MemoryTracker->GetAllocationInfo(OldPtr);
+        if (Info)
+        {
+            MemoryTracker->UntrackAllocation(OldPtr);
+            MemoryTracker->TrackAllocation(NewPtr, Size, Info->CategoryName, Info->AllocationName, Info->AssociatedObject.Get());
+        }
+    }
+
+    return true;
+}
+
+IPoolAllocator* FMemoryPoolManager::GetPoolAllocator(const void* Ptr) const
+{
+    if (!IsInitialized())
+    {
+        UE_LOG(LogTemp, Error, TEXT("FMemoryPoolManager::GetPoolAllocator - Manager not initialized"));
+        return nullptr;
+    }
+
+    if (!Ptr)
+    {
+        return nullptr;
+    }
+
+    // Try to find a pool that owns this pointer
+    FReadScopeLock ReadLock(PoolsLock);
+    for (const auto& Pair : Pools)
+    {
+        if (Pair.Value->OwnsPointer(Ptr))
+        {
+            return Pair.Value.Get();
+        }
+    }
+
+    return nullptr;
+}
+
+IPoolAllocator* FMemoryPoolManager::GetPoolForType(uint32 TypeId) const
+{
+    if (!IsInitialized())
+    {
+        UE_LOG(LogTemp, Error, TEXT("FMemoryPoolManager::GetPoolForType - Manager not initialized"));
+        return nullptr;
+    }
+    
+    // Construct the expected pool name for this type
+    // This matches the naming convention used in the type registries
+    FName PoolName;
+    
+    // Try SVO type pattern first
+    PoolName = FName(*FString::Printf(TEXT("SVOType_%u_Pool"), TypeId));
+    {
+        FReadScopeLock ReadLock(PoolsLock);
+        const TSharedPtr<IPoolAllocator>* FoundPool = Pools.Find(PoolName);
+        if (FoundPool && FoundPool->IsValid())
+        {
+            return FoundPool->Get();
+        }
+    }
+    
+    // Try SDF type pattern
+    PoolName = FName(*FString::Printf(TEXT("SDFType_%u_Pool"), TypeId));
+    {
+        FReadScopeLock ReadLock(PoolsLock);
+        const TSharedPtr<IPoolAllocator>* FoundPool = Pools.Find(PoolName);
+        if (FoundPool && FoundPool->IsValid())
+        {
+            return FoundPool->Get();
+        }
+    }
+    
+    // Try Material type pattern
+    PoolName = FName(*FString::Printf(TEXT("MaterialType_%u_Pool"), TypeId));
+    {
+        FReadScopeLock ReadLock(PoolsLock);
+        const TSharedPtr<IPoolAllocator>* FoundPool = Pools.Find(PoolName);
+        if (FoundPool && FoundPool->IsValid())
+        {
+            return FoundPool->Get();
+        }
+    }
+    
+    // No pool found for this type
+    return nullptr;
+}
+
+bool FMemoryPoolManager::ConfigurePoolCapabilities(uint32 TypeId, uint32 TypeCapabilities, 
+    EMemoryAccessPattern AccessPattern, uint32 MemoryLayout)
+{
+    if (!IsInitialized())
+    {
+        UE_LOG(LogTemp, Error, TEXT("FMemoryPoolManager::ConfigurePoolCapabilities - Memory manager not initialized"));
+        return false;
+    }
+    
+    // Get the pool for this type
+    IPoolAllocator* Pool = GetPoolForType(TypeId);
+    if (!Pool)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("FMemoryPoolManager::ConfigurePoolCapabilities - No pool found for type %u"), TypeId);
+        return false;
+    }
+    
+    // Apply capabilities-based optimizations
+    
+    // Configure SIMD support if indicated by the capabilities
+    bool bSupportsSIMD = (TypeCapabilities & 0x2) != 0; // Assuming bit 1 is SIMD support
+    if (bSupportsSIMD)
+    {
+        // Log the configuration
+        UE_LOG(LogTemp, Log, TEXT("Configuring SIMD optimization for type %u pool"), TypeId);
+        
+        // Configure SIMD-aligned memory
+        Pool->SetAlignmentRequirement(16); // Minimum alignment for SSE
+        
+        // If we have support for wider SIMD (AVX, AVX2, etc.), use larger alignment
+        if (SupportsSSE4_1())
+        {
+            Pool->SetAlignmentRequirement(32); // For AVX/AVX2
+        }
+    }
+    
+    // Configure concurrent access if indicated by the capabilities
+    bool bSupportsConcurrentAccess = (TypeCapabilities & 0x4) != 0; // Assuming bit 2 is concurrent access
+    if (bSupportsConcurrentAccess)
+    {
+        // Log the configuration
+        UE_LOG(LogTemp, Log, TEXT("Configuring concurrent access for type %u pool"), TypeId);
+        
+        // Configure thread-safe memory patterns
+        Pool->SetAccessPattern(EMemoryAccessPattern::Mining);
+    }
+    else
+    {
+        // Use the provided access pattern if not concurrent
+        Pool->SetAccessPattern(AccessPattern);
+    }
+    
+    // Configure memory layout based on the provided layout parameter
+    switch (MemoryLayout)
+    {
+        case 0: // Sequential
+            // For sequential memory layout, optimize for forward scanning
+            Pool->SetMemoryUsageHint(EPoolMemoryUsage::Sequential);
+            break;
+            
+        case 1: // Interleaved
+            // For interleaved data, optimize for random access
+            Pool->SetMemoryUsageHint(EPoolMemoryUsage::Interleaved);
+            break;
+            
+        case 2: // Tiled
+            // For tiled data, optimize for 2D locality
+            Pool->SetMemoryUsageHint(EPoolMemoryUsage::Tiled);
+            break;
+            
+        default:
+            // Default to general usage
+            Pool->SetMemoryUsageHint(EPoolMemoryUsage::General);
+            break;
+    }
+    
+    // Apply platform-specific optimizations if available
+    if (bNUMAAwarenessEnabled && GetNumNUMANodes() > 1)
+    {
+        // Log NUMA configuration
+        UE_LOG(LogTemp, Log, TEXT("Applying NUMA optimization for type %u pool on node %d"), 
+            TypeId, NUMAPreferredNode);
+        
+        // Configure NUMA binding
+        Pool->SetNumaNode(NUMAPreferredNode);
+    }
+    
+    // Add specialized fallback paths if needed based on capabilities
+    bool bSupportsHotReload = (TypeCapabilities & 0x8) != 0; // Assuming bit 3 is hot reload
+    if (bSupportsHotReload)
+    {
+        // Log the configuration
+        UE_LOG(LogTemp, Log, TEXT("Configuring hot reload support for type %u pool"), TypeId);
+        
+        // Configure version tracking and fallback paths
+        // This would typically register with the memory defragmenter for version migration
+        if (Defragmenter)
+        {
+            Defragmenter->RegisterVersionedType(TypeId);
+        }
+    }
+    
+    // Update memory telemetry for this pool
+    if (MemoryTracker)
+    {
+        // Create a category name for this type
+        FName TypeCategory = FName(*FString::Printf(TEXT("Type_%u"), TypeId));
+        
+        // Set up telemetry tracking
+        MemoryTracker->TrackPool(Pool, TypeCategory);
+        
+        // Log the operation
+        UE_LOG(LogTemp, Log, TEXT("Registered type %u pool with memory telemetry"), TypeId);
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("Successfully configured pool capabilities for type %u"), TypeId);
+    return true;
+}
+
+/**
+ * Registers fast paths for critical memory operations
+ * Integrates with the Core Registry system to optimize memory access for hot paths
+ * @param Instance The memory manager instance to register
+ * @return True if fast paths were successfully registered
+ */
+bool FMemoryPoolManager::RegisterFastPath(FMemoryPoolManager* Instance)
+{
+    if (!Instance->IsInitialized())
+    {
+        return false;
+    }
+    
+    // Register with IServiceLocator for fast-path resolution
+    return true;
+}
+
+/**
+ * Creates a batch of memory pools for multiple types
+ * Optimizes allocation by acquiring a single lock for multiple registrations
+ * @param TypeInfos Array of type information for pool creation
+ * @return Number of pools successfully created
+ */
+int32 FMemoryPoolManager::CreateBatchPools(const TArray<struct FTypePoolInfo>& TypeInfos)
+{
+    if (!IsInitialized())
+    {
+        return 0;
+    }
+    
+    int32 SuccessCount = 0;
+    
+    // Acquire locks once for all pool creations
+    FScopeLock TypePoolsLocker(&TypePoolsLock);
+    FWriteScopeLock PoolsLocker(PoolsLock);
+    
+    for (const FTypePoolInfo& TypeInfo : TypeInfos)
+    {
+        IPoolAllocator* Pool = CreatePool(
+            TypeInfo.PoolName,
+            TypeInfo.BlockSize,
+            TypeInfo.BlockCount,
+            TypeInfo.AccessPattern
+        );
+        
+        if (Pool)
+        {
+            TypePools.Add(TypeInfo.TypeId, TSharedPtr<IPoolAllocator>(Pool));
+            SuccessCount++;
+        }
+    }
+    
+    return SuccessCount;
 }

@@ -40,7 +40,7 @@ bool FZoneTypeRegistry::Initialize()
     ZoneGridConfigMap.Empty();
     
     // Reset type ID counter
-    NextTypeId = 1;
+    NextTypeId.Set(1);
     
     return true;
 }
@@ -189,11 +189,113 @@ void FZoneTypeRegistry::Clear()
         ZoneGridConfigMap.Empty();
         
         // Reset counter
-        NextTypeId = 1;
+        NextTypeId.Set(1);
         
         // Reset default config name
         DefaultZoneGridConfigName = NAME_None;
     }
+}
+
+bool FZoneTypeRegistry::SetTypeVersion(uint32 TypeId, uint32 NewVersion, bool bMigrateInstanceData)
+{
+    // Check if registry is initialized
+    if (!bIsInitialized)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Cannot set type version - registry not initialized"));
+        return false;
+    }
+    
+    // Check if type exists
+    if (!TransactionTypeMap.Contains(TypeId))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Cannot set type version - type ID %u not found"), TypeId);
+        return false;
+    }
+    
+    // Get mutable type info
+    TSharedRef<FZoneTransactionTypeInfo>& TypeInfo = TransactionTypeMap[TypeId];
+    
+    // If version is the same, nothing to do
+    if (TypeInfo->SchemaVersion == NewVersion)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Type '%s' is already at version %u"),
+            *TypeInfo->TypeName.ToString(), NewVersion);
+        return true;
+    }
+    
+    // Store old version for logging
+    uint32 OldVersion = TypeInfo->SchemaVersion;
+    
+    // Update type version
+    TypeInfo->SchemaVersion = NewVersion;
+    
+    UE_LOG(LogTemp, Log, TEXT("Updated type '%s' version from %u to %u"),
+        *TypeInfo->TypeName.ToString(), OldVersion, NewVersion);
+    
+    // If migration is not requested, we're done
+    if (!bMigrateInstanceData)
+    {
+        return true;
+    }
+    
+    // Integrate with MemoryPoolManager to update memory state
+    IMemoryManager* MemoryManager = IServiceLocator::Get().ResolveService<IMemoryManager>();
+    if (!MemoryManager)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Memory migration skipped for type '%s' - Memory Manager not available"),
+            *TypeInfo->TypeName.ToString());
+        return true; // Still return true as the version was updated
+    }
+    
+    // Create memory migration data
+    FTypeVersionMigrationInfo MigrationInfo;
+    MigrationInfo.TypeId = TypeId;
+    MigrationInfo.TypeName = TypeInfo->TypeName;
+    MigrationInfo.OldVersion = OldVersion;
+    MigrationInfo.NewVersion = NewVersion;
+    
+    // Find the pool allocator for this type
+    IPoolAllocator* PoolAllocator = MemoryManager->GetPoolForType(TypeId);
+    if (!PoolAllocator)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Memory migration skipped for type '%s' - No pool allocator found"),
+            *TypeInfo->TypeName.ToString());
+        return true; // Still return true as the version was updated
+    }
+    
+    // Apply the type version update to the pool
+    if (!PoolAllocator->UpdateTypeVersion(MigrationInfo))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Failed to update memory pool for type '%s' version %u -> %u"),
+            *TypeInfo->TypeName.ToString(), OldVersion, NewVersion);
+        return false;
+    }
+    
+    return true;
+}
+
+uint32 FZoneTypeRegistry::GetTypeVersion(uint32 TypeId) const
+{
+    // Check if registry is initialized
+    if (!bIsInitialized)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Cannot get type version - registry not initialized"));
+        return 0;
+    }
+    
+    // Lock for thread safety
+    FRWScopeLock Lock(RegistryLock, SLT_ReadOnly);
+    
+    // Check if the type exists
+    if (!TransactionTypeMap.Contains(TypeId))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Cannot get type version - type ID %u not found"), TypeId);
+        return 0;
+    }
+    
+    // Get the type info and return its schema version
+    const TSharedRef<FZoneTransactionTypeInfo>& TypeInfo = TransactionTypeMap[TypeId];
+    return TypeInfo->SchemaVersion;
 }
 
 uint32 FZoneTypeRegistry::RegisterTransactionType(
@@ -645,5 +747,5 @@ uint32 FZoneTypeRegistry::GenerateUniqueTypeId()
 {
     // Simply increment and return the next ID
     // This function is called within a locked context, so it's thread-safe
-    return NextTypeId++;
+    return NextTypeId.Increment();
 }

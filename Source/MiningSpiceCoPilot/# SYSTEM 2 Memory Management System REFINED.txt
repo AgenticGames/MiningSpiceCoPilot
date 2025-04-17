@@ -1,0 +1,252 @@
+# MINING SYSTEM IMPLEMENTATION
+# SYSTEM 2 OF 153: Memory Management System
+Reference: Foundation Systems - Memory Management System
+Category: Foundation Systems
+
+PURPOSE
+Provide optimized memory management for the SVO+SDF hybrid mining system, implementing narrow-band cache-coherent memory layouts, hierarchical memory tiers, mining-specific access patterns, and active defragmentation to ensure high performance with minimal fragmentation during intensive mining operations across diverse geological structures.
+
+ARCHITECTURAL POSITION
+- Category: Foundation Systems
+- Dependencies: Core Registry (1)
+- Dependent Systems: Threading (3), GPU/CPU Buffer Sharing (17), SVO+SDF Volume (25)
+
+KEY REQUIREMENTS
+- Narrow-band cache-coherent memory layout using Z-order curve mapping for SVO+SDF data
+- Hierarchical memory tiers with precision levels based on distance from material interfaces
+- Mining-aware access patterns optimized for different tool types and operation patterns
+- Active defragmentation during gameplay pauses and low-activity periods
+- Memory pooling for frequently allocated objects with mining-specific pool sizes
+- Zero-copy buffer sharing between CPU and GPU for distance field data
+- Thread-safe allocation with minimal contention for parallel mining operations
+- Cache-friendly data packing to minimize cache line crossings in critical paths
+- SIMD-aligned allocations (16/32/64-byte) for vectorized distance field operations
+- Explicit hot/cold data separation for improved cache utilization
+- Band-specific allocation pools for different precision tiers of the distance field
+- NUMA-aware memory management for multi-socket systems
+- Active Defragmentation: Runtime defragmentation with reference updating and minimal pause times
+- Memory Access Patterns: SDF-specialized caching strategies with preemptive fetching for mining patterns
+- NUMA-Aware Allocation: Memory policy enforcement for optimal cross-socket performance
+- UE5 Memory Integration: Seamless integration with UE5's memory subsystems and GC
+- Allocation Grouping: Related-data clustering for improved cache locality during mining operations
+- Memory Fault Tolerance: Graceful degradation during memory pressure with quality scaling
+- Per-Region Memory Budgets: Dynamic budget allocation with priority-based enforcement
+- Data Structure Specialization: Custom containers optimized for SDF field operations with minimal overhead
+
+CORE COMPONENTS
+
+FMemoryPoolManager : public IMemoryManager
+- Memory pool creation and management with specialized SVO+SDF pools
+- Z-order curve mapping for cache-coherent spatial indexing
+- Hierarchical memory tiers for different precision levels
+- Thread-safe memory allocation strategies with minimal contention
+- Memory tracking for pool utilization with detailed analytics
+- Pool cleanup and defragmentation during low-activity periods
+- Integration with UE5's memory subsystem
+- Custom allocators for SVO+SDF-specific data structures
+- Allocation size classes optimized for octree nodes and distance fields
+- Active defragmentation during gameplay pauses
+- Pool priority management for active mining regions
+- NUMA-aware allocation for multi-socket systems
+- Adaptive pool sizing based on operation patterns and memory pressure
+- Dynamic pool adjustment based on mining activity patterns
+- Preemptive allocation for predicted operations
+- Real-time memory pressure monitoring with adaptive responses
+
+FSVOAllocator : public IPoolAllocator
+- Specialized allocator for SVO octree nodes
+- Z-order curve indexing for cache-coherent allocation
+- Node type-specific allocation patterns (Homogeneous/Interface/Empty)
+- Thread-safe allocation strategies for parallel mining
+- Memory layout optimization for cache coherence
+- Integration with SVOHybridVolume from System (25)
+- Block-based allocation with size-specific pools
+- Metadata tracking for allocation statistics
+- Activity-based memory strategies
+- Adaptive allocation patterns for mining operations
+- SIMD-aligned allocation for vectorized operations
+- Spatial-locality grouping and proactive defragmentation
+- Node type specialization with custom memory layouts
+- Predictive allocation based on mining patterns
+- Advanced memory coalescence for related nodes
+
+FNarrowBandAllocator : public IPoolAllocator
+- Specialized allocator for narrow-band distance field data
+- Precision tier-based memory management (high/medium/low)
+- Access pattern optimization for mining operations
+- Thread-safe allocation with minimal synchronization
+- Memory layout optimization for cache coherence
+- Integration with MultiChannelDistanceField from System (26)
+- Band-specific memory pools with appropriate alignment
+- Mining-aware allocation strategy
+- Efficient memory reclamation during band shifting
+- Prefetching hints based on mining directions
+- Sliding window implementation for active mining areas
+- Optimize for different precision tiers with specialized caching strategies
+- Band-specific memory layouts optimized for access patterns
+- Adaptive band width based on material importance
+- Priority-based allocation for gameplay-critical materials
+
+FSharedBufferManager : public IBufferProvider
+- Buffer sharing between CPU and GPU components
+- Reference-counted buffer management with version tracking
+- Buffer ownership and lifetime tracking
+- Thread-safe buffer access patterns
+- Integration with SVO+SDF components
+- Buffer resizing with minimal copying
+- Specialized buffers for distance field data
+- Memory mapping for large data structures
+- Priority-based buffer retention
+- Activity-tiered buffer strategies
+- SDF field sharing optimization
+- Zone-based buffer coordination
+- Zero-copy fallback paths with efficient synchronization mechanisms
+- Dynamic buffer sizing based on access patterns
+- Lock-free buffer access with atomic versioning
+- Cross-region buffer coordination with boundary optimization
+
+FZeroCopyBuffer : public IBufferProvider
+- Zero-copy buffer implementation for GPU/CPU sharing
+- Platform-specific buffer creation (D3D12/Vulkan)
+- Synchronized access through memory barriers
+- Mapping/unmapping with proper synchronization
+- Performance monitoring for access patterns
+- Integration with GPU Compute System (13)
+- Cache-friendly memory layouts for SDF operations
+- Memory access pattern optimization based on usage
+- Priority-based memory retention
+- Fast-path mapping for active regions
+- Distance field specific optimization
+- Material channel sharing optimization
+- Platform-specific optimizations for different GPU architectures
+- Adaptive synchronization based on access patterns
+- Hardware-specific memory optimizations
+- Low-latency buffer transitions for critical operations
+
+FCompressionUtility
+- State compression for inactive regions
+- Multi-tiered compression strategies for different activity levels
+- Run-length encoding for homogeneous SDF regions
+- Delta compression for mining modifications
+- Compression selection based on data type and activity
+- Performance vs. compression ratio balancing
+- Integration with serialization systems
+- Specialized compression for SDF fields
+- Memory-efficient representation of sparse octree data
+- Activity-based compression level selection
+- Distance-based precision encoding
+- Material-aware compression strategies
+- Algorithm selection based on data characteristics and access patterns
+- Adaptive compression ratios based on region importance
+- Hardware-specific compression optimizations
+- Fast decompression paths for frequently accessed data
+
+FMemoryDefragmenter
+- Active memory defragmentation during gameplay pauses
+- Movement of allocations to eliminate fragmentation
+- Reference updating after memory movement
+- Incremental defragmentation for minimal pause times
+- Priority-based defragmentation for critical allocations
+- Integration with FMemoryPoolManager
+- Performance impact monitoring during defragmentation
+- Defragmentation scheduling based on memory state
+- Fragmentation threshold detection for proactive defragmentation
+- Activity-based defragmentation prioritization
+- SDF field-specific defragmentation
+- Octree node reorganization for locality
+- Predictive defragmentation during gameplay lulls
+- Incremental reference updating with minimal disruption
+- Region-specific defragmentation with priority control
+- Fragmentation analysis with visualization tools
+
+FMemoryTelemetry : public IMemoryTracker
+- Memory usage tracking and reporting with SVO+SDF metrics
+- Allocation pattern analysis for optimization
+- Memory leak detection for long sessions
+- High-water mark tracking for budgeting
+- Integration with Performance System (8)
+- Thread-safe telemetry collection
+- System-wide memory usage visualization
+- Per-system memory budget enforcement
+- Activity-based memory usage analysis
+- Compression efficiency monitoring
+- Narrow-band utilization tracking
+- Zone-based memory analysis
+- Detailed allocation tracking with anomaly detection
+- Leak identification with callstack tracking
+- Memory pressure visualization with hotspot detection
+- Real-time memory analytics with optimization suggestions
+
+REQUIRED FILES
+[From Source/MiningSpiceCoPilot/2_MemoryManagement/]
+Public/Interfaces/
+- IMemoryManager.h
+- IBufferProvider.h
+- IPoolAllocator.h
+- IMemoryTracker.h
+
+Public/
+- MemoryPoolManager.h
+- SVOAllocator.h
+- NarrowBandAllocator.h
+- SharedBufferManager.h
+- ZeroCopyBuffer.h
+- CompressionUtility.h
+- MemoryDefragmenter.h
+- MemoryTelemetry.h
+
+Private/
+- MemoryPoolManager.cpp
+- SVOAllocator.cpp
+- NarrowBandAllocator.cpp
+- SharedBufferManager.cpp
+- ZeroCopyBuffer.cpp
+- CompressionUtility.cpp
+- MemoryDefragmenter.cpp
+- MemoryTelemetry.cpp
+
+// Additional critical headers for optimized memory management
+#include "HAL/LowLevelMemTracker.h"
+#include "HAL/MallocAnsi.h"
+#include "HAL/PlatformMemory.h"
+#include "Misc/ScopeLock.h"
+#include "Math/AlignmentTemplates.h"
+#include "Math/SIMDFloat.h"
+#include "HAL/PlatformMath.h"
+#include "Misc/SpinLock.h"
+
+IMPLEMENTATION NOTES
+- Implement narrow-band cache-coherent memory layout using Z-order curve mapping
+- Design hierarchical memory tiers with precision levels based on distance from material interfaces
+- Create mining-aware access patterns optimized for different tool types (drill, explosive, precision)
+- Implement active defragmentation system that operates during gameplay pauses
+- Design specialized allocators for SVO nodes and SDF field data with appropriate pooling
+- Create zero-copy buffer sharing for GPU/CPU operations on distance fields
+- Implement thread-safe allocation strategies using atomic operations
+- Design cache-friendly data packing to minimize cache line crossings in critical paths
+- Create SIMD-aligned allocations (16/32/64-byte) for vectorized SDF operations
+- Implement explicit hot/cold data separation for improved cache utilization
+- Design band-specific allocation pools for different precision tiers of distance fields
+- Create NUMA-aware memory management for multi-socket systems
+- Implement memory tracking and budgeting for SVO+SDF data structures
+- Design efficient compression strategies for inactive regions
+- Create specialized compression for homogeneous SDF regions using run-length encoding
+- Implement delta compression for mining modifications to reduce memory footprint
+- Design incremental defragmentation system to minimize pause times
+- Create memory telemetry for tracking SVO+SDF memory usage patterns
+- Implement adaptive allocation strategies based on mining activity
+- Design memory mapping with prefetching hints for mining operations
+- Create sliding window allocation for active mining areas
+- Implement buffer versioning for consistent SDF field access
+- Design platform-specific buffer creation for D3D12/Vulkan compatibility
+- Create zone-based buffer coordination for transactional mining operations
+- Implement material-aware compression strategies for multi-channel SDF data
+- Design distance-based precision encoding for adaptive SDF resolution
+- Create visualization tools for memory usage and fragmentation analysis
+- Implement SDF-specialized caching strategies with preemptive fetching
+- Design related-data clustering for improved cache locality during operations
+- Create graceful degradation strategies for memory pressure situations
+- Implement per-region dynamic budget allocation with priority enforcement
+- Design custom containers optimized specifically for SDF field operations
+- Create adaptive pool sizing based on observed operation patterns
+- Implement real-time memory pressure monitoring with quality scaling

@@ -1,0 +1,319 @@
+IMPORTANT: As you complete an integration feature, mark it with a TICK!
+
+ICON LEGEND:
+Core Feature Icons (Items with this icon are 100% in the scope of the original system prompt):
+
+⚙️ - Required System Component / Core Integration Feature / Essential Functionality 
+
+Stretch Goal Icons (Beyond the scope of the original implementation and connection points of the system prompt documents):
+🚀 - Performance Enhancement
+✨ - Advanced Feature
+🔍 - Misc Optimization
+👀 - Visualization / Telemetry
+🧊 - SVO/SDF System Benefit   
+
+# Integration Points Between Memory Management and Threading Task System
+
+System 2 documentation can be found at
+Source\MiningSpiceCoPilot\# SYSTEM 2 Memory Management System REFINED.txt
+
+System 3 documentation can be found at  
+Source\MiningSpiceCoPilot\# SYSTEM 3 Threading and Async Task System REFINED.txt
+
+## Core Integration
+
+1. ⚙️ **Thread-Safe Memory Pool Access**
+   - `FMemoryPoolManager::CreatePool` needs synchronization with `FThreadSafety` from `ThreadSafety.h`
+   - Implementation:
+     - Replace `FRWLock` with `FSpinLock` from ThreadSafety for `PoolsLock` and `BuffersLock` members
+     - Add contention tracking via `FThreadSafety::RecordContention()` in pool creation/access methods
+     - Update memory allocation tracking to be thread-safe using atomic operations
+     - Required files: `MemoryPoolManager.cpp`, `MemoryPoolManager.h`, `ThreadSafety.h`
+     - In mining terms: Ensures miners can safely access ore storage containers concurrently without data corruption
+
+2. ⚙️ **Transaction-Aware Memory Allocations**
+   - `IMemoryManager::Allocate` needs to integrate with `FTransactionManager` from `TransactionManager.h`
+   - Implementation:
+     - Add transaction context awareness to memory allocations 
+     - Register allocations with current transaction context if available
+     - Track memory usage per transaction for validation and rollback capabilities
+     - Required files: `MemoryPoolManager.cpp`, `IMemoryManager.h`, `TransactionManager.h`
+     - In mining terms: Associates memory resources with specific mining operations so they can be properly tracked and reclaimed
+
+3. ⚙️ **Zone-Based Memory Management**
+   - `NarrowBandAllocator.h` needs integration with `ZoneManager.h` from Threading System
+   - Implementation:
+     - Update `FNarrowBandAllocator` to align memory allocations with mining zone boundaries
+     - Create zone-specific memory pools for improved cache locality during concurrent zone operations
+     - Add zone ID tracking to allocations for efficient memory reclamation when zones change
+     - Required files: `NarrowBandAllocator.cpp`, `NarrowBandAllocator.h`, `ZoneManager.h`
+     - In mining terms: Organizes memory like the mining grid to ensure operations in one section don't interfere with another
+
+4. ⚙️ **Async Defragmentation Scheduling**
+   - `FMemoryDefragmenter` needs integration with `FAsyncTaskManager` from `AsyncTaskManager.h`
+   - Implementation:
+     - Convert defragmentation operations to use the async task system
+     - Schedule defragmentation during low mining activity using task priorities
+     - Add dependency tracking to ensure defragmentation doesn't interfere with active mining
+     - Required files: `MemoryDefragmenter.cpp`, `MemoryDefragmenter.h`, `AsyncTaskManager.h`
+     - In mining terms: Schedules debris cleanup during quieter periods to avoid disrupting active mining operations
+
+5. ⚙️ **Task-Specific Memory Pools**
+   - `FTaskScheduler` needs integration with `IPoolAllocator` from `Interfaces/IPoolAllocator.h`
+   - Implementation:
+     - Create specialized memory pools for common task types in the mining system
+     - Implement per-thread caching of frequently used allocations for task data
+     - Optimize task scheduling to consider memory locality when assigning work
+     - Required files: `TaskScheduler.cpp`, `TaskScheduler.h`, `IPoolAllocator.h`
+     - In mining terms: Creates dedicated equipment storage areas for specific mining tasks to speed up operations
+
+6. ⚙️ **Thread-Safe Buffer Sharing**
+   - `FSharedBufferManager` needs integration with `FThreadSafeOperationQueue` from `ThreadSafeOperationQueue.h`
+   - Implementation:
+     - Implement thread-safe buffer versioning with atomic operations
+     - Add operation queuing for buffer updates that respect transaction boundaries
+     - Use reader-writer locks for optimal performance with multiple readers
+     - Required files: `SharedBufferManager.cpp`, `SharedBufferManager.h`, `ThreadSafeOperationQueue.h`
+     - In mining terms: Enables safe sharing of resource scanners between multiple mining teams
+
+7. ⚙️ **NUMA-Aware Thread Assignment**
+   - `FMemoryPoolManager::SetNUMAPolicy` needs integration with `FTaskScheduler` from `TaskScheduler.h`
+   - Implementation:
+     - Coordinate NUMA node assignment between memory and thread systems
+     - Ensure tasks are scheduled on cores with affinity to allocated memory
+     - Implement cross-NUMA node tracking for memory access patterns
+     - Required files: `MemoryPoolManager.cpp`, `MemoryPoolManager.h`, `TaskScheduler.h`
+     - In mining terms: Assigns miners to work in areas closest to their equipment storage to minimize travel time
+
+8. ⚙️ **Optimistic Concurrency for Memory Operations**
+   - `IMemoryManager` needs integration with `FTransactionManager` from `TransactionManager.h`
+   - Implementation:
+     - Implement version tracking for critical memory structures
+     - Add optimistic validation for memory operations within transactions
+     - Create rollback capabilities for failed memory transactions
+     - Required files: `MemoryPoolManager.cpp`, `IMemoryManager.h`, `TransactionManager.h`
+     - In mining terms: Lets miners proceed with operations assuming no conflicts, but provides a way to undo changes if conflicts occur
+
+9. 🧊 **SVO Node Memory Pooling with Transaction Awareness**
+   - `FSVOAllocator` needs integration with `FTransactionManager` from `TransactionManager.h`
+   - Implementation:
+     - Add transaction context awareness to SVO node allocations
+     - Implement specialized memory pools for different SVO node types
+     - Create transaction-local caching for frequently accessed SVO nodes
+     - Required files: `SVOAllocator.cpp`, `SVOAllocator.h`, `TransactionManager.h`
+     - In mining terms: Optimizes storage of the mining map's hierarchical structure to support concurrent edits
+
+10. 🧊 **Distance Field Multi-Channel Memory with Thread Safety**
+    - `FNarrowBandAllocator` needs integration with `FMiningReaderWriterLock` from `ThreadSafety.h`
+    - Implementation:
+     - Implement reader-writer locks for different precision tiers
+     - Create thread-safe access patterns optimized for concurrent reading
+     - Add zone-based locking for material-specific updates
+     - Required files: `NarrowBandAllocator.cpp`, `NarrowBandAllocator.h`, `ThreadSafety.h`
+     - In mining terms: Enables miners to safely read density data while others are updating it, optimized for the multi-material field
+
+## Performance Enhancements
+
+1. 🚀 **Task-Aware Memory Prefetching**
+   - `FParallelExecutor` needs integration with `FCompressionUtility` from `CompressionUtility.h`
+   - Implementation:
+     - Add memory prefetching hints based on task dependency graph
+     - Implement predictive decompression of zone data before task execution
+     - Create specialized prefetch streams for different mining operation patterns
+     - Required files: `ParallelExecutor.cpp`, `ParallelExecutor.h`, `CompressionUtility.h`
+     - In mining terms: Prepares resource data before miners arrive at a location, minimizing waiting time
+
+2. 🚀 **Lock-Free Memory Allocation for Task System**
+   - `FThreadSafeOperationQueue` needs integration with `FMemoryPoolManager` from `MemoryPoolManager.h`
+   - Implementation:
+     - Implement specialized lock-free allocators for queue nodes
+     - Create thread-local allocation caches to minimize contention
+     - Add SIMD-optimized memory operations for queue management
+     - Required files: `ThreadSafeOperationQueue.cpp`, `ThreadSafeOperationQueue.h`, `MemoryPoolManager.h`
+     - In mining terms: Creates high-speed conveyor systems for mining operation requests that never need to stop
+
+3. 🚀 **Memory Pool Priority Integration with Task Scheduler**
+   - `FPriorityTaskQueue` needs integration with `IMemoryManager` from `Interfaces/IMemoryManager.h`
+   - Implementation:
+     - Align memory pool priorities with task priorities
+     - Implement priority inheritance for memory operations in critical tasks
+     - Add memory pressure feedback to task scheduler for adaptive throttling
+     - Required files: `PriorityTaskQueue.cpp`, `PriorityTaskQueue.h`, `IMemoryManager.h`
+     - In mining terms: Ensures critical mining operations get priority access to storage resources
+
+4. 🚀 **Wait-Free Buffer Access for Real-Time Mining Operations**
+   - `FZeroCopyBuffer` needs integration with `FWaitFreeCounter` from `ThreadSafety.h`
+   - Implementation:
+     - Implement wait-free buffer version tracking
+     - Create lock-free buffer mapping/unmapping operations
+     - Add atomic buffer state transitions for real-time operations
+     - Required files: `ZeroCopyBuffer.cpp`, `ZeroCopyBuffer.h`, `ThreadSafety.h`
+     - In mining terms: Provides instant access to mining sensor data without waiting for other miners to finish reading it
+
+5. 🚀 **SIMD-Optimized Memory Layout for Parallel Operations**
+   - `FParallelExecutor` needs integration with `NarrowBandAllocator.h`
+   - Implementation:
+     - Align narrow band memory layout for optimal SIMD processing
+     - Create specialized memory patterns for common parallel operations
+     - Implement vectorized memory transfers for bulk operations
+     - Required files: `ParallelExecutor.cpp`, `ParallelExecutor.h`, `NarrowBandAllocator.h`
+     - In mining terms: Organizes material data to allow mining equipment to process multiple samples simultaneously
+
+6. 🚀 **Cache-Coherent Memory Access Patterns for Zones**
+   - `FZoneManager` needs integration with `SVOAllocator.h`
+   - Implementation:
+     - Implement Z-order curve indexing across zone boundaries
+     - Create cache-friendly zone traversal patterns for mining operations
+     - Add spatial locality hints for memory allocation in adjacent zones
+     - Required files: `ZoneManager.cpp`, `ZoneManager.h`, `SVOAllocator.h`
+     - In mining terms: Optimizes how zone data is stored in memory to minimize the time spent moving between adjacent mining areas
+
+## Advanced Features
+
+1. ✨ **Hierarchical Memory Locking with Zone Transactions**
+   - `FHierarchicalLock` needs integration with `FTransactionManager` from `TransactionManager.h`
+   - Implementation:
+     - Implement zone-based hierarchical locking strategy
+     - Add automatic lock ordering based on zone IDs
+     - Create deadlock prevention system with transaction awareness
+     - Required files: `ThreadSafety.cpp`, `ThreadSafety.h`, `TransactionManager.h`
+     - In mining terms: Creates an intelligent system to prevent miners from creating gridlock scenarios when accessing multiple zones
+
+2. ✨ **Dynamic Memory Pool Sizing Based on Task Patterns**
+   - `FMemoryPoolManager` needs integration with `FAsyncTaskManager` from `AsyncTaskManager.h`
+   - Implementation:
+     - Analyze task execution patterns to predict memory requirements
+     - Dynamically resize memory pools based on historical usage
+     - Implement preemptive pool expansion for anticipated operations
+     - Required files: `MemoryPoolManager.cpp`, `MemoryPoolManager.h`, `AsyncTaskManager.h`
+     - In mining terms: Automatically adjusts storage capacity based on observed mining patterns
+
+3. ✨ **Parallel Defragmentation with Task Dependencies**
+   - `FMemoryDefragmenter` needs integration with `FParallelExecutor` from `ParallelExecutor.h`
+   - Implementation:
+     - Parallelize defragmentation operations with task system
+     - Create fine-grained task dependencies for memory movement
+     - Implement concurrent reference updating with thread safety
+     - Required files: `MemoryDefragmenter.cpp`, `MemoryDefragmenter.h`, `ParallelExecutor.h`
+     - In mining terms: Uses multiple crews to reorganize storage areas simultaneously without disrupting operations
+
+4. ✨ **Material-Specific Version Tracking in Memory**
+   - `FNarrowBandAllocator` needs integration with `FMiningTransactionContextImpl` from `TransactionManager.h`
+   - Implementation:
+     - Add material-specific version tracking to narrow band memory
+     - Implement fine-grained concurrency control for material channels
+     - Create optimistic validation for material property modifications
+     - Required files: `NarrowBandAllocator.cpp`, `NarrowBandAllocator.h`, `TransactionManager.h`
+     - In mining terms: Enables precise tracking of changes to specific mineral types in the field, allowing concurrent operations on different materials
+
+5. ✨ **Adaptive Memory Compression Based on Task Priority**
+   - `FCompressionUtility` needs integration with `FPriorityTaskQueue` from `PriorityTaskQueue.h`
+   - Implementation:
+     - Adjust compression ratio based on task priorities
+     - Implement progressive decompression for urgent task data
+     - Create priority-based compression queue with task awareness
+     - Required files: `CompressionUtility.cpp`, `CompressionUtility.h`, `PriorityTaskQueue.h`
+     - In mining terms: Applies different levels of data compression based on how urgently the mining data will be needed
+
+6. ✨ **Cross-System Memory Fault Tolerance**
+   - `IMemoryManager::IsUnderMemoryPressure` needs integration with `ITaskScheduler` from `Interfaces/ITaskScheduler.h`
+   - Implementation:
+     - Create coordinated response to memory pressure
+     - Implement quality scaling for tasks based on available memory
+     - Add graceful degradation strategies for low-memory situations
+     - Required files: `MemoryPoolManager.cpp`, `IMemoryManager.h`, `ITaskScheduler.h`
+     - In mining terms: Ensures mining operations can continue even when storage resources are constrained, by intelligently scaling back detail
+
+## Visualization & Telemetry
+
+1. 👀 **Memory Usage Visualization by Zone**
+   - `FMemoryTelemetry` needs integration with `ZoneManager.h`
+   - Implementation:
+     - Create zone-based memory usage visualization
+     - Implement heatmaps for memory activity across the mining grid
+     - Add time-series tracking for zone memory patterns
+     - Required files: `MemoryTelemetry.cpp`, `MemoryTelemetry.h`, `ZoneManager.h`
+     - In mining terms: Shows administrators which mining zones are using the most storage resources over time
+
+2. 👀 **Transaction Memory Tracking Dashboard**
+   - `FMemoryTelemetry` needs integration with `FTransactionManager` from `TransactionManager.h`
+   - Implementation:
+     - Create per-transaction memory usage tracking
+     - Implement visualization of transaction memory footprint
+     - Add anomaly detection for excessive memory usage
+     - Required files: `MemoryTelemetry.cpp`, `MemoryTelemetry.h`, `TransactionManager.h`
+     - In mining terms: Provides a control panel showing which mining operations are consuming resources and identifies inefficient operations
+
+3. 👀 **Thread Contention Monitoring for Memory Resources**
+   - `FThreadSafety::RecordContention` needs integration with `IMemoryTracker` from `Interfaces/IMemoryTracker.h`
+   - Implementation:
+     - Track memory-related thread contention events
+     - Create visualization of lock hotspots in memory system
+     - Add suggestions for contention reduction
+     - Required files: `ThreadSafety.cpp`, `ThreadSafety.h`, `IMemoryTracker.h`
+     - In mining terms: Identifies bottlenecks where miners frequently wait for the same resources
+
+4. 👀 **Memory Pool Fragmentation Analyzer**
+   - `FMemoryDefragmenter` needs integration with `TaskDependencyVisualizer.h`
+   - Implementation:
+     - Create visual fragmentation analysis tool
+     - Implement dependency graph for defragmentation operations
+     - Add impact prediction for defragmentation tasks
+     - Required files: `MemoryDefragmenter.cpp`, `MemoryDefragmenter.h`, `TaskDependencyVisualizer.h`
+     - In mining terms: Shows how storage areas become fragmented and visualizes the planned cleanup process
+
+5. 👀 **Task-Memory Correlation Analysis**
+   - `FAsyncTaskManager` needs integration with `FMemoryTelemetry` from `MemoryTelemetry.h`
+   - Implementation:
+     - Track memory usage patterns for different task types
+     - Create visualization for memory-task correlation
+     - Add predictive models for task memory requirements
+     - Required files: `AsyncTaskManager.cpp`, `AsyncTaskManager.h`, `MemoryTelemetry.h`
+     - In mining terms: Shows how different mining operations affect storage usage patterns over time
+
+6. 👀 **Real-Time Memory Pressure Visualization**
+   - `IMemoryManager::IsUnderMemoryPressure` needs integration with `FThreadSafety` from `ThreadSafety.h`
+   - Implementation:
+     - Create real-time visualization of memory pressure
+     - Implement alerts for memory pressure thresholds
+     - Add thread activity correlation with memory pressure
+     - Required files: `MemoryPoolManager.cpp`, `IMemoryManager.h`, `ThreadSafety.h`
+     - In mining terms: Provides a dynamic gauge showing current storage system pressure and which mining activities are causing it
+
+7. 👀 **Zero-Copy Buffer Utilization Monitor**
+   - `FZeroCopyBuffer` needs integration with `FMemoryTelemetry` from `MemoryTelemetry.h`
+   - Implementation:
+     - Track buffer mapping frequency and duration
+     - Create visualization of buffer utilization patterns
+     - Add performance impact analysis for buffer operations
+     - Required files: `ZeroCopyBuffer.cpp`, `ZeroCopyBuffer.h`, `MemoryTelemetry.h`
+     - In mining terms: Monitors how efficiently the direct data transfer system between sensors and processing is being used
+
+8. 👀 **Cross-System Resource Utilization Dashboard**
+   - `FMemoryTelemetry` needs integration with `ThreadSafetyInterface.h`
+   - Implementation:
+     - Create unified dashboard for memory and thread metrics
+     - Implement correlation analysis for system bottlenecks
+     - Add optimization suggestions based on usage patterns
+     - Required files: `MemoryTelemetry.cpp`, `MemoryTelemetry.h`, `ThreadSafetyInterface.h`
+     - In mining terms: Provides a comprehensive control panel showing how storage and processing resources interact
+
+9. 🧊 **SVO Node Allocation Pattern Visualizer**
+   - `FSVOAllocator` needs integration with `FMemoryTelemetry` from `MemoryTelemetry.h`
+   - Implementation:
+     - Create visualization of SVO node allocation patterns
+     - Track node type distribution and access patterns
+     - Add anomaly detection for inefficient SVO structures
+     - Required files: `SVOAllocator.cpp`, `SVOAllocator.h`, `MemoryTelemetry.h`
+     - In mining terms: Shows how the hierarchical mining map structure is being stored and accessed
+
+10. 🧊 **Narrow Band Memory Utilization by Precision Tier**
+    - `FNarrowBandAllocator` needs integration with `FMemoryTelemetry` from `MemoryTelemetry.h`
+    - Implementation:
+     - Track memory usage across different precision tiers
+     - Visualize precision distribution in active mining areas
+     - Create optimization suggestions for tier allocation
+     - Required files: `NarrowBandAllocator.cpp`, `NarrowBandAllocator.h`, `MemoryTelemetry.h`
+     - In mining terms: Shows how memory is allocated across high, medium and low precision zones in the mining field
+
+IMPORTANT: As you complete an integration feature, mark it with a TICK!

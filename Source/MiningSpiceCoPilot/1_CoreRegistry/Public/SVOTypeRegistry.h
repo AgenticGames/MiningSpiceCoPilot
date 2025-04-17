@@ -8,7 +8,13 @@
 #include "Templates/SharedPointer.h"
 #include "HAL/ThreadSafeBool.h"
 #include "Misc/SpinLock.h"
-
+#include "HAL/CriticalSection.h"
+#include "SDFTypeRegistry.h" // Include the SDFTypeRegistry to use its ESIMD_InstructionSet enum
+#include "Interfaces/IServiceLocator.h"
+#include "TypeVersionMigrationInfo.h"
+#include "Interfaces/IMemoryManager.h"
+#include "Interfaces/IPoolAllocator.h"
+#include "HAL/ThreadSafeCounter.h" // For atomic operations
 
 /**
  * SVO node class types for classification in the registry
@@ -26,6 +32,28 @@ enum class ESVONodeClass : uint8
     
     /** Custom node type for specialized behavior */
     Custom
+};
+
+/**
+ * Memory layout types for optimal access patterns
+ */
+enum class ESVOMemoryLayout : uint8
+{
+    Sequential,
+    Interleaved,
+    Tiled
+};
+
+/**
+ * Capabilities for SVO node types
+ */
+enum class ESVONodeCapabilities : uint32
+{
+    None = 0x0,
+    SupportsSerialization = 0x1,
+    SupportsSIMD = 0x2,
+    SupportsConcurrentAccess = 0x4,
+    SupportsHotReload = 0x8
 };
 
 /**
@@ -60,6 +88,57 @@ struct MININGSPICECOPILOT_API FSVONodeTypeInfo
     
     /** Whether this node type supports SIMD operations */
     bool bSupportsSIMD;
+    
+    /** SIMD instruction set required for optimized operations */
+    ESIMD_InstructionSet RequiredInstructionSet;
+    
+    /** Memory layout type for optimal access patterns */
+    ESVOMemoryLayout MemoryLayout;
+    
+    /** Whether this node type supports concurrent access */
+    bool bSupportsConcurrentAccess;
+    
+    /** Capabilities flags for this node type (bitwise combination of ESVONodeCapabilities) */
+    uint32 CapabilitiesFlags;
+    
+    /** Preferred thread block size for parallel processing */
+    uint32 PreferredThreadBlockSize;
+    
+    /** Whether this node type supports hot-reloading */
+    bool bSupportsHotReload;
+
+    /** UE Class type for blueprint access (if applicable) */
+    TSoftClassPtr<UObject> BlueprintClassType;
+    
+    /** Default constructor */
+    FSVONodeTypeInfo()
+        : TypeId(0)
+        , NodeClass(ESVONodeClass::Empty)
+        , SchemaVersion(1)
+        , AlignmentRequirement(16)
+        , DataSize(0)
+        , bSupportsMaterialRelationships(false)
+        , bSupportsSerializaton(true)
+        , bSupportsSIMD(false)
+        , RequiredInstructionSet(ESIMD_InstructionSet::SSE2)
+        , MemoryLayout(ESVOMemoryLayout::Sequential)
+        , bSupportsConcurrentAccess(false)
+        , CapabilitiesFlags(0)
+        , PreferredThreadBlockSize(64)
+        , bSupportsHotReload(false)
+    {}
+    
+    /** Helper method to check if this node type has a specific capability */
+    bool HasCapability(ESVONodeCapabilities Capability) const
+    {
+        return (CapabilitiesFlags & static_cast<uint32>(Capability)) != 0;
+    }
+    
+    /** Helper method to add a capability to this node type */
+    void AddCapability(ESVONodeCapabilities Capability)
+    {
+        CapabilitiesFlags |= static_cast<uint32>(Capability);
+    }
 };
 
 /**
@@ -83,6 +162,8 @@ public:
     virtual uint32 GetSchemaVersion() const override;
     virtual bool Validate(TArray<FString>& OutErrors) const override;
     virtual void Clear() override;
+    virtual bool SetTypeVersion(uint32 TypeId, uint32 NewVersion, bool bMigrateInstanceData = true) override;
+    virtual uint32 GetTypeVersion(uint32 TypeId) const override;
     //~ End IRegistry Interface
     
     /**
@@ -100,6 +181,29 @@ public:
         uint32 InDataSize, 
         uint32 InAlignmentRequirement = 16, 
         bool bInSupportsMaterialRelationships = false);
+    
+    /**
+     * Attempts to register a node type using optimistic locking for better performance in hot paths
+     * Falls back to regular registration if optimistic approach fails
+     * @param InTypeName Name of the node type
+     * @param InNodeClass Classification of this node type
+     * @param InDataSize Size of the node data in bytes
+     * @param InAlignmentRequirement Memory alignment requirement (must be power of 2)
+     * @param bInSupportsMaterialRelationships Whether this node supports material relationships
+     * @return True if optimistic registration succeeded, false if it failed (will need regular registration)
+     */
+    bool TryOptimisticRegisterNodeType(
+        const FName& InTypeName, 
+        ESVONodeClass InNodeClass, 
+        uint32 InDataSize, 
+        uint32 InAlignmentRequirement = 16, 
+        bool bInSupportsMaterialRelationships = false);
+    
+    /**
+     * Synchronizes memory pool creation across threads to reduce contention
+     * @param TypeId The type ID to synchronize pool creation for
+     */
+    void SynchronizePoolCreation(uint32 TypeId);
     
     /**
      * Gets information about a registered node type
@@ -141,6 +245,31 @@ public:
      * @return True if the type is registered
      */
     bool IsNodeTypeRegistered(const FName& InTypeName) const;
+
+    /**
+     * Registers additional capabilities for a node type
+     * @param TypeId The node type ID
+     * @param Capabilities The capabilities to add to the node type
+     * @return True if the capabilities were registered successfully
+     */
+    bool RegisterCapabilities(uint32 TypeId, uint32 Capabilities);
+    
+    /**
+     * Optimizes memory layout for a specific node type
+     * Analyzes field access patterns and configures for cache coherence
+     * @param TypeId The node type ID to optimize
+     * @param bUseZOrderCurve Whether to use Z-order curve for spatial data
+     * @param bEnablePrefetching Whether to enable memory prefetching
+     * @return True if layout optimization was successful
+     */
+    bool OptimizeNodeLayout(uint32 TypeId, bool bUseZOrderCurve = true, bool bEnablePrefetching = true);
+    
+    /**
+     * Checks if the specified SIMD instruction set is supported by the current hardware
+     * @param InInstructionSet SIMD instruction set to check
+     * @return True if the instruction set is supported
+     */
+    bool IsSIMDInstructionSetSupported(ESIMD_InstructionSet InInstructionSet) const;
     
     /** Gets the singleton instance of the SVO type registry */
     static FSVOTypeRegistry& Get();
@@ -149,27 +278,58 @@ private:
     /** Generates a unique type ID for new registrations */
     uint32 GenerateUniqueTypeId();
     
+    /** Detect CPU SIMD capabilities */
+    void DetectSIMDCapabilities();
+    
+    /**
+     * Creates a type-specific memory pool for a registered node type
+     * @param TypeInfo Node type information
+     */
+    void CreateTypeSpecificPool(const TSharedRef<FSVONodeTypeInfo>& TypeInfo);
+    
+    /**
+     * Configures memory pool capabilities based on node type characteristics
+     * @param PoolManager Memory pool manager
+     * @param TypeInfo Node type information
+     */
+    void ConfigurePoolCapabilities(class FMemoryPoolManager* PoolManager, const TSharedRef<FSVONodeTypeInfo>& TypeInfo);
+    
     /** Map of registered node types by ID */
     TMap<uint32, TSharedRef<FSVONodeTypeInfo>> NodeTypeMap;
     
-    /** Map of registered node types by name for fast lookup */
+    /** Map of node type names to IDs for fast lookup */
     TMap<FName, uint32> NodeTypeNameMap;
     
-    /** Counter for generating unique type IDs */
-    uint32 NextTypeId;
+    /** Counter for generating new type IDs */
+    FThreadSafeCounter NextTypeId;
     
-    /** Thread-safe flag indicating if the registry has been initialized */
+    /** Thread-safe flag indicating if the registry is initialized */
     FThreadSafeBool bIsInitialized;
     
-    /** Schema version of this registry */
+    /** Current schema version for the SVO type system */
     uint32 SchemaVersion;
     
-    /** Lock for thread-safe access to the type maps */
-    mutable FRWLock RegistryLock;
+    /** Flag indicating if SIMD capabilities have been detected */
+    bool bSIMDCapabilitiesDetected;
+    
+    /** Flags indicating which SIMD instruction sets are available */
+    bool bSupportsSSE2;
+    bool bSupportsAVX;
+    bool bSupportsAVX2;
+    bool bSupportsAVX512;
+    
+    /** Lock for thread-safe access to the registry data */
+    mutable FCriticalSection RegistryLock;
     
     /** Singleton instance of the registry */
     static FSVOTypeRegistry* Singleton;
     
-    /** Thread-safe initialization flag for the singleton */
+    /** Thread-safe flag for singleton initialization */
     static FThreadSafeBool bSingletonInitialized;
+    
+    /** Counter for tracking memory pool contention */
+    FThreadSafeCounter PoolContentionCount;
+    
+    /** Counter for tracking optimistic lock failures */
+    FThreadSafeCounter OptimisticLockFailures;
 };

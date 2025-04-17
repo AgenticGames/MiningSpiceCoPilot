@@ -111,6 +111,16 @@ public:
     virtual bool IsInitialized() const = 0;
     
     /**
+     * Type checking method to determine if this manager is a specific type
+     * @return True if this manager is of type T
+     */
+    template<typename T>
+    bool IsA() const
+    {
+        return dynamic_cast<const T*>(this) != nullptr;
+    }
+    
+    /**
      * Creates a memory pool with the specified characteristics
      * @param PoolName Name of the pool for identification
      * @param BlockSize Size of each block in the pool in bytes
@@ -218,6 +228,35 @@ public:
      * @param CategoryName Category for budget tracking
      */
     virtual void UnregisterAllocation(void* Ptr, const FName& CategoryName) = 0;
+    
+    /**
+     * Gets all available pool names
+     * @return Array of all pool names
+     */
+    virtual TArray<FName> GetPoolNames() const = 0;
+    
+    /**
+     * Updates a pointer reference in memory after defragmentation
+     * @param OldPtr Old pointer value
+     * @param NewPtr New pointer value
+     * @param SizeInBytes Size of the memory region
+     * @return True if pointer was successfully updated
+     */
+    virtual bool UpdatePointerReference(void* OldPtr, void* NewPtr, uint64 SizeInBytes) = 0;
+    
+    /**
+     * Gets a pool allocator by memory address
+     * @param Ptr Pointer to memory within a pool
+     * @return Pool allocator that owns the memory, or nullptr if not found
+     */
+    virtual IPoolAllocator* GetPoolAllocator(const void* Ptr) const = 0;
+    
+    /**
+     * Gets a pool allocator by type ID
+     * @param TypeId The type ID to find the pool for
+     * @return Pool allocator for the specified type, or nullptr if not found
+     */
+    virtual IPoolAllocator* GetPoolForType(uint32 TypeId) const = 0;
     
     /**
      * Gets the singleton instance of the memory manager

@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
 #include "IMemoryManager.h"
+#include "TypeVersionMigrationInfo.h"
+#include "../MemoryPoolTypes.h"
 #include "IPoolAllocator.generated.h"
 
 /**
@@ -173,4 +175,55 @@ public:
      * @return True if the pool was successfully reset
      */
     virtual bool Reset() = 0;
+
+    /**
+     * Checks if the allocator is of a specific type
+     * @return True if the allocator is of the specified type
+     */
+    template<typename T>
+    bool IsA() const;
+
+    /**
+     * Move a fragmented allocation to a new location
+     * Used by the defragmenter to compact memory
+     * @param OutOldPtr [out] Original pointer to the allocation
+     * @param OutNewPtr [out] New pointer where the allocation was moved
+     * @param OutSize [out] Size of the moved allocation in bytes
+     * @return True if an allocation was moved
+     */
+    virtual bool MoveNextFragmentedAllocation(void*& OutOldPtr, void*& OutNewPtr, uint64& OutSize) = 0;
+
+    /**
+     * Updates the version of a type stored in this pool and migrates memory if needed
+     * @param MigrationInfo Information about the type version change
+     * @return True if version update and migration was successful
+     */
+    virtual bool UpdateTypeVersion(const FTypeVersionMigrationInfo& MigrationInfo) = 0;
+
+    /**
+     * Sets the alignment requirement for this pool
+     * @param Alignment Alignment requirement in bytes (must be power of 2)
+     */
+    virtual void SetAlignmentRequirement(uint32 Alignment) = 0;
+    
+    /**
+     * Sets the memory usage hint for this pool
+     * @param UsageHint The memory usage pattern to optimize for
+     */
+    virtual void SetMemoryUsageHint(EPoolMemoryUsage UsageHint) = 0;
+    
+    /**
+     * Sets the NUMA node preference for this pool
+     * @param NodeId NUMA node ID to prefer for allocations
+     */
+    virtual void SetNumaNode(int32 NodeId) = 0;
 };
+
+// Add FPoolAllocator::IsA method to check allocator type
+template<typename T>
+bool IPoolAllocator::IsA() const
+{
+    // This provides a basic runtime type checking mechanism
+    // In a real implementation, this would use dynamic_cast or a more robust RTTI system
+    return false;
+}

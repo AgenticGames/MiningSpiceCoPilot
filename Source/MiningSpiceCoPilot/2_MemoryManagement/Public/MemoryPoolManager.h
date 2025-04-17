@@ -67,6 +67,11 @@ public:
     
     virtual void UnregisterAllocation(void* Ptr, const FName& CategoryName) override;
     
+    virtual TArray<FName> GetPoolNames() const override;
+    virtual bool UpdatePointerReference(void* OldPtr, void* NewPtr, uint64 Size) override;
+    virtual IPoolAllocator* GetPoolAllocator(const void* Ptr) const override;
+    virtual IPoolAllocator* GetPoolForType(uint32 TypeId) const override;
+
     static IMemoryManager& Get();
     //~ End IMemoryManager Interface
 
@@ -143,6 +148,96 @@ public:
      */
     void SetMaxMemoryLimit(uint64 MaxMemoryBytes);
 
+    /**
+     * Configures pool capabilities based on type capabilities
+     * @param TypeId The ID of the type to configure
+     * @param TypeCapabilities Bitfield of type capabilities that affect memory behavior
+     * @param AccessPattern Memory access pattern for the type
+     * @param MemoryLayout Memory layout type (0=Sequential, 1=Interleaved, 2=Tiled)
+     * @return True if the pool capabilities were configured successfully
+     */
+    bool ConfigurePoolCapabilities(uint32 TypeId, uint32 TypeCapabilities, 
+        EMemoryAccessPattern AccessPattern = EMemoryAccessPattern::General, 
+        uint32 MemoryLayout = 0);
+
+    /**
+     * Callback for memory warning events from the operating system
+     * Used to proactively reduce memory usage
+     */
+    void OnMemoryWarning();
+
+    /**
+     * Gets the total memory used by this manager
+     * @return Total memory usage in bytes
+     */
+    uint64 GetTotalMemoryUsage() const { return GetMemoryUsage(NAME_None); }
+    
+    /**
+     * Creates a type-specific memory pool for registered types
+     * @param TypeId The ID of the type to create a pool for
+     * @param BlockSize Size of each block in bytes
+     * @param BlockCount Initial number of blocks to allocate
+     * @param AccessPattern Memory access pattern for the pool
+     * @return Pointer to the created pool allocator
+     */
+    IPoolAllocator* CreateTypeSpecificPool(uint32 TypeId, uint32 BlockSize, uint32 BlockCount, 
+        EMemoryAccessPattern AccessPattern = EMemoryAccessPattern::General);
+    
+    /**
+     * Registers fast paths for critical memory operations
+     * Integrates with the Core Registry system to optimize memory access for hot paths
+     * @param ManagerInstance The memory manager instance to register
+     * @return True if fast paths were successfully registered
+     */
+    bool RegisterFastPath(FMemoryPoolManager* ManagerInstance);
+    
+    /**
+     * Creates a batch of memory pools for multiple types
+     * Optimizes allocation by acquiring a single lock for multiple registrations
+     * @param TypeInfos Array of type information for pool creation
+     * @return Number of pools successfully created
+     */
+    int32 CreateBatchPools(const TArray<struct FTypePoolInfo>& TypeInfos);
+    
+    /**
+     * Structure containing information for batch pool creation
+     */
+    struct FTypePoolInfo
+    {
+        /** Type ID for the pool */
+        uint32 TypeId;
+        
+        /** Name for the pool */
+        FName PoolName;
+        
+        /** Size of each block in bytes */
+        uint32 BlockSize;
+        
+        /** Initial number of blocks to allocate */
+        uint32 BlockCount;
+        
+        /** Memory access pattern for the pool */
+        EMemoryAccessPattern AccessPattern;
+        
+        /** Constructor */
+        FTypePoolInfo()
+            : TypeId(0)
+            , BlockSize(0)
+            , BlockCount(0)
+            , AccessPattern(EMemoryAccessPattern::General)
+        {}
+        
+        /** Constructor with parameters */
+        FTypePoolInfo(uint32 InTypeId, const FName& InPoolName, uint32 InBlockSize, uint32 InBlockCount,
+            EMemoryAccessPattern InAccessPattern = EMemoryAccessPattern::General)
+            : TypeId(InTypeId)
+            , PoolName(InPoolName)
+            , BlockSize(InBlockSize)
+            , BlockCount(InBlockCount)
+            , AccessPattern(InAccessPattern)
+        {}
+    };
+
 private:
     /**
      * Creates a memory tracker instance
@@ -192,6 +287,9 @@ private:
     /** Map of registered buffers by name */
     TMap<FName, TSharedPtr<IBufferProvider>> Buffers;
     
+    /** Map of type-specific memory pools */
+    TMap<uint32, TSharedPtr<IPoolAllocator>> TypePools;
+    
     /** Memory budget tracking by category */
     TMap<FName, uint64> MemoryBudgets;
     
@@ -200,6 +298,9 @@ private:
     
     /** Lock for thread-safe access to the buffers map */
     mutable FRWLock BuffersLock;
+    
+    /** Lock for thread-safe access to the type pools map */
+    mutable FCriticalSection TypePoolsLock;
     
     /** Lock for thread-safe access to budgets */
     mutable FRWLock BudgetsLock;

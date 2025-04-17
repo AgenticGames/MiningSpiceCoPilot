@@ -1,0 +1,165 @@
+[1/11] Compile [x64] 1_ZoneTypeRegistry.cpp (0:00.78 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): error C2027: use of undefined type 'UMemoryManager'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(8): note: see declaration of 'UMemoryManager'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): error C2027: use of undefined type 'UPoolAllocator'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(9): note: see declaration of 'UPoolAllocator'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): error C2027: use of undefined type 'UBufferProvider'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(10): note: see declaration of 'UBufferProvider'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): error C2027: use of undefined type 'UMemoryTracker'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(11): note: see declaration of 'UMemoryTracker'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[2/11] Compile [x64] 1_SDFTypeRegistry.cpp (0:00.79 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): error C2027: use of undefined type 'UMemoryManager'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(8): note: see declaration of 'UMemoryManager'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): error C2027: use of undefined type 'UPoolAllocator'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(9): note: see declaration of 'UPoolAllocator'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): error C2027: use of undefined type 'UBufferProvider'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(10): note: see declaration of 'UBufferProvider'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): error C2027: use of undefined type 'UMemoryTracker'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(11): note: see declaration of 'UMemoryTracker'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[3/11] Compile [x64] 1_SVOTypeRegistry.cpp (0:01.03 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): error C2027: use of undefined type 'UMemoryManager'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(8): note: see declaration of 'UMemoryManager'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): error C2027: use of undefined type 'UPoolAllocator'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(9): note: see declaration of 'UPoolAllocator'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): error C2027: use of undefined type 'UBufferProvider'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(10): note: see declaration of 'UBufferProvider'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): error C2027: use of undefined type 'UMemoryTracker'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(11): note: see declaration of 'UMemoryTracker'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[4/11] Compile [x64] 1_MaterialRegistry.cpp (0:01.28 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): error C2027: use of undefined type 'UMemoryManager'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(8): note: see declaration of 'UMemoryManager'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): error C2027: use of undefined type 'UPoolAllocator'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(9): note: see declaration of 'UPoolAllocator'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): error C2027: use of undefined type 'UBufferProvider'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(10): note: see declaration of 'UBufferProvider'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): error C2027: use of undefined type 'UMemoryTracker'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(11): note: see declaration of 'UMemoryTracker'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\CompressionUtility.h(112): error C4099: 'FCompressionUtility': type name first seen using 'struct' now seen using 'class'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\CompressionUtility.h(112): note: see declaration of 'FCompressionUtility'
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[5/11] Compile [x64] 1_CoreServiceLocator.cpp (0:01.68 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): error C2027: use of undefined type 'UMemoryManager'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(8): note: see declaration of 'UMemoryManager'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): error C2027: use of undefined type 'UPoolAllocator'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(9): note: see declaration of 'UPoolAllocator'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): error C2027: use of undefined type 'UBufferProvider'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(10): note: see declaration of 'UBufferProvider'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): error C2027: use of undefined type 'UMemoryTracker'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(11): note: see declaration of 'UMemoryTracker'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\CompressionUtility.h(112): error C4099: 'FCompressionUtility': type name first seen using 'struct' now seen using 'class'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\CompressionUtility.h(112): note: see declaration of 'FCompressionUtility'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_CoreServiceLocator.cpp(444): warning C4996: ANY_PACKAGE has been deprecated. Either use full path name of objects (including classes) or provide a valid Outer for *FindObject* functions Please update your code to the new API before upgrading to the next release, otherwise your project will no longer compile.
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_CoreServiceLocator.cpp(544): error C2275: 'IMemoryManager': expected an expression instead of a type
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_CoreServiceLocator.cpp(556): error C2275: 'IPoolAllocator': expected an expression instead of a type
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_CoreServiceLocator.cpp(567): error C2275: 'IPoolAllocator': expected an expression instead of a type
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_CoreServiceLocator.cpp(578): error C2275: 'IPoolAllocator': expected an expression instead of a type
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_CoreServiceLocator.cpp(589): error C2275: 'IBufferProvider': expected an expression instead of a type
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_CoreServiceLocator.cpp(597): error C2275: 'IMemoryTracker': expected an expression instead of a type
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[6/11] Compile [x64] ExampleIntegration.cpp (0:01.81 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): error C2027: use of undefined type 'UMemoryManager'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(8): note: see declaration of 'UMemoryManager'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(196): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): error C2027: use of undefined type 'UPoolAllocator'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(9): note: see declaration of 'UPoolAllocator'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(202): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): error C2027: use of undefined type 'UBufferProvider'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(10): note: see declaration of 'UBufferProvider'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(208): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): error C2027: use of undefined type 'UMemoryTracker'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(11): note: see declaration of 'UMemoryTracker'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): error C2672: 'StaticClass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\ReflectedTypeAccessors.h(13): note: could be 'UClass *StaticClass(void)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IServiceLocator.h(214): note: 'UClass *StaticClass(void)': could not deduce template argument for 'ClassType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\CompressionUtility.h(112): error C4099: 'FCompressionUtility': type name first seen using 'struct' now seen using 'class'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\CompressionUtility.h(112): note: see declaration of 'FCompressionUtility'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\ExampleIntegration.cpp(50): error C2275: 'IMemoryManager': expected an expression instead of a type
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\ExampleIntegration.cpp(50): error C2059: syntax error: ')'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\ExampleIntegration.cpp(61): error C2275: 'IPoolAllocator': expected an expression instead of a type
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\ExampleIntegration.cpp(61): error C2059: syntax error: ')'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\ExampleIntegration.cpp(73): error C2275: 'IBufferProvider': expected an expression instead of a type
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\ExampleIntegration.cpp(73): error C2059: syntax error: ')'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\ExampleIntegration.cpp(84): error C2275: 'IMemoryTracker': expected an expression instead of a type
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\ExampleIntegration.cpp(84): error C2059: syntax error: ')'
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[7/11] Compile [x64] MemoryPoolManager.cpp (0:02.39 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\Interfaces\ServiceInterfaces.h(18): error C4099: 'FCompressionUtility': type name first seen using 'class' now seen using 'struct'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\2_MemoryManagement\Public\CompressionUtility.h(112): note: see declaration of 'FCompressionUtility'
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[8/11] Compile [x64] Module.MiningSpiceCoPilot.1.cpp (0:03.14 at +0:00)

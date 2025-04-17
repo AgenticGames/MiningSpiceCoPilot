@@ -8,6 +8,10 @@
 #include "Templates/SharedPointer.h"
 #include "HAL/ThreadSafeBool.h"
 #include "Misc/SpinLock.h"
+#include "Interfaces/IServiceLocator.h"
+#include "TypeVersionMigrationInfo.h"
+#include "Interfaces/IMemoryManager.h"
+#include "Interfaces/IPoolAllocator.h"
 
 /**
  * Transaction concurrency level for zone operations
@@ -85,6 +89,9 @@ struct MININGSPICECOPILOT_API FZoneTransactionTypeInfo
     
     /** Whether this transaction has a read-validate-write pattern */
     bool bHasReadValidateWritePattern;
+    
+    /** Schema version for this transaction type */
+    uint32 SchemaVersion;
 };
 
 /**
@@ -129,6 +136,8 @@ public:
     virtual uint32 GetSchemaVersion() const override;
     virtual bool Validate(TArray<FString>& OutErrors) const override;
     virtual void Clear() override;
+    virtual bool SetTypeVersion(uint32 TypeId, uint32 NewVersion, bool bMigrateInstanceData = true) override;
+    virtual uint32 GetTypeVersion(uint32 TypeId) const override;
     //~ End IRegistry Interface
     
     /**
@@ -234,31 +243,31 @@ public:
     static FZoneTypeRegistry& Get();
     
 private:
-    /** Generates a unique type ID for new transaction type registrations */
+    /** Generates a unique type ID for new registrations */
     uint32 GenerateUniqueTypeId();
     
     /** Map of registered transaction types by ID */
     TMap<uint32, TSharedRef<FZoneTransactionTypeInfo>> TransactionTypeMap;
     
-    /** Map of registered transaction types by name for fast lookup */
+    /** Map of transaction type names to IDs for fast lookup */
     TMap<FName, uint32> TransactionTypeNameMap;
     
-    /** Map of registered zone grid configurations by name */
+    /** Map of zone grid configurations by name */
     TMap<FName, TSharedRef<FZoneGridConfig>> ZoneGridConfigMap;
     
-    /** Name of the default zone grid configuration */
-    FName DefaultZoneGridConfigName;
+    /** Counter for generating new type IDs */
+    FThreadSafeCounter NextTypeId;
     
-    /** Counter for generating unique type IDs */
-    uint32 NextTypeId;
-    
-    /** Thread-safe flag indicating if the registry has been initialized */
+    /** Thread-safe flag indicating if the registry is initialized */
     FThreadSafeBool bIsInitialized;
     
-    /** Schema version of this registry */
+    /** Current schema version for the zone type system */
     uint32 SchemaVersion;
     
-    /** Lock for thread-safe access to the registry maps */
+    /** Default zone grid configuration name */
+    FName DefaultZoneGridConfigName;
+    
+    /** Lock for thread-safe access to the registry data */
     mutable FRWLock RegistryLock;
     
     /** Singleton instance of the registry */

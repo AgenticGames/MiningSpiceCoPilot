@@ -311,4 +311,18 @@ public:
      * Note: This does not affect current allocations, only statistics
      */
     virtual void ResetStatistics() = 0;
+
+    /**
+     * Releases the memory tracker and cleans up resources
+     * This should be used instead of directly deleting the tracker
+     */
+    virtual void Release() = 0;
+
+    /**
+     * Track a memory pool for telemetry
+     * @param Pool Pool to track
+     * @param Category Category for the pool in telemetry
+     * @return True if the pool was successfully tracked
+     */
+    virtual bool TrackPool(IPoolAllocator* Pool, const FName& Category) = 0;
 };

@@ -44,6 +44,12 @@ public:
     virtual FPoolStats GetStats() const override;
     virtual bool Defragment(float MaxTimeMs = 5.0f) override;
     virtual bool Validate(TArray<FString>& OutErrors) const override;
+    virtual bool Reset() override;
+    virtual bool MoveNextFragmentedAllocation(void*& OutOldPtr, void*& OutNewPtr, uint64& OutSize) override;
+    virtual bool UpdateTypeVersion(const FTypeVersionMigrationInfo& MigrationInfo) override;
+    virtual void SetAlignmentRequirement(uint32 Alignment) override;
+    virtual void SetMemoryUsageHint(EPoolMemoryUsage UsageHint) override;
+    virtual void SetNumaNode(int32 NodeId) override;
     //~ End IPoolAllocator Interface
 
     /**
@@ -72,10 +78,14 @@ public:
     static uint32 LookupTableZOrderMapping(uint32 x, uint32 y, uint32 z);
 
     /**
-     * Resets the pool to its initial empty state
-     * @return True if the pool was successfully reset
+     * Configures memory layout optimization for a specific node type
+     * @param TypeId ID of the node type to configure
+     * @param bUseZOrderCurve Whether to use Z-order curve for spatial indexing
+     * @param bEnablePrefetching Whether to enable memory prefetching
+     * @param AccessPattern Expected access pattern for this type
+     * @return True if configuration was successful
      */
-    bool Reset();
+    bool ConfigureTypeLayout(uint32 TypeId, bool bUseZOrderCurve, bool bEnablePrefetching, EMemoryAccessPattern AccessPattern);
 
 private:
     /**
@@ -168,4 +178,37 @@ private:
     
     /** Cached pool statistics */
     mutable FPoolStats CachedStats;
+    
+    /** Structure for node type memory layout configuration */
+    struct FNodeTypeLayout
+    {
+        /** Type ID */
+        uint32 TypeId;
+        
+        /** Whether to use Z-order curve for spatial indexing */
+        bool bUseZOrderCurve;
+        
+        /** Whether to enable memory prefetching */
+        bool bEnablePrefetching;
+        
+        /** Expected access pattern for this type */
+        EMemoryAccessPattern AccessPattern;
+        
+        FNodeTypeLayout()
+            : TypeId(0)
+            , bUseZOrderCurve(true)
+            , bEnablePrefetching(true)
+            , AccessPattern(EMemoryAccessPattern::OctreeTraversal)
+        {
+        }
+    };
+    
+    /** Map of node types to their layout configurations */
+    TMap<uint32, FNodeTypeLayout> NodeTypeLayouts;
+    
+    /** Recently accessed node indices for prefetching optimization */
+    TArray<uint32> RecentlyAccessedNodes;
+    
+    /** Maximum number of recent nodes to track */
+    static constexpr uint32 MaxRecentNodeCount = 64;
 };

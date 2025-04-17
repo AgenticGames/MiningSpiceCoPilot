@@ -1,0 +1,164 @@
+# MINING SYSTEM IMPLEMENTATION
+# SYSTEM 1 OF 153: Core Registry and Type System
+Reference: Foundation Systems - Core Registry and Type System
+Category: Foundation Systems
+
+PURPOSE
+Provide a comprehensive type registration and management system for the SVO+SDF hybrid mining architecture, enabling efficient type-safe access, reflection, and metadata integration for octree nodes, signed distance fields, material channels, and zone-based transaction components throughout the mining system.
+
+ARCHITECTURAL POSITION
+- Category: Foundation Systems
+- Dependencies: None (Core System)
+- Dependent Systems: All other systems (2-153)
+
+KEY REQUIREMENTS
+- Centralized type registration for SVO nodes, SDF fields, and material channels
+- Efficient type-safe lookup and casting with SIMD-aligned type structures
+- Runtime reflection for SVO+SDF component properties and services
+- Comprehensive metadata integration for mining system types with SDF-specific attributes
+- Support for multi-channel material type registration with inheritance
+- Zone-based transaction type registration with concurrency metadata
+- Versioning support for SDF data serialization and saved game compatibility
+- Hierarchical type relationships for octree node types and field specializations
+- Memory-layout awareness for SIMD-optimized types and structures
+- Blueprint exposure for key mining types with appropriate abstractions
+- UE5 Type Integration: Enhanced integration with UObject/USTRUCT for seamless UE5 reflection compatibility
+- Thread-Safe Registration: Atomic type registration with optimistic locking for minimal contention
+- Versioned Type Schema: Robust versioning with backward compatibility and migration paths for saved games
+- Layered Service Resolution: Context-aware service resolution supporting global, region, and zone scopes
+- Blueprint Access Layer: Simplified blueprint-friendly interface for gameplay-critical components
+- Type Capabilities System: Runtime capability querying for feature detection across different hardware
+- Hot-Reload Support: Development-time type reloading with state preservation and reference updating
+- Type Visualization: Debug visualization of type relationships and dependencies for system analysis
+
+CORE COMPONENTS
+
+FServiceLocator : public IServiceLocator
+- Service registration and resolution for mining subsystems
+- Lifecycle management for subsystem instances
+- Interface-based service resolution with type safety
+- Thread-safe singleton access pattern using atomic operations
+- Zone-aware service resolution for region-specific instances
+- Service dependency resolution with validation
+- Integration with UE5's subsystem framework
+- Support for per-Region service instances via hierarchy
+- Fallback resolution for alternative service implementations
+- Material-specific service instances for specialized processing
+- SDF field service providers for different field operations
+- Hierarchical scoping with context chain resolution
+- Context-aware resolution with thread safety optimizations
+- Layered resolution supporting global, region, and zone scopes
+
+FSVOTypeRegistry : public IRegistry
+- SVO node type registration and management
+- Node classification type hierarchy (Homogeneous, Interface, Empty)
+- Type-safe casting and conversion operations for node types
+- Property reflection for SVO node types
+- Memory layout metadata for efficient node access
+- Integration with octree traversal and manipulation
+- Node pool integration for type-specific allocation
+- Node serialization support with compression metadata
+- Material relationship tracking for interface nodes
+- Node behavior registration for specialized processing
+- UE5 type integration through template specialization
+- Advanced SIMD memory layout optimization with alignment control
+- Runtime capability detection for hardware-specific optimizations
+- Versioned schema support with migration paths
+
+FSDFTypeRegistry : public IRegistry
+- SDF field type registration and management
+- Field channel type management for material-specific fields
+- Field operation registration for CSG manipulations
+- Distance function registration for material types
+- SIMD optimization metadata for field operations
+- GPU compute shader metadata for field processing
+- Field serialization support with format versioning
+- Operation compatibility tracking for field interactions
+- Field evaluation strategy registration for different contexts
+- Narrow-band precision metadata for field types
+- Optimize for narrow-band operations and SIMD instruction detection
+- Advanced field operation cataloging with compatibility matrices
+- Versioned field operation registration with migration
+- Hardware-specific operation variants with capability detection
+
+FMaterialRegistry : public IRegistry
+- Material type registration for the mining system
+- Material channel allocation and tracking for SDF fields
+- Material property registration for mining responses
+- Material interaction rules and priority registration
+- Material hierarchy for inheritance and specialization
+- Material visualization metadata for rendering
+- Material sound effect registration for mining feedback
+- Material physics property registration for simulation
+- Mining tool interaction metadata for material types
+- Resource extraction data for materials
+- Material relationship graph with dependency tracking
+- Advanced inheritance system with property propagation
+- Material compatibility matrix for interaction validation
+- Blueprint-friendly material property exposure
+
+FZoneTypeRegistry : public IRegistry
+- Zone-based transaction type registration
+- Zone grid configuration and sizing metadata
+- Transaction context type registration and validation
+- Concurrency control metadata for zone operations
+- Version tracking configuration for different operation types
+- Fast-path selection metadata for transaction types
+- Material-specific transaction handling registration
+- Transaction retry strategy configuration
+- Zone conflict resolution rule registration
+- Performance monitoring hooks for transaction types
+- Enhanced for multi-threaded zone operations with atomic versioning
+- Zone operation classification with specialized handling
+- Conflict resolution strategy registration and selection
+- Transaction behavior visualization for debugging
+
+REQUIRED FILES
+[From Source/MiningSystem/Core/]
+Public/Interfaces/
+- IServiceLocator.h
+- IRegistry.h
+
+Public/Registry/
+- ServiceLocator.h
+- SVOTypeRegistry.h
+- SDFTypeRegistry.h
+- MaterialRegistry.h
+- ZoneTypeRegistry.h
+
+Private/Registry/
+- ServiceLocator.cpp
+- SVOTypeRegistry.cpp
+- SDFTypeRegistry.cpp
+- MaterialRegistry.cpp
+- ZoneTypeRegistry.cpp
+
+IMPLEMENTATION NOTES
+- Implement specialized type registries for SVO nodes, SDF fields, materials, and zones
+- Design memory-aligned type structures for SIMD optimization with 16/32/64-byte alignment
+- Create comprehensive metadata system for field operations and node behaviors
+- Implement efficient type lookup optimized for high-frequency operations during mining
+- Design thread-safe registration and lookup using atomics from Threading System (3)
+- Create material channel allocation system with efficient ID assignment and tracking
+- Implement field operation registration with compatibility checking for material interactions
+- Design node classification hierarchy with specialized behavior for different node types
+- Support runtime registration for plugin and mod extensibility with version checking
+- Create zone configuration registry with concurrency metadata for transaction management
+- Implement service resolution with zone awareness for region-specific processing
+- Design type-safe casting with compile-time verification where possible
+- Create reflection system compatible with UE's property system and extended for SDF specifics
+- Implement versioning system for serialization compatibility across game versions
+- Design visualization metadata for debugging and editor integration
+- Support material interaction rule registration with priority system for conflicts
+- Create field evaluation strategy registry for different contexts (mining, rendering, physics)
+- Implement optimal lookup algorithms for real-time field evaluation during mining
+- Design dependency tracking for service initialization ordering
+- Create blueprint type exposure with appropriate abstractions for gameplay access
+- Implement thread-safe type registration using atomic operations with optimistic locking
+- Design layered service resolution with context-aware scoping for different hierarchy levels
+- Create runtime capability querying for feature detection across diverse hardware 
+- Implement hot-reload support with state preservation and reference updating
+- Design type visualization tools for relationship debugging and dependency analysis
+- Create UE5 reflection integration with seamless USTRUCT/UObject compatibility
+- Implement blueprint-friendly facades for gameplay-critical type operations
+- Design versioned schema with backward compatibility and migration paths

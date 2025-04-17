@@ -8,6 +8,7 @@
 
 /**
  * Base interface for service providers in the SVO+SDF mining architecture
+ * Provides the ability to register and manage service implementations
  */
 UINTERFACE(MinimalAPI, meta=(CannotImplementInterfaceInBlueprint))
 class UServiceProvider : public UInterface
@@ -16,8 +17,8 @@ class UServiceProvider : public UInterface
 };
 
 /**
- * Interface that all service providers must implement to register with the service locator
- * Provides lifecycle management and dependency resolution
+ * Interface for service providers in the SVO+SDF mining architecture
+ * Allows systems to provide services to the service locator
  */
 class MININGSPICECOPILOT_API IServiceProvider
 {
@@ -25,27 +26,43 @@ class MININGSPICECOPILOT_API IServiceProvider
 
 public:
     /**
-     * Initialize the service provider
-     * Called by service locator after registration
-     * @return True if successfully initialized
+     * Gets the service interfaces provided by this provider
+     * @return Array of interface class types this provider supports
      */
-    virtual bool Initialize() = 0;
+    virtual TArray<TSubclassOf<UInterface>> GetProvidedServices() const = 0;
     
     /**
-     * Shutdown the service provider
-     * Called by service locator before unregistration
+     * Registers all services with the provided service locator
+     * @param InServiceLocator Service locator to register services with
+     * @param InZoneID Optional zone identifier for zone-specific services
+     * @param InRegionID Optional region identifier for region-specific services
+     * @return True if registration was successful
      */
-    virtual void Shutdown() = 0;
+    virtual bool RegisterServices(class IServiceLocator* InServiceLocator, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) = 0;
     
     /**
-     * Check if the service provider is initialized
-     * @return True if initialized
+     * Unregisters all services from the provided service locator
+     * @param InServiceLocator Service locator to unregister services from
+     * @param InZoneID Optional zone identifier for zone-specific services
+     * @param InRegionID Optional region identifier for region-specific services
+     * @return True if unregistration was successful
      */
-    virtual bool IsInitialized() const = 0;
-
+    virtual bool UnregisterServices(class IServiceLocator* InServiceLocator, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) = 0;
+    
     /**
-     * Get service dependencies that must be registered first
-     * @param OutDependencies Array to receive dependency interface types
+     * Initializes all services provided by this provider
+     * @return True if initialization was successful
      */
-    virtual void GetDependencies(TArray<UClass*>& OutDependencies) const = 0;
+    virtual bool InitializeServices() = 0;
+    
+    /**
+     * Shuts down all services provided by this provider
+     */
+    virtual void ShutdownServices() = 0;
+    
+    /**
+     * Gets the name of this service provider for debugging
+     * @return Provider name
+     */
+    virtual FName GetProviderName() const = 0;
 };

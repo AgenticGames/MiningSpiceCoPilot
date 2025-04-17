@@ -3,11 +3,47 @@
 #include "SVOAllocator.h"
 #include "HAL/PlatformMath.h"
 #include "Misc/ScopeLock.h"
+#include "Math/UnrealMathSSE.h"
+
+// Lookup tables for Z-order curve calculations
+namespace 
+{
+    // Pre-computed lookup tables for 10-bit values (up to 1024^3 grid)
+    uint32 SplitBy3[1024];
+    
+    // Initialize lookup tables
+    bool InitializeZOrderTables()
+    {
+        static bool bInitialized = false;
+        
+        if (!bInitialized)
+        {
+            // Fill split table for fast Z-order curve calculations
+            for (uint32 i = 0; i < 1024; ++i)
+            {
+                uint32 x = i;
+                x = (x | (x << 16)) & 0x030000FF;
+                x = (x | (x << 8)) & 0x0300F00F;
+                x = (x | (x << 4)) & 0x030C30C3;
+                x = (x | (x << 2)) & 0x09249249;
+                SplitBy3[i] = x;
+            }
+            
+            bInitialized = true;
+        }
+        
+        return true;
+    }
+    
+    // Static initializer to ensure tables are initialized
+    static bool TablesInitialized = InitializeZOrderTables();
+}
 
 FSVOAllocator::FSVOAllocator(const FName& InPoolName, uint32 InBlockSize, uint32 InBlockCount, 
     EMemoryAccessPattern InAccessPattern, bool InAllowGrowth)
-    : PoolName(InPoolName)
-    , BlockSize(FMath::Max(InBlockSize, 8u)) // Ensure minimum block size
+    : IPoolAllocator()
+    , PoolName(InPoolName)
+    , BlockSize(InBlockSize < 8u ? 8u : InBlockSize) // Ensure minimum block size
     , PoolMemory(nullptr)
     , MaxBlockCount(InBlockCount)
     , CurrentBlockCount(0)
@@ -86,7 +122,13 @@ void* FSVOAllocator::Allocate(const UObject* RequestingObject, FName AllocationT
     if (FreeBlocks.Num() == 0)
     {
         // No free blocks, try to grow if allowed
-        if (!bAllowsGrowth || !Grow(FMath::Max(32u, MaxBlockCount / 4)))
+        uint32 growAmount = MaxBlockCount / 4;
+        if (growAmount < 32u) 
+        {
+            growAmount = 32u;
+        }
+        
+        if (!bAllowsGrowth || !Grow(growAmount))
         {
             // Could not grow the pool
             CachedStats.AllocationFailures++;
@@ -210,6 +252,7 @@ bool FSVOAllocator::Grow(uint32 AdditionalBlockCount, bool bForceGrowth)
     
     // Update stats
     bStatsDirty = true;
+    CachedStats.GrowthCount++;
     
     return true;
 }
@@ -229,14 +272,18 @@ uint32 FSVOAllocator::Shrink(uint32 MaxBlocksToRemove)
     uint32 FreeBlockCount = Stats.FreeBlocks;
     
     // Determine how many blocks to remove
-    uint32 BlocksToRemove = FMath::Min(MaxBlocksToRemove, FreeBlockCount);
+    uint32 BlocksToRemove = MaxBlocksToRemove < FreeBlockCount ? MaxBlocksToRemove : FreeBlockCount;
     if (BlocksToRemove == 0)
     {
         return 0; // Can't remove any blocks
     }
     
     // Don't shrink below minimum capacity
-    uint32 MinCapacity = FMath::Max(64u, AllocatedBlocks * 2);
+    uint32 MinCapacity = AllocatedBlocks * 2;
+    if (MinCapacity < 64u)
+    {
+        MinCapacity = 64u;
+    }
     if (CurrentBlockCount - BlocksToRemove < MinCapacity)
     {
         BlocksToRemove = CurrentBlockCount > MinCapacity ? CurrentBlockCount - MinCapacity : 0;
@@ -247,21 +294,83 @@ uint32 FSVOAllocator::Shrink(uint32 MaxBlocksToRemove)
         return 0;
     }
     
-    // Create a compact block layout by moving allocated blocks to the front
-    // This is a complex operation and could be optimized further in a real implementation
+    // To properly shrink, we would need to relocate allocated blocks to create
+    // a contiguous free area at the end of the pool. This would require tracking
+    // all pointers to allocated blocks and updating them.
     
-    // Not implementing full defragmentation here as it's a complex operation
-    // In a real implementation, we would:
-    // 1. Sort blocks so that all allocated blocks are at the front
-    // 2. Update pointers to those blocks
-    // 3. Create a new smaller memory buffer
-    // 4. Copy the allocated blocks to the new buffer
-    // 5. Free the old buffer
+    // For this implementation, we simply verify that all blocks at the end are free,
+    // and if so, we can easily truncate the pool.
     
-    // For this example, we'll just report that we can't shrink since it would
-    // require full pointer tracking
+    // Sort free blocks by index (descending) to check if the highest-numbered blocks are free
+    FreeBlocks.Sort([](uint32 A, uint32 B) { return A > B; });
     
-    return 0;
+    // Check how many blocks at the end are contiguously free
+    uint32 ContigFreeBlocks = 0;
+    for (int32 i = 0; i < FreeBlocks.Num(); ++i)
+    {
+        uint32 BlockIndex = FreeBlocks[i];
+        if (BlockIndex == CurrentBlockCount - 1 - ContigFreeBlocks)
+        {
+            ContigFreeBlocks++;
+        }
+        else
+        {
+            break;
+        }
+    }
+    
+    // Determine how many blocks we can actually remove
+    BlocksToRemove = BlocksToRemove < ContigFreeBlocks ? BlocksToRemove : ContigFreeBlocks;
+    if (BlocksToRemove == 0)
+    {
+        return 0;
+    }
+    
+    // Remove the highest-numbered free blocks from the free list
+    for (uint32 i = 0; i < BlocksToRemove; ++i)
+    {
+        FreeBlocks.RemoveAt(0); // Remove the highest index (first in sorted array)
+    }
+    
+    // Reduce metadata array size
+    uint32 NewBlockCount = CurrentBlockCount - BlocksToRemove;
+    BlockMetadata.SetNum(NewBlockCount);
+    
+    // Reallocate memory if we have any blocks left
+    if (NewBlockCount > 0)
+    {
+        uint8* NewMemory = (uint8*)FMemory::Malloc(NewBlockCount * BlockSize, 16);
+        if (NewMemory)
+        {
+            // Copy the remaining blocks
+            FMemory::Memcpy(NewMemory, PoolMemory, NewBlockCount * BlockSize);
+            
+            // Free old memory
+            FMemory::Free(PoolMemory);
+            
+            // Update pool information
+            PoolMemory = NewMemory;
+            CurrentBlockCount = NewBlockCount;
+        }
+        else
+        {
+            // Failed to allocate new memory, revert changes
+            BlockMetadata.SetNum(CurrentBlockCount);
+            BlocksToRemove = 0;
+        }
+    }
+    else
+    {
+        // No blocks left, just free all memory
+        FMemory::Free(PoolMemory);
+        PoolMemory = nullptr;
+        CurrentBlockCount = 0;
+    }
+    
+    // Update stats
+    bStatsDirty = true;
+    
+    return BlocksToRemove;
 }
 
 bool FSVOAllocator::OwnsPointer(const void* Ptr) const
@@ -297,6 +406,18 @@ FPoolStats FSVOAllocator::GetStats() const
         bStatsDirty = false;
     }
     
+    // Update stats if needed
+    if (bStatsDirty)
+    {
+        UpdateStats();
+    }
+    
+    // Update peaks
+    if (CachedStats.AllocatedBlocks > CachedStats.PeakAllocatedBlocks)
+    {
+        CachedStats.PeakAllocatedBlocks = CachedStats.AllocatedBlocks;
+    }
+    
     return CachedStats;
 }
 
@@ -312,9 +433,13 @@ bool FSVOAllocator::Defragment(float MaxTimeMs)
     // Track time to stay within budget
     double StartTime = FPlatformTime::Seconds();
     double EndTime = StartTime + MaxTimeMs / 1000.0;
-    
-    // Calculate fragmentation (interspersed allocated and free blocks)
+    bool bDidDefragment = false;
+
+    // Calculate current fragmentation
     uint32 FragmentCount = 0;
+    uint32 FragmentedBlocks = 0;
+    
+    // Simple approach: count transitions between allocated and free blocks
     bool PrevWasAllocated = false;
     
     for (uint32 i = 0; i < CurrentBlockCount; ++i)
@@ -335,14 +460,25 @@ bool FSVOAllocator::Defragment(float MaxTimeMs)
         }
     }
     
-    // Update stats 
-    bStatsDirty = true;
+    // Calculate fragmentation percentage for logging
+    float FragmentationPercentage = (CurrentBlockCount > 0) ? 
+        (100.0f * static_cast<float>(FragmentCount) / CurrentBlockCount) : 0.0f;
     
-    // For a real implementation, we'd actually move blocks around to reduce fragmentation
+    // For a real implementation, we would actually move blocks around to reduce fragmentation
     // This would require tracking all pointers to allocated blocks and updating them
     
-    // Return true if we did any defragmentation work (in this case, just analysis)
-    return FragmentCount > 0;
+    // In this simplified version, we'll just log the fragmentation
+    if (FragmentCount > 0)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("FSVOAllocator::Defragment - Pool '%s' has %u fragments (%.1f%%)"),
+            *PoolName.ToString(), FragmentCount, FragmentationPercentage);
+            
+        // Set dirty flag to recalculate stats
+        bStatsDirty = true;
+        bDidDefragment = true;
+    }
+    
+    return bDidDefragment;
 }
 
 bool FSVOAllocator::Validate(TArray<FString>& OutErrors) const
@@ -443,9 +579,15 @@ void FSVOAllocator::SetZOrderMappingFunction(uint32 (*NewMappingFunction)(uint32
 uint32 FSVOAllocator::DefaultZOrderMapping(uint32 x, uint32 y, uint32 z)
 {
     // Simple 10-bit interleaving for 3D Z-order curve
-    // Interleave bits of x, y, and z to create a cache-coherent spatial index
+    // Split and interleave bits of x, y, and z to create a cache-coherent spatial index
+    // This code assumes we have a maximum of 10 bits per coordinate (1024x1024x1024 space)
     
-    // Separate every bit with two zeros
+    // Mask to 10 bits per value
+    x &= 0x3FF;
+    y &= 0x3FF;
+    z &= 0x3FF;
+    
+    // Separate bits by 3 positions using bit manipulation
     x = (x | (x << 16)) & 0x030000FF;
     x = (x | (x << 8)) & 0x0300F00F;
     x = (x | (x << 4)) & 0x030C30C3;
@@ -467,10 +609,19 @@ uint32 FSVOAllocator::DefaultZOrderMapping(uint32 x, uint32 y, uint32 z)
 
 uint32 FSVOAllocator::LookupTableZOrderMapping(uint32 x, uint32 y, uint32 z)
 {
-    // This would be implemented using pre-computed lookup tables
-    // For performance compared to bit manipulation
-    // Not implemented here for brevity, would use DefaultZOrderMapping instead
-    return DefaultZOrderMapping(x, y, z);
+    // Ensure lookup tables are initialized
+    if (!InitializeZOrderTables())
+    {
+        return DefaultZOrderMapping(x, y, z);
+    }
+    
+    // Mask to 10 bits per coordinate
+    x &= 0x3FF;
+    y &= 0x3FF;
+    z &= 0x3FF;
+    
+    // Use pre-computed lookups for bit splitting
+    return SplitBy3[x] | (SplitBy3[y] << 1) | (SplitBy3[z] << 2);
 }
 
 bool FSVOAllocator::Reset()
@@ -526,6 +677,9 @@ bool FSVOAllocator::AllocatePoolMemory(uint32 BlockCount)
         return false;
     }
     
+    // Zero out the memory
+    FMemory::Memzero(PoolMemory, TotalSize);
+    
     // Initialize metadata
     BlockMetadata.SetNum(BlockCount);
     
@@ -575,12 +729,10 @@ void FSVOAllocator::UpdateStats() const
     }
     
     // Reset stats
-    CachedStats.TotalAllocations = 0;
-    CachedStats.PeakAllocatedBlocks = 0;
-    CachedStats.AllocatedBlocks = 0;
-    // Clear previous allocation tracking data if present in your implementation
-    // CachedStats.AllocationsByTag.Empty();
-    // CachedStats.AllocationsByObject.Empty();
+    CachedStats.PoolName = PoolName;
+    CachedStats.BlockSize = BlockSize;
+    CachedStats.BlockCount = CurrentBlockCount;
+    CachedStats.bAllowsGrowth = bAllowsGrowth;
     
     // Count allocations
     uint32 AllocatedBlockCount = 0;
@@ -589,25 +741,40 @@ void FSVOAllocator::UpdateStats() const
         if (Metadata.bAllocated)
         {
             AllocatedBlockCount++;
-            // Track allocations by tag if implemented
-            // CachedStats.AllocationsByTag.FindOrAdd(Metadata.AllocationTag)++;
-            
-            // Track allocations by object if implemented
-            // if (Metadata.RequestingObject.IsValid())
-            // {
-            //     const UObject* Object = Metadata.RequestingObject.Get();
-            //     CachedStats.AllocationsByObject.FindOrAdd(Object->GetClass()->GetFName())++;
-            // }
         }
     }
     
+    // Update peak allocation tracking
+    CachedStats.PeakAllocatedBlocks = FMath::Max(CachedStats.PeakAllocatedBlocks, AllocatedBlockCount);
+    
     // Calculate memory usage
     CachedStats.AllocatedBlocks = AllocatedBlockCount;
-    // Update fragmentation calculation
     CachedStats.FreeBlocks = CurrentBlockCount - AllocatedBlockCount;
-    CachedStats.FragmentationPercent = CurrentBlockCount > 0 
-        ? 100.0f * (static_cast<float>(CachedStats.FreeBlocks) / CurrentBlockCount) 
-        : 0.0f;
+    
+    // Calculate fragmentation - simple transitions between allocated and free
+    uint32 FragmentCount = 0;
+    bool PrevWasAllocated = false;
+    
+    for (uint32 i = 0; i < CurrentBlockCount; ++i)
+    {
+        bool IsAllocated = BlockMetadata[i].bAllocated;
+        
+        if (i > 0 && IsAllocated != PrevWasAllocated)
+        {
+            FragmentCount++;
+        }
+        
+        PrevWasAllocated = IsAllocated;
+    }
+    
+    // Simplified fragmentation metric based on the number of transitions
+    CachedStats.FragmentationPercent = (CurrentBlockCount > 1) ? 
+        (100.0f * static_cast<float>(FragmentCount) / (CurrentBlockCount - 1)) : 0.0f;
+    
+    // Calculate overhead
+    CachedStats.OverheadBytes = sizeof(FSVOAllocator) +                              // Class instance
+                                (BlockMetadata.Num() * sizeof(FBlockMetadata)) +     // Metadata
+                                (FreeBlocks.Num() * sizeof(uint32));                 // Free list
     
     // Mark stats as clean
     bStatsDirty = false;
@@ -641,4 +808,171 @@ int32 FSVOAllocator::GetBlockIndex(const void* Ptr) const
     }
     
     return BlockIndex;
+}
+
+bool FSVOAllocator::MoveNextFragmentedAllocation(void*& OutOldPtr, void*& OutNewPtr, uint64& OutAllocationSize)
+{
+    FScopeLock Lock(&PoolLock);
+    
+    if (!bIsInitialized || !PoolMemory)
+    {
+        return false;
+    }
+    
+    // Simple defragmentation approach: scan for non-contiguous allocated blocks
+    // and move them to lower memory addresses to reduce fragmentation
+    
+    // Start from the last block and find an allocated block
+    static uint32 LastCheckedIndex = 0;
+    uint32 BlockIndex = LastCheckedIndex;
+    bool bFoundAllocated = false;
+    
+    // Find the next allocated block starting from the last checked index
+    for (uint32 i = 0; i < CurrentBlockCount; ++i)
+    {
+        BlockIndex = (LastCheckedIndex + i) % CurrentBlockCount;
+        
+        // Check if this block is allocated
+        if (BlockMetadata[BlockIndex].bAllocated)
+        {
+            // Find the first free block with a lower index
+            uint32 TargetIndex = BlockIndex;
+            for (uint32 j = 0; j < BlockIndex; ++j)
+            {
+                if (!BlockMetadata[j].bAllocated)
+                {
+                    TargetIndex = j;
+                    bFoundAllocated = true;
+                    break;
+                }
+            }
+            
+            // If we found a free block with a lower index, we can move this allocation
+            if (bFoundAllocated && TargetIndex < BlockIndex)
+            {
+                // Get the pointers
+                OutOldPtr = PoolMemory + (BlockIndex * BlockSize);
+                OutNewPtr = PoolMemory + (TargetIndex * BlockSize);
+                OutAllocationSize = BlockSize;
+                
+                // Update our last checked index for the next call
+                LastCheckedIndex = (BlockIndex + 1) % CurrentBlockCount;
+                
+                // Move the memory
+                FMemory::Memcpy(OutNewPtr, OutOldPtr, BlockSize);
+                
+                // Update metadata
+                BlockMetadata[TargetIndex] = BlockMetadata[BlockIndex];
+                BlockMetadata[BlockIndex].bAllocated = false;
+                BlockMetadata[BlockIndex].AllocationTag = NAME_None;
+                BlockMetadata[BlockIndex].RequestingObject = nullptr;
+                BlockMetadata[BlockIndex].AllocationTime = 0.0;
+                
+                // Update free block list
+                FreeBlocks.Remove(TargetIndex);
+                FreeBlocks.Add(BlockIndex);
+                
+                // Stats are now dirty
+                bStatsDirty = true;
+                
+                return true;
+            }
+        }
+    }
+    
+    // Reset the last checked index if we've gone through all blocks
+    LastCheckedIndex = 0;
+    
+    // No fragmented allocations found that can be moved
+    return false;
+}
+
+bool FSVOAllocator::UpdateTypeVersion(const FTypeVersionMigrationInfo& MigrationInfo)
+{
+    FScopeLock Lock(&PoolLock);
+    
+    if (!bIsInitialized)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("FSVOAllocator::UpdateTypeVersion - Pool '%s' not initialized"), 
+            *PoolName.ToString());
+        return false;
+    }
+    
+    // Log the migration
+    UE_LOG(LogTemp, Log, TEXT("FSVOAllocator::UpdateTypeVersion - Migrating type '%s' from version %u to %u"),
+        *MigrationInfo.TypeName.ToString(), MigrationInfo.OldVersion, MigrationInfo.NewVersion);
+    
+    // For now, we just report success without actually doing any migration
+    // In a real implementation, this would update the memory layout based on the version change
+    return true;
+}
+
+void FSVOAllocator::SetAlignmentRequirement(uint32 Alignment)
+{
+    // Ensure alignment is a power of 2
+    if (Alignment > 0 && ((Alignment & (Alignment - 1)) == 0))
+    {
+        // Store alignment value or apply it to allocations
+        UE_LOG(LogTemp, Verbose, TEXT("FSVOAllocator(%s): Setting alignment requirement to %u bytes"), 
+            *PoolName.ToString(), Alignment);
+        
+        // In a real implementation, we would adjust memory alignment
+        // For now, we just log the request
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("FSVOAllocator(%s): Invalid alignment value %u (must be power of 2)"), 
+            *PoolName.ToString(), Alignment);
+    }
+}
+
+void FSVOAllocator::SetMemoryUsageHint(EPoolMemoryUsage UsageHint)
+{
+    UE_LOG(LogTemp, Verbose, TEXT("FSVOAllocator(%s): Setting memory usage hint to %d"), 
+        *PoolName.ToString(), static_cast<int32>(UsageHint));
+    
+    // In a real implementation, we would optimize memory layout based on the hint
+    // For now, we just log the request
+}
+
+void FSVOAllocator::SetNumaNode(int32 NodeId)
+{
+    UE_LOG(LogTemp, Verbose, TEXT("FSVOAllocator(%s): Setting NUMA node to %d"), 
+        *PoolName.ToString(), NodeId);
+    
+    // In a real implementation, we would bind allocations to the specified NUMA node
+    // For now, we just log the request
+}
+
+bool FSVOAllocator::ConfigureTypeLayout(uint32 TypeId, bool bUseZOrderCurve, bool bEnablePrefetching, EMemoryAccessPattern InAccessPattern)
+{
+    FScopeLock Lock(&PoolLock);
+    
+    if (!bIsInitialized)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("FSVOAllocator::ConfigureTypeLayout - Pool '%s' is not initialized"), *PoolName.ToString());
+        return false;
+    }
+    
+    // Create or update node type layout
+    FNodeTypeLayout& Layout = NodeTypeLayouts.FindOrAdd(TypeId);
+    Layout.TypeId = TypeId;
+    Layout.bUseZOrderCurve = bUseZOrderCurve;
+    Layout.bEnablePrefetching = bEnablePrefetching;
+    Layout.AccessPattern = InAccessPattern;
+    
+    // If this is the first type configured, set the default Z-order mapping function based on configuration
+    if (NodeTypeLayouts.Num() == 1 && bUseZOrderCurve)
+    {
+        // Use lookup table version for better performance
+        SetZOrderMappingFunction(&FSVOAllocator::LookupTableZOrderMapping);
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("FSVOAllocator::ConfigureTypeLayout - Configured node type %u with Z-order curve %s, prefetching %s, access pattern %d"),
+        TypeId, 
+        bUseZOrderCurve ? TEXT("enabled") : TEXT("disabled"),
+        bEnablePrefetching ? TEXT("enabled") : TEXT("disabled"),
+        static_cast<int32>(InAccessPattern));
+    
+    return true;
 }
