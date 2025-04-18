@@ -465,7 +465,7 @@ TArray<const UClass*> FCoreServiceLocator::GetAllServiceTypes() const
     for (const auto& ServiceTypePair : ServiceMap)
     {
         const FName& InterfaceName = ServiceTypePair.Key;
-        const UClass* InterfaceClass = FindObject<UClass>(ANY_PACKAGE, *InterfaceName.ToString());
+        const UClass* InterfaceClass = FindObject<UClass>(nullptr, *InterfaceName.ToString());
         if (InterfaceClass)
         {
             Result.Add(InterfaceClass);
@@ -558,7 +558,7 @@ void FCoreServiceLocator::RegisterMemoryAllocators()
     // as services in the Core Registry system, establishing the integration point
     
     // First, resolve or create the memory manager
-    UClass* MemoryManagerClass = FindObject<UClass>(ANY_PACKAGE, TEXT("UMemoryManager"));
+    UClass* MemoryManagerClass = FindObject<UClass>(nullptr, TEXT("UMemoryManager"));
     FMemoryPoolManager* MemoryManager = static_cast<FMemoryPoolManager*>(ResolveService(MemoryManagerClass));
     if (!MemoryManager)
     {
@@ -578,7 +578,7 @@ void FCoreServiceLocator::RegisterMemoryAllocators()
     SVOAllocator->Initialize();
     
     // Find interface class or use UObject as fallback
-    UClass* SVOAllocatorClass = FindObject<UClass>(ANY_PACKAGE, TEXT("UPoolAllocator"));
+    UClass* SVOAllocatorClass = FindObject<UClass>(nullptr, TEXT("UPoolAllocator"));
     RegisterService(SVOAllocator, SVOAllocatorClass ? SVOAllocatorClass : UObject::StaticClass());
     
     // Register it as a fast-path for critical operations
@@ -590,7 +590,7 @@ void FCoreServiceLocator::RegisterMemoryAllocators()
     NarrowBandAllocator->Initialize();
     
     // Find interface class or use UObject as fallback
-    UClass* NarrowBandClass = FindObject<UClass>(ANY_PACKAGE, TEXT("UPoolAllocator"));
+    UClass* NarrowBandClass = FindObject<UClass>(nullptr, TEXT("UPoolAllocator"));
     RegisterService(NarrowBandAllocator, NarrowBandClass ? NarrowBandClass : UObject::StaticClass());
     
     // Register it as a fast-path for critical operations
@@ -602,7 +602,7 @@ void FCoreServiceLocator::RegisterMemoryAllocators()
     ZeroCopyBuffer->Initialize();
     
     // Find interface class or use UObject as fallback
-    UClass* ZeroCopyClass = FindObject<UClass>(ANY_PACKAGE, TEXT("UBufferProvider"));
+    UClass* ZeroCopyClass = FindObject<UClass>(nullptr, TEXT("UBufferProvider"));
     RegisterService(ZeroCopyBuffer, ZeroCopyClass ? ZeroCopyClass : UObject::StaticClass());
     
     // Register it as a fast-path for critical operations
@@ -613,7 +613,7 @@ void FCoreServiceLocator::RegisterMemoryAllocators()
     MemoryTelemetry->Initialize();
     
     // Find interface class or use UObject as fallback
-    UClass* TelemetryClass = FindObject<UClass>(ANY_PACKAGE, TEXT("UMemoryTracker"));
+    UClass* TelemetryClass = FindObject<UClass>(nullptr, TEXT("UMemoryTracker"));
     RegisterService(MemoryTelemetry, TelemetryClass ? TelemetryClass : UObject::StaticClass());
     
     UE_LOG(LogCoreServiceLocator, Log, TEXT("Registered all Memory Management allocators"));

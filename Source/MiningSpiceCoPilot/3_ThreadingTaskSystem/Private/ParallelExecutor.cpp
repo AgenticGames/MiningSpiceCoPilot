@@ -23,7 +23,7 @@ DECLARE_CYCLE_STAT(TEXT("ParallelExecutor_SIMD"), STAT_ParallelExecutor_SIMD, ST
 CSV_DECLARE_CATEGORY_MODULE_EXTERN(MININGSPICECOPILOT_API, Threading);
 
 // Constants for optimal performance
-constexpr int32 CACHE_LINE_SIZE_VALUE = 64; // Use constexpr instead of static const
+static constexpr int32 CACHE_LINE_SIZE = 64; // Cache line size for optimal performance
 static const int32 MIN_ITEMS_PER_THREAD = 64;
 static const int32 DEFAULT_GRANULARITY = 1024;
 static const int32 WORK_STEALING_ATTEMPTS = 10;
@@ -50,9 +50,9 @@ FParallelExecutor* FParallelExecutor::Instance = nullptr;
 
 // Using proper alignment macros for different compilers
 #if defined(_MSC_VER)
-    #define PARALLEL_ALIGNMENT(Type) __declspec(align(CACHE_LINE_SIZE_VALUE)) Type
+    #define PARALLEL_ALIGNMENT(Type) __declspec(align(CACHE_LINE_SIZE)) Type
 #else
-    #define PARALLEL_ALIGNMENT(Type) Type __attribute__((aligned(CACHE_LINE_SIZE_VALUE)))
+    #define PARALLEL_ALIGNMENT(Type) Type __attribute__((aligned(CACHE_LINE_SIZE)))
 #endif
 
 // AlignedStruct declaration
