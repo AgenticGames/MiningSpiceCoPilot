@@ -243,31 +243,31 @@ public:
     static FZoneTypeRegistry& Get();
     
 private:
-    /** Generates a unique type ID for new registrations */
+    /** Generates a unique type ID for new transaction type registrations */
     uint32 GenerateUniqueTypeId();
     
     /** Map of registered transaction types by ID */
     TMap<uint32, TSharedRef<FZoneTransactionTypeInfo>> TransactionTypeMap;
     
-    /** Map of transaction type names to IDs for fast lookup */
+    /** Map of registered transaction types by name for fast lookup */
     TMap<FName, uint32> TransactionTypeNameMap;
     
-    /** Map of zone grid configurations by name */
+    /** Map of registered zone grid configurations by name */
     TMap<FName, TSharedRef<FZoneGridConfig>> ZoneGridConfigMap;
     
-    /** Counter for generating new type IDs */
-    FThreadSafeCounter NextTypeId;
-    
-    /** Thread-safe flag indicating if the registry is initialized */
-    FThreadSafeBool bIsInitialized;
-    
-    /** Current schema version for the zone type system */
-    uint32 SchemaVersion;
-    
-    /** Default zone grid configuration name */
+    /** Name of the default zone grid configuration */
     FName DefaultZoneGridConfigName;
     
-    /** Lock for thread-safe access to the registry data */
+    /** Counter for generating unique type IDs */
+    uint32 NextTypeId;
+    
+    /** Thread-safe flag indicating if the registry has been initialized */
+    FThreadSafeBool bIsInitialized;
+    
+    /** Schema version of this registry */
+    uint32 SchemaVersion;
+    
+    /** Lock for thread-safe access to the registry maps */
     mutable FRWLock RegistryLock;
     
     /** Singleton instance of the registry */

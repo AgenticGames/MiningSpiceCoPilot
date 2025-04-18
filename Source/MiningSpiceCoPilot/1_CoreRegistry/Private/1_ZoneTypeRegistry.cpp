@@ -40,7 +40,7 @@ bool FZoneTypeRegistry::Initialize()
     ZoneGridConfigMap.Empty();
     
     // Reset type ID counter
-    NextTypeId.Set(1);
+    NextTypeId = 1;
     
     return true;
 }
@@ -189,7 +189,7 @@ void FZoneTypeRegistry::Clear()
         ZoneGridConfigMap.Empty();
         
         // Reset counter
-        NextTypeId.Set(1);
+        NextTypeId = 1;
         
         // Reset default config name
         DefaultZoneGridConfigName = NAME_None;
@@ -747,5 +747,5 @@ uint32 FZoneTypeRegistry::GenerateUniqueTypeId()
 {
     // Simply increment and return the next ID
     // This function is called within a locked context, so it's thread-safe
-    return NextTypeId.Increment();
+    return NextTypeId++;
 }

@@ -50,8 +50,8 @@ bool FSDFTypeRegistry::Initialize()
     OperationNameMap.Empty();
     
     // Reset type ID counter
-    NextTypeId.Set(1);
-    NextOperationId.Set(1);
+    NextTypeId = 1;
+    NextOperationId = 1;
     
     // Detect CPU capabilities
     DetectHardwareCapabilities();
@@ -233,8 +233,8 @@ void FSDFTypeRegistry::Clear()
         OperationNameMap.Empty();
         
         // Reset counters
-        NextTypeId.Set(1);
-        NextOperationId.Set(1);
+        NextTypeId = 1;
+        NextOperationId = 1;
     }
 }
 
@@ -893,12 +893,16 @@ FSDFTypeRegistry& FSDFTypeRegistry::Get()
 
 uint32 FSDFTypeRegistry::GenerateUniqueTypeId()
 {
-    return NextTypeId.Increment();
+    // Simply increment and return the next ID
+    // This function is called within a locked context, so it's thread-safe
+    return NextTypeId++;
 }
 
 uint32 FSDFTypeRegistry::GenerateUniqueOperationId()
 {
-    return NextOperationId.Increment();
+    // Simply increment and return the next ID
+    // This function is called within a locked context, so it's thread-safe
+    return NextOperationId++;
 }
 
 void FSDFTypeRegistry::DetectHardwareCapabilities()

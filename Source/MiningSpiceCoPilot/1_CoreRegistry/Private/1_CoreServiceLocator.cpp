@@ -631,7 +631,7 @@ void FCoreServiceLocator::RegisterMemoryAllocators()
 }
 
 // Implementation for GetFastPathForType
-FFastPathEntry* FCoreServiceLocator::GetFastPathForType(uint32 TypeHash, int32 InZoneID, int32 InRegionID)
+typename FCoreServiceLocator::FFastPathEntry* FCoreServiceLocator::GetFastPathForType(uint32 TypeHash, int32 InZoneID, int32 InRegionID)
 {
     if (!IsInitialized())
     {

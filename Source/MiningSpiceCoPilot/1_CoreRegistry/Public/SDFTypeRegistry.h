@@ -507,10 +507,10 @@ private:
     mutable TMap<uint32, TSharedPtr<FSharedBufferManager>> TypeBufferMap;
     
     /** Next available field type ID */
-    FThreadSafeCounter NextTypeId;
+    uint32 NextTypeId;
     
     /** Next available operation ID */
-    FThreadSafeCounter NextOperationId;
+    uint32 NextOperationId;
     
     /** Registry lock for thread safety */
     mutable FRWLock RegistryLock;

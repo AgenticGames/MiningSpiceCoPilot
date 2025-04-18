@@ -326,7 +326,7 @@ class UTransactionManager : public UInterface
 };
 
 // Forward declare the spinlock class
-class FSpinLock;
+class FSimpleSpinLock;
 
 /**
  * Interface for transaction management in the SVO+SDF mining architecture
@@ -420,11 +420,11 @@ public:
     virtual TMap<int32, uint32> GetZoneConflictStats() const = 0;
     
     /**
-     * Gets the thread-local spin lock for a zone
-     * @param ZoneId ID of the zone to get the lock for
-     * @return Pointer to the spin lock or nullptr if zone is invalid
+     * Gets the lock for a zone
+     * @param ZoneId The zone ID
+     * @return Lock object for the zone
      */
-    virtual FSpinLock* GetZoneLock(int32 ZoneId) = 0;
+    virtual FSimpleSpinLock* GetZoneLock(int32 ZoneId) = 0;
     
     /**
      * Updates the fast-path threshold for a transaction type

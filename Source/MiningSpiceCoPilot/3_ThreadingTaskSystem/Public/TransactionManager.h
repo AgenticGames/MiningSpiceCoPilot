@@ -7,6 +7,11 @@
 #include "Misc/SpinLock.h"
 #include "HAL/ThreadSafeCounter.h"
 
+// Forward declarations
+class FMiningTransactionContext;
+class FMiningTransactionContextImpl;
+class FSimpleSpinLock;
+
 /**
  * Mining transaction context implementation
  */
@@ -139,7 +144,7 @@ public:
     virtual float GetTransactionAbortRate() const override;
     virtual TMap<int32, uint32> GetZoneConflictStats() const override;
     
-    virtual class FSpinLock* GetZoneLock(int32 ZoneId) override;
+    virtual class FSimpleSpinLock* GetZoneLock(int32 ZoneId) override;
     virtual bool UpdateFastPathThreshold(uint32 TypeId, float ConflictRate) override;
     
     static ITransactionManager& Get();
@@ -156,7 +161,7 @@ private:
     TMap<uint64, FMiningTransactionContextImpl*> ActiveTransactions;
     
     /** Map of zone locks by zone ID */
-    TMap<int32, FSpinLock*> ZoneLocks;
+    TMap<int32, FSimpleSpinLock*> ZoneLocks;
     
     /** Map of zone version counters by zone ID */
     TMap<int32, FThreadSafeCounter*> ZoneVersions;
@@ -189,7 +194,7 @@ private:
     uint64 GenerateTransactionId();
     
     /** Gets or creates a zone lock */
-    FSpinLock* GetOrCreateZoneLock(int32 ZoneId);
+    FSimpleSpinLock* GetOrCreateZoneLock(int32 ZoneId);
     
     /** Gets or creates a zone version counter */
     FThreadSafeCounter* GetOrCreateZoneVersion(int32 ZoneId);

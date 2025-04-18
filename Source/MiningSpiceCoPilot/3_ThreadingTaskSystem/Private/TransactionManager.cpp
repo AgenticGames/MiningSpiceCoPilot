@@ -307,7 +307,7 @@ void FTransactionManager::Shutdown()
         
         for (auto& Pair : ZoneLocks)
         {
-            FSpinLock* LockToDelete = Pair.Value;
+            FSimpleSpinLock* LockToDelete = Pair.Value;
             Pair.Value = nullptr;
         }
         ZoneLocks.Empty();
@@ -601,7 +601,7 @@ TMap<int32, uint32> FTransactionManager::GetZoneConflictStats() const
     return ZoneConflicts;
 }
 
-FSpinLock* FTransactionManager::GetZoneLock(int32 ZoneId)
+FSimpleSpinLock* FTransactionManager::GetZoneLock(int32 ZoneId)
 {
     return GetOrCreateZoneLock(ZoneId);
 }
@@ -624,17 +624,17 @@ uint64 FTransactionManager::GenerateTransactionId()
     return static_cast<uint64>(NextTransactionId.Increment());
 }
 
-FSpinLock* FTransactionManager::GetOrCreateZoneLock(int32 ZoneId)
+FSimpleSpinLock* FTransactionManager::GetOrCreateZoneLock(int32 ZoneId)
 {
     FScopeLock ScopeLock(&ZoneLock);
     
-    FSpinLock** FoundLock = ZoneLocks.Find(ZoneId);
+    FSimpleSpinLock** FoundLock = ZoneLocks.Find(ZoneId);
     if (FoundLock)
     {
         return *FoundLock;
     }
     
-    FSpinLock* NewLock = new FSpinLock();
+    FSimpleSpinLock* NewLock = new FSimpleSpinLock();
     ZoneLocks.Add(ZoneId, NewLock);
     
     return NewLock;

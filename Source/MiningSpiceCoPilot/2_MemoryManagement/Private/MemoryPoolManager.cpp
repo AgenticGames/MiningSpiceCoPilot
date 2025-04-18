@@ -1345,34 +1345,3 @@ bool FMemoryPoolManager::RegisterFastPath(FMemoryPoolManager* Instance)
  * @param TypeInfos Array of type information for pool creation
  * @return Number of pools successfully created
  */
-int32 FMemoryPoolManager::CreateBatchPools(const TArray<struct FTypePoolInfo>& TypeInfos)
-{
-    if (!IsInitialized())
-    {
-        return 0;
-    }
-    
-    int32 SuccessCount = 0;
-    
-    // Acquire locks once for all pool creations
-    FScopeLock TypePoolsLocker(&TypePoolsLock);
-    FWriteScopeLock PoolsLocker(PoolsLock);
-    
-    for (const FTypePoolInfo& TypeInfo : TypeInfos)
-    {
-        IPoolAllocator* Pool = CreatePool(
-            TypeInfo.PoolName,
-            TypeInfo.BlockSize,
-            TypeInfo.BlockCount,
-            TypeInfo.AccessPattern
-        );
-        
-        if (Pool)
-        {
-            TypePools.Add(TypeInfo.TypeId, TSharedPtr<IPoolAllocator>(Pool));
-            SuccessCount++;
-        }
-    }
-    
-    return SuccessCount;
-}

@@ -8,7 +8,7 @@
  * High-performance spin lock implementation optimized for low contention scenarios
  * Uses exponential backoff to reduce CPU usage under contention
  */
-class MININGSPICECOPILOT_API FSpinLock
+class MININGSPICECOPILOT_API FSimpleSpinLock
 {
 private:
     /** The lock state - 0 means unlocked, 1 means locked */
@@ -16,10 +16,10 @@ private:
 
 public:
     /** Constructor */
-    FORCEINLINE FSpinLock() : LockState(0) {}
+    FORCEINLINE FSimpleSpinLock() : LockState(0) {}
 
     /** Destructor */
-    FORCEINLINE ~FSpinLock() {}
+    FORCEINLINE ~FSimpleSpinLock() {}
 
     /**
      * Acquires the lock, spinning until successful
