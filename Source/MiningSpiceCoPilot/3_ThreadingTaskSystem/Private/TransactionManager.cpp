@@ -1,13 +1,68 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "TransactionManager.h"
-#include "Misc/ScopeLock.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "HAL/PlatformAtomics.h"
 #include "HAL/PlatformTLS.h"
-#include "Utils/SimpleSpinLock.h" // Replace any Misc/SpinLock.h include
+#include "Utils/SimpleSpinLock.h" // Custom implementation from spinlocks.txt
+#include "ThreadSafety.h" // For FScopedSpinLock
 #include "GenericPlatform/GenericPlatformAtomics.h"
+
+/**
+ * Scoped spin lock guard using custom FSimpleSpinLock
+ * Automatically acquires spin lock on construction and releases on destruction
+ */
+class FSimpleScopedSpinLock
+{
+public:
+    /**
+     * Constructor
+     * @param InLock Spin lock to acquire
+     */
+    FSimpleScopedSpinLock(FSimpleSpinLock& InLock)
+        : Lock(InLock)
+        , bLocked(true)
+    {
+        Lock.Lock();
+    }
+    
+    /** Destructor */
+    ~FSimpleScopedSpinLock()
+    {
+        if (bLocked)
+        {
+            Lock.Unlock();
+        }
+    }
+    
+    /** Explicitly unlock before destruction */
+    void Unlock()
+    {
+        if (bLocked)
+        {
+            Lock.Unlock();
+            bLocked = false;
+        }
+    }
+    
+    /** Check if we're currently holding the lock */
+    bool IsLocked() const
+    {
+        return bLocked;
+    }
+    
+private:
+    /** The lock we're managing */
+    FSimpleSpinLock& Lock;
+    
+    /** Whether we currently hold the lock */
+    bool bLocked;
+    
+    /** Disable copying */
+    FSimpleScopedSpinLock(const FSimpleScopedSpinLock&) = delete;
+    FSimpleScopedSpinLock& operator=(const FSimpleScopedSpinLock&) = delete;
+};
 
 // Initialize static members
 FTransactionManager* FTransactionManager::Instance = nullptr;
@@ -54,13 +109,13 @@ uint64 FMiningTransactionContextImpl::GetTransactionId() const
 
 ETransactionStatus FMiningTransactionContextImpl::GetStatus() const
 {
-    FScopeLock ScopeLock(&Lock);
+    FSimpleScopedSpinLock ScopeLock(Lock);
     return Status;
 }
 
 bool FMiningTransactionContextImpl::AddToReadSet(int32 ZoneId, int32 MaterialId)
 {
-    FScopeLock ScopeLock(&Lock);
+    FSimpleScopedSpinLock ScopeLock(Lock);
     
     // Check if transaction is active
     if (Status != ETransactionStatus::InProgress)
@@ -96,7 +151,7 @@ bool FMiningTransactionContextImpl::AddToReadSet(int32 ZoneId, int32 MaterialId)
 
 bool FMiningTransactionContextImpl::AddToWriteSet(int32 ZoneId, int32 MaterialId)
 {
-    FScopeLock ScopeLock(&Lock);
+    FSimpleScopedSpinLock ScopeLock(Lock);
     
     // Check if transaction is active
     if (Status != ETransactionStatus::InProgress)
@@ -135,7 +190,7 @@ bool FMiningTransactionContextImpl::AddToWriteSet(int32 ZoneId, int32 MaterialId
 
 FTransactionStats FMiningTransactionContextImpl::GetStats() const
 {
-    FScopeLock ScopeLock(&Lock);
+    FSimpleScopedSpinLock ScopeLock(Lock);
     return Stats;
 }
 
@@ -146,25 +201,25 @@ const FTransactionConfig& FMiningTransactionContextImpl::GetConfig() const
 
 TArray<FTransactionConflict> FMiningTransactionContextImpl::GetConflicts() const
 {
-    FScopeLock ScopeLock(&Lock);
+    FSimpleScopedSpinLock ScopeLock(Lock);
     return Conflicts;
 }
 
 void FMiningTransactionContextImpl::SetName(const FString& InName)
 {
-    FScopeLock ScopeLock(&Lock);
+    FSimpleScopedSpinLock ScopeLock(Lock);
     Name = InName;
 }
 
 FString FMiningTransactionContextImpl::GetName() const
 {
-    FScopeLock ScopeLock(&Lock);
+    FSimpleScopedSpinLock ScopeLock(Lock);
     return Name;
 }
 
 void FMiningTransactionContextImpl::SetStatus(ETransactionStatus NewStatus)
 {
-    FScopeLock ScopeLock(&Lock);
+    FSimpleScopedSpinLock ScopeLock(Lock);
     Status = NewStatus;
     
     // Update timestamps based on state transitions
@@ -202,7 +257,7 @@ const TArray<FVersionRecord>& FMiningTransactionContextImpl::GetWriteSet() const
 
 void FMiningTransactionContextImpl::AddConflict(const FTransactionConflict& Conflict)
 {
-    FScopeLock ScopeLock(&Lock);
+    FSimpleScopedSpinLock ScopeLock(Lock);
     Conflicts.Add(Conflict);
     Stats.ConflictCount++;
 }
@@ -230,25 +285,25 @@ uint32 FMiningTransactionContextImpl::IncrementRetryCount()
 
 void FMiningTransactionContextImpl::RecordLockWaitTime(double WaitTimeMs)
 {
-    FScopeLock ScopeLock(&Lock);
+    FSimpleScopedSpinLock ScopeLock(Lock);
     Stats.LockWaitTimeMs += WaitTimeMs;
 }
 
 void FMiningTransactionContextImpl::RecordValidation()
 {
-    FScopeLock ScopeLock(&Lock);
+    FSimpleScopedSpinLock ScopeLock(Lock);
     Stats.ValidationCount++;
 }
 
 void FMiningTransactionContextImpl::SetPeakMemoryUsage(uint64 MemoryUsageBytes)
 {
-    FScopeLock ScopeLock(&Lock);
+    FSimpleScopedSpinLock ScopeLock(Lock);
     Stats.PeakMemoryBytes = MemoryUsageBytes;
 }
 
 void FMiningTransactionContextImpl::ClearReadWriteSets()
 {
-    FScopeLock ScopeLock(&Lock);
+    FSimpleScopedSpinLock ScopeLock(Lock);
     ReadSet.Empty();
     WriteSet.Empty();
 }
@@ -303,7 +358,7 @@ void FTransactionManager::Shutdown()
     
     // Clean up zone and material locks
     {
-        FScopeLock ScopeLock(&ZoneLock);
+        FSimpleScopedSpinLock ScopeLock(ZoneLock);
         
         for (auto& Pair : ZoneLocks)
         {
@@ -327,7 +382,7 @@ void FTransactionManager::Shutdown()
     
     // Clean up active transactions
     {
-        FScopeLock ScopeLock(&TransactionLock);
+        FSimpleScopedSpinLock ScopeLock(TransactionLock);
         
         for (auto& Pair : ActiveTransactions)
         {
@@ -371,7 +426,7 @@ bool FTransactionManager::BeginTransaction(const FTransactionConfig& Config, FMi
     
     // Add to active transactions
     {
-        FScopeLock ScopeLock(&TransactionLock);
+        FSimpleScopedSpinLock ScopeLock(TransactionLock);
         ActiveTransactions.Add(TransactionId, Context);
     }
     
@@ -489,6 +544,20 @@ bool FTransactionManager::CommitTransaction(FMiningTransactionContext* Context)
     // Increment committed transaction count
     FPlatformAtomics::InterlockedIncrement(reinterpret_cast<volatile int64*>(&CommittedTransactions));
     
+    // After a successful commit, call the completion callback if registered
+    FSimpleScopedSpinLock CallbackLockScope(CallbackLock);
+    
+    uint32 TypeId = TransactionImpl->GetConfig().TypeId;
+    FTransactionCompletionDelegate* Callback = CompletionCallbacks.Find(TypeId);
+    
+    if (Callback && Callback->IsBound())
+    {
+        FTransactionStats Stats = TransactionImpl->GetStats();
+        Callback->Execute(TypeId, Stats);
+        
+        UE_LOG(LogTemp, Verbose, TEXT("FTransactionManager::CommitTransaction - executed completion callback for type ID %u"), TypeId);
+    }
+    
     return true;
 }
 
@@ -551,7 +620,7 @@ FMiningTransactionContext* FTransactionManager::GetCurrentTransaction()
 
 FMiningTransactionContext* FTransactionManager::GetTransaction(uint64 TransactionId)
 {
-    FScopeLock ScopeLock(&TransactionLock);
+    FSimpleScopedSpinLock ScopeLock(TransactionLock);
     
     FMiningTransactionContextImpl** FoundTransaction = ActiveTransactions.Find(TransactionId);
     if (FoundTransaction)
@@ -566,7 +635,7 @@ TMap<FString, double> FTransactionManager::GetGlobalStats() const
 {
     TMap<FString, double> Stats;
     
-    FScopeLock ScopeLock(&TransactionLock);
+    FSimpleScopedSpinLock ScopeLock(TransactionLock);
     
     Stats.Add(TEXT("TotalTransactions"), static_cast<double>(TotalTransactions));
     Stats.Add(TEXT("CommittedTransactions"), static_cast<double>(CommittedTransactions));
@@ -579,13 +648,13 @@ TMap<FString, double> FTransactionManager::GetGlobalStats() const
 
 uint32 FTransactionManager::GetActiveTransactionCount() const
 {
-    FScopeLock ScopeLock(&TransactionLock);
+    FSimpleScopedSpinLock ScopeLock(TransactionLock);
     return ActiveTransactions.Num();
 }
 
 float FTransactionManager::GetTransactionAbortRate() const
 {
-    FScopeLock ScopeLock(&TransactionLock);
+    FSimpleScopedSpinLock ScopeLock(TransactionLock);
     
     if (TotalTransactions == 0)
     {
@@ -597,7 +666,7 @@ float FTransactionManager::GetTransactionAbortRate() const
 
 TMap<int32, uint32> FTransactionManager::GetZoneConflictStats() const
 {
-    FScopeLock ScopeLock(&ZoneLock);
+    FSimpleScopedSpinLock ScopeLock(ZoneLock);
     return ZoneConflicts;
 }
 
@@ -608,7 +677,7 @@ FSimpleSpinLock* FTransactionManager::GetZoneLock(int32 ZoneId)
 
 bool FTransactionManager::UpdateFastPathThreshold(uint32 TypeId, float ConflictRate)
 {
-    FScopeLock ScopeLock(&TransactionLock);
+    FSimpleScopedSpinLock ScopeLock(TransactionLock);
     
     FastPathThresholds.FindOrAdd(TypeId) = ConflictRate;
     return true;
@@ -626,7 +695,7 @@ uint64 FTransactionManager::GenerateTransactionId()
 
 FSimpleSpinLock* FTransactionManager::GetOrCreateZoneLock(int32 ZoneId)
 {
-    FScopeLock ScopeLock(&ZoneLock);
+    FSimpleScopedSpinLock ScopeLock(ZoneLock);
     
     FSimpleSpinLock** FoundLock = ZoneLocks.Find(ZoneId);
     if (FoundLock)
@@ -642,7 +711,7 @@ FSimpleSpinLock* FTransactionManager::GetOrCreateZoneLock(int32 ZoneId)
 
 FThreadSafeCounter* FTransactionManager::GetOrCreateZoneVersion(int32 ZoneId)
 {
-    FScopeLock ScopeLock(&ZoneLock);
+    FSimpleScopedSpinLock ScopeLock(ZoneLock);
     
     FThreadSafeCounter** FoundCounter = ZoneVersions.Find(ZoneId);
     if (FoundCounter)
@@ -658,7 +727,7 @@ FThreadSafeCounter* FTransactionManager::GetOrCreateZoneVersion(int32 ZoneId)
 
 FThreadSafeCounter* FTransactionManager::GetOrCreateMaterialVersion(int32 ZoneId, int32 MaterialId)
 {
-    FScopeLock ScopeLock(&ZoneLock);
+    FSimpleScopedSpinLock ScopeLock(ZoneLock);
     
     FString Key = FString::Printf(TEXT("%d_%d"), ZoneId, MaterialId);
     
@@ -773,7 +842,7 @@ bool FTransactionManager::ValidateReadSet(const FMiningTransactionContextImpl* T
 
 void FTransactionManager::CleanupCompletedTransactions(double MaxAgeSeconds)
 {
-    FScopeLock ScopeLock(&TransactionLock);
+    FSimpleScopedSpinLock ScopeLock(TransactionLock);
     
     double CurrentTime = FPlatformTime::Seconds();
     TArray<uint64> TransactionsToRemove;
@@ -813,7 +882,7 @@ void FTransactionManager::CleanupCompletedTransactions(double MaxAgeSeconds)
 
 void FTransactionManager::RecordConflict(int32 ZoneId)
 {
-    FScopeLock ScopeLock(&ZoneLock);
+    FSimpleScopedSpinLock ScopeLock(ZoneLock);
     
     // Increment global conflict counter
     FPlatformAtomics::InterlockedIncrement(reinterpret_cast<volatile int64*>(&ConflictCount));
@@ -829,7 +898,7 @@ void FTransactionManager::RecordConflict(int32 ZoneId)
 bool FTransactionManager::ShouldUseFastPath(const FMiningTransactionContextImpl* Transaction) const
 {
     // Use proper scoped lock with reference to class member
-    FScopeLock ScopeLock(&this->TransactionLock);
+    FSimpleScopedSpinLock ScopeLock(this->TransactionLock);
     
     const float* FoundThreshold = FastPathThresholds.Find(Transaction->GetConfig().TypeId);
     float Threshold = FoundThreshold ? *FoundThreshold : 0.1f; // Default threshold
@@ -880,5 +949,15 @@ bool FTransactionManager::MergeChanges(FMiningTransactionContextImpl* Transactio
     // In a real implementation, you would also need to merge write operations
     // This would require domain-specific knowledge of how to combine conflicting changes
     
+    return true;
+}
+
+bool FTransactionManager::RegisterCompletionCallback(uint32 TypeId, const FTransactionCompletionDelegate& Callback)
+{
+    FSimpleScopedSpinLock ScopeLock(CallbackLock);
+    
+    CompletionCallbacks.FindOrAdd(TypeId) = Callback;
+    
+    UE_LOG(LogTemp, Verbose, TEXT("FTransactionManager::RegisterCompletionCallback - registered callback for type ID %u"), TypeId);
     return true;
 }

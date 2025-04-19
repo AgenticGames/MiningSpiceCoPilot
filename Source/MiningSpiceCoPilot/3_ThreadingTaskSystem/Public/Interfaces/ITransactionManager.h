@@ -5,9 +5,20 @@
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
 #include "Utils/SimpleSpinLock.h" // Replace the Misc/SpinLock.h include with our custom implementation
+#include "HAL/ThreadSafeCounter.h"
 #include "ITransactionManager.generated.h"
 
+// Forward declarations
+class FSimpleSpinLock;
+class FMiningTransactionContext;
+struct FTransactionStats;
+struct FTransactionConflict;
+struct FVersionRecord;
 
+/** 
+ * Delegate for transaction completion events 
+ */
+DECLARE_DELEGATE_TwoParams(FTransactionCompletionDelegate, uint32 /*TypeId*/, const FTransactionStats& /*Stats*/);
 
 /**
  * Transaction conflict resolution strategy
@@ -325,9 +336,6 @@ class UTransactionManager : public UInterface
     GENERATED_BODY()
 };
 
-// Forward declare the spinlock class
-class FSimpleSpinLock;
-
 /**
  * Interface for transaction management in the SVO+SDF mining architecture
  * Provides zone-based transaction management for concurrent mining operations
@@ -433,6 +441,14 @@ public:
      * @return True if threshold was updated
      */
     virtual bool UpdateFastPathThreshold(uint32 TypeId, float ConflictRate) = 0;
+    
+    /**
+     * Registers a callback for transaction completion events
+     * @param TypeId Type ID to register the callback for
+     * @param Callback Delegate to call when a transaction of this type completes
+     * @return True if registration was successful
+     */
+    virtual bool RegisterCompletionCallback(uint32 TypeId, const FTransactionCompletionDelegate& Callback) = 0;
     
     /**
      * Gets the singleton instance

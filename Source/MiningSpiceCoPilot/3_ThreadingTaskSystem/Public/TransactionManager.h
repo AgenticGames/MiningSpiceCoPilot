@@ -4,13 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "Interfaces/ITransactionManager.h"
-#include "Misc/SpinLock.h"
 #include "HAL/ThreadSafeCounter.h"
+#include "Utils/SimpleSpinLock.h" // Custom implementation from spinlocks.txt
 
 // Forward declarations
 class FMiningTransactionContext;
 class FMiningTransactionContextImpl;
-class FSimpleSpinLock;
 
 /**
  * Mining transaction context implementation
@@ -110,7 +109,7 @@ private:
     double CommitEndTime;
     
     /** Lock for modifying transaction state */
-    mutable FCriticalSection Lock;
+    mutable FSimpleSpinLock Lock;
 };
 
 /**
@@ -147,6 +146,8 @@ public:
     virtual class FSimpleSpinLock* GetZoneLock(int32 ZoneId) override;
     virtual bool UpdateFastPathThreshold(uint32 TypeId, float ConflictRate) override;
     
+    virtual bool RegisterCompletionCallback(uint32 TypeId, const FTransactionCompletionDelegate& Callback) override;
+    
     static ITransactionManager& Get();
     //~ End ITransactionManager Interface
     
@@ -170,10 +171,10 @@ private:
     TMap<FString, FThreadSafeCounter*> MaterialVersions;
     
     /** Lock for transaction map access */
-    mutable FCriticalSection TransactionLock;
+    mutable FSimpleSpinLock TransactionLock;
     
     /** Lock for zone map access */
-    mutable FCriticalSection ZoneLock;
+    mutable FSimpleSpinLock ZoneLock;
     
     /** Next transaction ID */
     FThreadSafeCounter NextTransactionId;
@@ -189,6 +190,12 @@ private:
     
     /** Map of fast-path thresholds by transaction type */
     TMap<uint32, float> FastPathThresholds;
+    
+    /** Map of completion callbacks by transaction type ID */
+    TMap<uint32, FTransactionCompletionDelegate> CompletionCallbacks;
+    
+    /** Lock for callback map access */
+    mutable FSimpleSpinLock CallbackLock;
     
     /** Generates a unique transaction ID */
     uint64 GenerateTransactionId();

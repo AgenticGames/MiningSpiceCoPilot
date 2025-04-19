@@ -84,7 +84,7 @@ These lock types provide different performance characteristics and are useful in
 - **Atomic operations**: For the simplest thread-safe operations on primitive types
 - **Specialized locks**: For specific performance needs or application domains
 
-## PUT MY CIUSTOM LOOCKS HERE
+## PUT MY CUSTOM LOOCKS HERE
 
 ```cpp
 /**

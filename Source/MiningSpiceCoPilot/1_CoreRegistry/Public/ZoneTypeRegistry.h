@@ -13,6 +13,10 @@
 #include "Interfaces/IPoolAllocator.h"
 #include "ThreadSafety.h"
 
+// Forward declarations
+class FTransactionManager;
+struct FTransactionStats;
+
 /**
  * Transaction concurrency level for zone operations
  */
@@ -50,6 +54,24 @@ enum class ERetryStrategy : uint8
 };
 
 /**
+ * Transaction priority levels
+ */
+enum class ETransactionPriority : uint8
+{
+    /** Low priority transactions */
+    Low = 0,
+    
+    /** Normal priority transactions */
+    Normal = 128,
+    
+    /** High priority transactions */
+    High = 192,
+    
+    /** Critical priority transactions */
+    Critical = 255
+};
+
+/**
  * Structure containing metadata for a zone transaction type
  */
 struct MININGSPICECOPILOT_API FZoneTransactionTypeInfo
@@ -76,7 +98,7 @@ struct MININGSPICECOPILOT_API FZoneTransactionTypeInfo
     int32 MaterialChannelId;
     
     /** Priority for conflict resolution */
-    uint32 Priority;
+    uint32 ConflictPriority;
     
     /** Whether this transaction type requires version tracking */
     bool bRequiresVersionTracking;
@@ -92,6 +114,24 @@ struct MININGSPICECOPILOT_API FZoneTransactionTypeInfo
     
     /** Schema version for this transaction type */
     uint32 SchemaVersion;
+    
+    /** Historical conflict rates for adaptive optimization */
+    TArray<float> HistoricalConflictRates;
+    
+    /** Total number of times this transaction type has been executed */
+    uint32 TotalExecutions;
+    
+    /** Total number of conflicts encountered */
+    uint32 ConflictCount;
+    
+    /** Whether this transaction type supports partial execution */
+    bool bSupportsPartialExecution;
+    
+    /** Whether results can be merged in case of conflicts */
+    bool bCanMergeResults;
+    
+    /** Transaction priority for scheduling */
+    ETransactionPriority Priority;
 };
 
 /**
@@ -114,6 +154,29 @@ struct MININGSPICECOPILOT_API FZoneGridConfig
     /** Number of versions to track in history */
     uint32 VersionHistoryLength;
 };
+
+/**
+ * Zone hierarchy information for nested zones
+ */
+struct MININGSPICECOPILOT_API FZoneHierarchyInfo
+{
+    /** Parent zone ID */
+    int32 ParentZoneId;
+    
+    /** Child zone IDs */
+    TArray<int32> ChildZoneIds;
+    
+    /** Propagation policy for access control */
+    bool bPropagateReadsToChildren;
+    
+    /** Propagation policy for writes */
+    bool bPropagateWritesToChildren;
+};
+
+/** 
+ * Delegate for transaction completion events 
+ */
+DECLARE_DELEGATE_TwoParams(FTransactionCompletionDelegate, uint32 /*TypeId*/, const FTransactionStats& /*Stats*/);
 
 /**
  * Registry for zone transaction types in the mining system
@@ -226,6 +289,43 @@ public:
     bool UpdateFastPathThreshold(uint32 InTypeId, float InConflictRate);
     
     /**
+     * Updates conflict statistics for a transaction type
+     * @param InTypeId Transaction type ID
+     * @param InNewRate New conflict rate to record
+     * @return True if statistics were updated successfully
+     */
+    bool UpdateConflictRate(uint32 InTypeId, float InNewRate);
+    
+    /**
+     * Registers a parent-child relationship between zones
+     * @param ParentZoneId Parent zone ID
+     * @param ChildZones Array of child zone IDs
+     * @return True if registration was successful
+     */
+    bool RegisterZoneHierarchy(int32 ParentZoneId, const TArray<int32>& ChildZones);
+    
+    /**
+     * Gets the child zones for a parent zone
+     * @param ParentZoneId Parent zone ID
+     * @return Array of child zone IDs, or empty array if none found
+     */
+    TArray<int32> GetChildZones(int32 ParentZoneId) const;
+    
+    /**
+     * Gets the parent zone for a child zone
+     * @param ChildZoneId Child zone ID
+     * @return Parent zone ID, or INDEX_NONE if no parent exists
+     */
+    int32 GetParentZone(int32 ChildZoneId) const;
+    
+    /**
+     * Callback handler for transaction completion
+     * @param TypeId Transaction type ID
+     * @param Stats Transaction statistics
+     */
+    void OnTransactionCompleted(uint32 TypeId, const FTransactionStats& Stats);
+    
+    /**
      * Checks if a transaction type is registered
      * @param InTypeId Unique ID of the transaction type
      * @return True if the type is registered
@@ -249,33 +349,45 @@ private:
     /** Map of registered transaction types by ID */
     TMap<uint32, TSharedRef<FZoneTransactionTypeInfo>> TransactionTypeMap;
     
-    /** Map of registered transaction type names to IDs */
+    /** Map of transaction type names to IDs for quick lookup */
     TMap<FName, uint32> TransactionTypeNameMap;
     
-    /** Map of registered zone grid configurations */
+    /** Map of zone grid configurations by name */
     TMap<FName, TSharedRef<FZoneGridConfig>> ZoneGridConfigMap;
     
-    /** Default zone grid configuration name */
-    FName DefaultZoneGridConfigName;
+    /** Name of the default zone grid configuration */
+    FName DefaultConfigName;
     
-    /** Counter for generating unique type IDs */
-    FThreadSafeCounter NextTypeId;
+    /** Map of zone hierarchies by parent ID */
+    TMap<int32, TArray<int32>> ZoneHierarchy;
     
-    /** Flag indicating whether the registry is initialized */
-    FThreadSafeBool bIsInitialized;
+    /** Reverse map of child to parent zones */
+    TMap<int32, int32> ChildToParentMap;
     
-    /** Current schema version */
+    /** Registry name */
+    FName RegistryName;
+    
+    /** Schema version for this registry */
     uint32 SchemaVersion;
     
-    /** Registry lock for thread safety - Replace FRWLock with FSpinLock */
-    mutable FSpinLock RegistryLock;
+    /** Next available type ID */
+    FThreadSafeCounter NextTypeId;
     
-    /** Transaction type version counter for optimistic concurrency */
+    /** Version counter for type registrations */
     FThreadSafeCounter TypeVersion;
     
-    /** Singleton instance */
-    static FZoneTypeRegistry* Singleton;
+    /** Lock for thread safety */
+    FSpinLock RegistryLock;
     
-    /** Flag indicating whether singleton has been initialized */
-    static FThreadSafeBool bSingletonInitialized;
+    /** Lock for initialization */
+    FSpinLock InitializationLock;
+    
+    /** Initialization flag */
+    bool bIsInitialized;
+    
+    /** Map of transaction completion callbacks */
+    TMap<uint32, FTransactionCompletionDelegate> CompletionCallbacks;
+    
+    /** Singleton instance */
+    static FZoneTypeRegistry* Instance;
 };
