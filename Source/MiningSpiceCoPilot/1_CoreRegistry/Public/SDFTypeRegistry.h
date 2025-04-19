@@ -13,6 +13,7 @@
 #include "Interfaces/IMemoryManager.h"
 #include "Interfaces/IPoolAllocator.h"
 #include "SharedBufferManager.h"
+#include "ThreadSafety.h"
 
 /**
  * SDF field operation types for CSG operations
@@ -325,6 +326,161 @@ struct MININGSPICECOPILOT_API FSDFOperationInfo
 };
 
 /**
+ * Shared buffer for SDF field data
+ * Provides thread-safe access to field data with version tracking
+ */
+class MININGSPICECOPILOT_API FSharedFieldBuffer
+{
+public:
+    /** Constructor */
+    FSharedFieldBuffer(uint32 InCapacity, uint32 InTypeId)
+        : Capacity(InCapacity)
+        , TypeId(InTypeId)
+        , Version(1)
+        , RefCount(0)
+    {
+        Data = FMemory::Malloc(Capacity);
+    }
+    
+    /** Destructor */
+    ~FSharedFieldBuffer()
+    {
+        if (Data)
+        {
+            FMemory::Free(Data);
+            Data = nullptr;
+        }
+    }
+    
+    /** Gets a pointer to the buffer data */
+    void* GetData() const
+    {
+        return Data;
+    }
+    
+    /** Gets the buffer capacity */
+    uint32 GetCapacity() const
+    {
+        return Capacity;
+    }
+    
+    /** Gets the buffer version */
+    uint32 GetVersion() const
+    {
+        return Version.GetValue();
+    }
+    
+    /** Increments the buffer version */
+    uint32 IncrementVersion()
+    {
+        return Version.Increment();
+    }
+    
+    /** Gets the buffer type ID */
+    uint32 GetTypeId() const
+    {
+        return TypeId;
+    }
+    
+    /** Increments the reference count */
+    void AddRef()
+    {
+        RefCount.Increment();
+    }
+    
+    /** Decrements the reference count */
+    uint32 Release()
+    {
+        return RefCount.Decrement();
+    }
+    
+    /** Gets the current reference count */
+    uint32 GetRefCount() const
+    {
+        return RefCount.GetValue();
+    }
+    
+private:
+    /** Buffer data */
+    void* Data;
+    
+    /** Buffer capacity */
+    uint32 Capacity;
+    
+    /** Type ID for this buffer */
+    uint32 TypeId;
+    
+    /** Version counter for optimistic concurrency */
+    FThreadSafeCounter Version;
+    
+    /** Reference count */
+    FThreadSafeCounter RefCount;
+};
+
+/**
+ * Structure for caching field operations
+ */
+struct MININGSPICECOPILOT_API FFieldOperationCacheEntry 
+{ 
+    /** Version of the cached operation */
+    uint32 Version; 
+    
+    /** The cached operation info */
+    TSharedRef<FSDFOperationInfo> OperationInfo; 
+    
+    /** Default constructor */
+    FFieldOperationCacheEntry() 
+        : Version(0) 
+    {}
+    
+    /** Constructor with parameters */
+    FFieldOperationCacheEntry(uint32 InVersion, TSharedRef<FSDFOperationInfo> InOperationInfo)
+        : Version(InVersion)
+        , OperationInfo(InOperationInfo)
+    {}
+};
+
+/**
+ * Forward declaration of FSVOFieldReadLock for FFieldEvaluationContext
+ */
+class FSVOFieldReadLock;
+
+/**
+ * Context structure for field evaluation
+ */
+struct MININGSPICECOPILOT_API FFieldEvaluationContext 
+{ 
+    /** Version of this evaluation context */
+    uint32 Version; 
+    
+    /** Pointer to the field data */
+    void* FieldData;
+    
+    /** Type ID of the field */
+    uint32 TypeId;
+    
+    /** Default constructor */
+    FFieldEvaluationContext()
+        : Version(0)
+        , FieldData(nullptr)
+        , TypeId(0)
+    {}
+    
+    /** Constructor with parameters */
+    FFieldEvaluationContext(uint32 InVersion, void* InFieldData, uint32 InTypeId)
+        : Version(InVersion)
+        , FieldData(InFieldData)
+        , TypeId(InTypeId)
+    {}
+    
+    /** Check if this context is valid */
+    bool IsValid(const FSVOFieldReadLock& EvaluationLock) const
+    { 
+        return EvaluationLock.GetCurrentVersion() == Version; 
+    }
+};
+
+/**
  * Registry for SDF field types in the mining system
  * Handles field type registration, operation compatibility, and evaluation strategies
  */
@@ -496,41 +652,69 @@ private:
     uint32 GenerateUniqueOperationId();
     
     /** Maps of registered field types by ID and name */
-    TMap<uint32, TSharedRef<FSDFFieldTypeInfo>> FieldTypeMap;
+    TMap<uint32, TSharedRef<FSDFFieldTypeInfo, ESPMode::ThreadSafe>> TypeMap;
+    TMap<FName, uint32> TypeNameMap;
+    TMap<uint32, TSharedRef<FSDFFieldTypeInfo, ESPMode::ThreadSafe>> FieldTypeMap;
     TMap<FName, uint32> FieldTypeNameMap;
     
     /** Maps of registered operations by ID and name */
-    TMap<uint32, TSharedRef<FSDFOperationInfo>> OperationMap;
+    TMap<uint32, TSharedRef<FSDFOperationInfo, ESPMode::ThreadSafe>> OperationMap;
     TMap<FName, uint32> OperationNameMap;
     
-    /** Map of type IDs to shared buffer managers for type-safe memory access */
-    mutable TMap<uint32, TSharedPtr<FSharedBufferManager>> TypeBufferMap;
+    /** Lock for general registry operations */
+    mutable FSpinLock RegistryLock;
     
-    /** Next available field type ID */
-    uint32 NextTypeId;
+    /** Lock for field evaluation operations */
+    FSVOFieldReadLock EvaluationLock;
     
-    /** Next available operation ID */
-    uint32 NextOperationId;
+    /** Map of type buffers for shared usage */
+    TMap<uint32, TSharedRef<FSharedBufferManager, ESPMode::ThreadSafe>> TypeBufferMap;
     
-    /** Registry lock for thread safety */
-    mutable FRWLock RegistryLock;
+    /** Current maximum type ID */
+    uint32 MaxTypeId;
     
-    /** Flag indicating if the registry has been initialized */
+    /** Current maximum operation ID */
+    uint32 MaxOperationId;
+    
+    /** Counter for contention tracking */
+    mutable FThreadSafeCounter ContentionCount;
+    
+    /** Atomic type version counter for optimistic concurrency */
+    FThreadSafeCounter TypeVersion;
+    
+    /** Detected hardware capabilities */
+    bool bSIMDCapabilitiesDetected;
+    bool bSupportsSSE2;
+    bool bSupportsAVX;
+    bool bSupportsAVX2;
+    
+    /** Field operation cache */
+    TMap<uint32, FFieldOperationCacheEntry> OperationCache;
+    
+    /** Cached memory allocator */
+    IPoolAllocator* MemoryAllocator;
+    
+    /** Pool of field evaluation contexts */
+    TArray<FFieldEvaluationContext> EvaluationContextPool;
+    
+    /** Mutex for accessing the evaluation context pool */
+    FSpinLock ContextPoolLock;
+    
+    /** Flag indicating whether the registry is initialized */
     FThreadSafeBool bIsInitialized;
     
-    /** Schema version for this registry */
+    /** Current schema version */
     uint32 SchemaVersion;
     
-    /** Hardware capability flags */
-    bool bHasSSE2;
-    bool bHasAVX;
-    bool bHasAVX2;
-    bool bHasAVX512;
-    bool bHasGPUSupport;
+    /** Next available type ID */
+    FThreadSafeCounter NextTypeId;
+    
+    /** Next available operation ID */
+    FThreadSafeCounter NextOperationId;
     
     /** Singleton instance */
     static FSDFTypeRegistry* Singleton;
     
-    /** Flag indicating if singleton has been initialized */
+    /** Flag indicating whether singleton has been initialized */
     static FThreadSafeBool bSingletonInitialized;
 };

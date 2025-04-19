@@ -43,47 +43,32 @@ void FThreadSafety::SetThreadAccessedZones(TArray<int32>* Zones)
     FPlatformTLS::SetTlsValue(ThreadAccessedZonesTLS, Zones);
 }
 
-// Add the missing atomic lock methods to TAtomic<int32>
-// This is a simple implementation to fix the compiler errors
-namespace FThreadSafetyHelpers
+// Implement the atomic operations for FThreadSafetyHelpers without redefining the class
+// These are helper functions that are used by the thread safety system
+
+// Helper for locking an atomic variable
+bool TryLockAtomic(TAtomic<int32>& LockVar)
 {
-    // Custom atomic lock helpers
-    bool TryLock(TAtomic<int32>& LockVar)
+    // Cast to volatile int32* for compatibility with InterlockedCompareExchange
+    volatile int32* LockPtr = reinterpret_cast<volatile int32*>(&LockVar);
+    return FPlatformAtomics::InterlockedCompareExchange(LockPtr, 1, 0) == 0;
+}
+
+void LockAtomic(TAtomic<int32>& LockVar)
+{
+    // Cast to volatile int32* for compatibility with InterlockedCompareExchange
+    volatile int32* LockPtr = reinterpret_cast<volatile int32*>(&LockVar);
+    while (FPlatformAtomics::InterlockedCompareExchange(LockPtr, 1, 0) != 0)
     {
-        // Cast to volatile int32* for compatibility with InterlockedCompareExchange
-        volatile int32* LockPtr = reinterpret_cast<volatile int32*>(&LockVar);
-        return FPlatformAtomics::InterlockedCompareExchange(LockPtr, 1, 0) == 0;
+        FPlatformProcess::Yield();
     }
-    
-    void Lock(TAtomic<int32>& LockVar)
-    {
-        // Cast to volatile int32* for compatibility with InterlockedCompareExchange
-        volatile int32* LockPtr = reinterpret_cast<volatile int32*>(&LockVar);
-        while (FPlatformAtomics::InterlockedCompareExchange(LockPtr, 1, 0) != 0)
-        {
-            FPlatformProcess::Yield();
-        }
-    }
-    
-    void Unlock(TAtomic<int32>& LockVar)
-    {
-        // Cast to volatile int32* for compatibility with InterlockedExchange
-        volatile int32* LockPtr = reinterpret_cast<volatile int32*>(&LockVar);
-        FPlatformAtomics::InterlockedExchange(LockPtr, 0);
-    }
-    
-    // Helper for FThreadSafeCounter
-    bool AtomicCompareExchange(FThreadSafeCounter& Counter, int32& InOutCurrentValue, int32 NewValue)
-    {
-        const int32 InitialValue = Counter.GetValue();
-        if (InitialValue == InOutCurrentValue)
-        {
-            Counter.Set(NewValue);
-            return true;
-        }
-        InOutCurrentValue = InitialValue;
-        return false;
-    }
+}
+
+void UnlockAtomic(TAtomic<int32>& LockVar)
+{
+    // Cast to volatile int32* for compatibility with InterlockedExchange
+    volatile int32* LockPtr = reinterpret_cast<volatile int32*>(&LockVar);
+    FPlatformAtomics::InterlockedExchange(LockPtr, 0);
 }
 
 //----------------------------------------------------------------------
@@ -478,59 +463,42 @@ FHybridLock::~FHybridLock()
 
 bool FHybridLock::Lock(uint32 TimeoutMs)
 {
-    // If contention is high, use the critical section
     if (bUseSlowLock.GetValue() > 0)
     {
-        if (TimeoutMs == 0)
-        {
-            SlowLock.Lock();
-            return true;
-        }
-        
-        double StartTime = FPlatformTime::Seconds();
-        double EndTime = StartTime + (TimeoutMs / 1000.0);
-        
-        while (!SlowLock.TryLock())
-        {
-            // Check if we've timed out
-            if (FPlatformTime::Seconds() >= EndTime)
-            {
-                return false;
-            }
-            
-            FPlatformProcess::Sleep(0.001f);
-        }
-        
+        // Use the critical section for high-contention scenarios
+        FScopeLock Lock(&SlowLock);
         return true;
     }
     
     // Try the fast lock first
-    if (FThreadSafetyHelpers::TryLock(FastLock))
+    if (TryLockAtomic(FastLock))
     {
         return true;
     }
     
-    // Fast lock is contended, update contention stats
+    // Increment contention counter and check if we should switch to slow lock
     UpdateContentionStats();
     
-    // Check again if we should switch to slow lock after updating contention
-    if (bUseSlowLock.GetValue() > 0)
+    // If we're over the threshold, switch to the slow lock
+    if (static_cast<uint32>(ContentionCount.GetValue()) > ContentionThreshold)
     {
-        return Lock(TimeoutMs);  // Retry with slow lock
-    }
-    
-    // For timeout of 0, keep trying with spin lock
-    if (TimeoutMs == 0)
-    {
-        FThreadSafetyHelpers::Lock(FastLock);
+        bUseSlowLock.Set(1);
+        FScopeLock Lock(&SlowLock);
         return true;
     }
     
-    // With timeout, try until timeout
+    // If no timeout specified, just spin until we get the lock
+    if (TimeoutMs == 0)
+    {
+        LockAtomic(FastLock);
+        return true;
+    }
+    
+    // Try with timeout
     double StartTime = FPlatformTime::Seconds();
     double EndTime = StartTime + (TimeoutMs / 1000.0);
     
-    while (!FThreadSafetyHelpers::TryLock(FastLock))
+    while (!TryLockAtomic(FastLock))
     {
         // Check if we've timed out
         if (FPlatformTime::Seconds() >= EndTime)
@@ -538,7 +506,7 @@ bool FHybridLock::Lock(uint32 TimeoutMs)
             return false;
         }
         
-        // Yield to avoid excessive spinning
+        // Yield to other threads
         FPlatformProcess::Yield();
     }
     
@@ -553,7 +521,7 @@ void FHybridLock::Unlock()
     }
     else
     {
-        FThreadSafetyHelpers::Unlock(FastLock);
+        UnlockAtomic(FastLock);
     }
 }
 
@@ -665,7 +633,7 @@ bool FSVOFieldReadLock::BeginWrite()
 {
     // Mark that an update is in progress
     int32 ExpectedValue = 0;
-    return FThreadSafetyHelpers::AtomicCompareExchange(UpdateInProgress, ExpectedValue, 1);
+    return FThreadSafetyHelpers::AtomicCompareExchange(UpdateInProgress, ExpectedValue, 1, 0);
 }
 
 void FSVOFieldReadLock::EndWrite()

@@ -78,7 +78,7 @@ void FCoreServiceLocator::Shutdown()
     if (bIsInitialized)
     {
         // Lock for thread safety
-        FRWScopeLock Lock(ServiceMapLock, SLT_Write);
+        FScopedWriteLock Lock(ServiceMapRWLock);
         
         // Shutdown service providers in reverse order
         for (int32 i = ServiceProviders.Num() - 1; i >= 0; --i)
@@ -122,7 +122,7 @@ bool FCoreServiceLocator::RegisterService(void* InService, const UClass* InInter
     FName InterfaceName = InInterfaceType->GetFName();
     
     // Lock for thread safety
-    FRWScopeLock Lock(ServiceMapLock, SLT_Write);
+    FScopedWriteLock Lock(ServiceMapRWLock);
     
     // Get or create interface map entry
     TMap<FString, TArray<FServiceInstance>>& ContextMap = ServiceMap.FindOrAdd(InterfaceName);
@@ -175,7 +175,7 @@ void* FCoreServiceLocator::ResolveService(const UClass* InInterfaceType, int32 I
     FName InterfaceName = InInterfaceType->GetFName();
     
     // Lock for thread safety
-    FRWScopeLock Lock(ServiceMapLock, SLT_ReadOnly);
+    FScopedReadLock Lock(ServiceMapRWLock);
     
     // Look up interface map entry
     const TMap<FString, TArray<FServiceInstance>>* ContextMapPtr = ServiceMap.Find(InterfaceName);
@@ -199,36 +199,52 @@ void* FCoreServiceLocator::ResolveService(const UClass* InInterfaceType, int32 I
             // But only do this for exact matches with stable services
             if (Result && StandardResolutionCount.GetValue() > 5)
             {
-                RegisterFastPath(InInterfaceType, Result, InZoneID, InRegionID);
+                const_cast<FCoreServiceLocator*>(this)->RegisterFastPath(InInterfaceType, Result, InZoneID, InRegionID);
             }
             
             return Result;
         }
     }
     
-    // Next, try zone-only match
+    // Second, try zone-specific match (any region)
     if (InZoneID != INDEX_NONE)
     {
-        FString ZoneKey = GetServiceContextKey(InZoneID, INDEX_NONE);
-        const TArray<FServiceInstance>* ZoneInstancesPtr = ContextMapPtr->Find(ZoneKey);
-        if (ZoneInstancesPtr && ZoneInstancesPtr->Num() > 0)
+        // Search for any service with matching zone ID
+        for (const auto& ContextPair : *ContextMapPtr)
         {
-            return ResolveBestMatchingService(*ZoneInstancesPtr, InZoneID, InRegionID);
+            if (ContextPair.Value.Num() > 0)
+            {
+                for (const FServiceInstance& Instance : ContextPair.Value)
+                {
+                    if (Instance.ZoneID == InZoneID)
+                    {
+                        return Instance.ServiceInstance;
+                    }
+                }
+            }
         }
     }
     
-    // Next, try region-only match
+    // Third, try region-specific match (any zone)
     if (InRegionID != INDEX_NONE)
     {
-        FString RegionKey = GetServiceContextKey(INDEX_NONE, InRegionID);
-        const TArray<FServiceInstance>* RegionInstancesPtr = ContextMapPtr->Find(RegionKey);
-        if (RegionInstancesPtr && RegionInstancesPtr->Num() > 0)
+        // Search for any service with matching region ID
+        for (const auto& ContextPair : *ContextMapPtr)
         {
-            return ResolveBestMatchingService(*RegionInstancesPtr, InZoneID, InRegionID);
+            if (ContextPair.Value.Num() > 0)
+            {
+                for (const FServiceInstance& Instance : ContextPair.Value)
+                {
+                    if (Instance.RegionID == InRegionID)
+                    {
+                        return Instance.ServiceInstance;
+                    }
+                }
+            }
         }
     }
     
-    // Finally, try global match
+    // Finally, look for global service (no zone, no region)
     FString GlobalKey = GetServiceContextKey(INDEX_NONE, INDEX_NONE);
     const TArray<FServiceInstance>* GlobalInstancesPtr = ContextMapPtr->Find(GlobalKey);
     if (GlobalInstancesPtr && GlobalInstancesPtr->Num() > 0)
@@ -236,9 +252,7 @@ void* FCoreServiceLocator::ResolveService(const UClass* InInterfaceType, int32 I
         return ResolveBestMatchingService(*GlobalInstancesPtr, InZoneID, InRegionID);
     }
     
-    UE_LOG(LogTemp, Verbose, TEXT("FCoreServiceLocator::ResolveService - no matching service found for interface '%s' and context Zone=%d, Region=%d"),
-        *InterfaceName.ToString(), InZoneID, InRegionID);
-    
+    // No matching service found
     return nullptr;
 }
 
@@ -250,19 +264,20 @@ bool FCoreServiceLocator::UnregisterService(const UClass* InInterfaceType, int32
         return false;
     }
     
-    if (!InInterfaceType || !InInterfaceType->ImplementsInterface(UInterface::StaticClass()))
+    if (!InInterfaceType)
     {
         UE_LOG(LogTemp, Error, TEXT("FCoreServiceLocator::UnregisterService failed - invalid interface type"));
         return false;
     }
     
-    FName InterfaceName = InInterfaceType->GetFName();
+    // Generate context key
     FString ContextKey = GetServiceContextKey(InZoneID, InRegionID);
+    FName InterfaceName = InInterfaceType->GetFName();
     
     // Lock for thread safety
-    FRWScopeLock Lock(ServiceMapLock, SLT_Write);
+    FScopedWriteLock Lock(ServiceMapRWLock);
     
-    // Look up interface map entry
+    // Find interface map entry
     TMap<FString, TArray<FServiceInstance>>* ContextMapPtr = ServiceMap.Find(InterfaceName);
     if (!ContextMapPtr)
     {
@@ -271,26 +286,28 @@ bool FCoreServiceLocator::UnregisterService(const UClass* InInterfaceType, int32
         return false;
     }
     
-    // Remove services from the context
-    int32 NumRemoved = ContextMapPtr->Remove(ContextKey);
+    // Find context array
+    TArray<FServiceInstance>* InstancesPtr = ContextMapPtr->Find(ContextKey);
+    if (!InstancesPtr || InstancesPtr->Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("FCoreServiceLocator::UnregisterService - no services found for interface '%s' and context %s"),
+            *InterfaceName.ToString(), *ContextKey);
+        return false;
+    }
     
-    // If the context map is now empty, remove the interface entry
+    // Remove all instances in this context
+    InstancesPtr->Empty();
+    
+    // If this was the last context for this interface, remove the interface entry
     if (ContextMapPtr->Num() == 0)
     {
         ServiceMap.Remove(InterfaceName);
     }
     
-    if (NumRemoved > 0)
-    {
-        UE_LOG(LogTemp, Verbose, TEXT("FCoreServiceLocator::UnregisterService - unregistered %d service(s) for interface '%s' and context %s"),
-            NumRemoved, *InterfaceName.ToString(), *ContextKey);
-        return true;
-    }
+    UE_LOG(LogTemp, Verbose, TEXT("FCoreServiceLocator::UnregisterService - unregistered %d service(s) for interface '%s' and context %s"),
+        InstancesPtr->Num(), *InterfaceName.ToString(), *ContextKey);
     
-    UE_LOG(LogTemp, Warning, TEXT("FCoreServiceLocator::UnregisterService - no services found for interface '%s' and context %s"),
-        *InterfaceName.ToString(), *ContextKey);
-    
-    return false;
+    return true;
 }
 
 bool FCoreServiceLocator::HasService(const UClass* InInterfaceType, int32 InZoneID, int32 InRegionID) const
@@ -300,7 +317,7 @@ bool FCoreServiceLocator::HasService(const UClass* InInterfaceType, int32 InZone
         return false;
     }
     
-    if (!InInterfaceType || !InInterfaceType->ImplementsInterface(UInterface::StaticClass()))
+    if (!InInterfaceType)
     {
         return false;
     }
@@ -308,54 +325,30 @@ bool FCoreServiceLocator::HasService(const UClass* InInterfaceType, int32 InZone
     FName InterfaceName = InInterfaceType->GetFName();
     
     // Lock for thread safety
-    FRWScopeLock Lock(ServiceMapLock, SLT_ReadOnly);
+    FScopedReadLock Lock(ServiceMapRWLock);
     
-    // Look up interface map entry
+    // Find interface map entry
     const TMap<FString, TArray<FServiceInstance>>* ContextMapPtr = ServiceMap.Find(InterfaceName);
     if (!ContextMapPtr)
     {
         return false;
     }
     
-    // Check for services with exact zone and region match
-    if (InZoneID != INDEX_NONE && InRegionID != INDEX_NONE)
+    // Check specific context if zone and region are provided
+    if (InZoneID != INDEX_NONE || InRegionID != INDEX_NONE)
     {
-        FString ExactKey = GetServiceContextKey(InZoneID, InRegionID);
-        const TArray<FServiceInstance>* ExactInstancesPtr = ContextMapPtr->Find(ExactKey);
-        if (ExactInstancesPtr && ExactInstancesPtr->Num() > 0)
+        FString ContextKey = GetServiceContextKey(InZoneID, InRegionID);
+        const TArray<FServiceInstance>* InstancesPtr = ContextMapPtr->Find(ContextKey);
+        return (InstancesPtr && InstancesPtr->Num() > 0);
+    }
+    
+    // Check for any service of this type
+    for (const auto& ContextPair : *ContextMapPtr)
+    {
+        if (ContextPair.Value.Num() > 0)
         {
             return true;
         }
-    }
-    
-    // Check for services with zone-only match
-    if (InZoneID != INDEX_NONE)
-    {
-        FString ZoneKey = GetServiceContextKey(InZoneID, INDEX_NONE);
-        const TArray<FServiceInstance>* ZoneInstancesPtr = ContextMapPtr->Find(ZoneKey);
-        if (ZoneInstancesPtr && ZoneInstancesPtr->Num() > 0)
-        {
-            return true;
-        }
-    }
-    
-    // Check for services with region-only match
-    if (InRegionID != INDEX_NONE)
-    {
-        FString RegionKey = GetServiceContextKey(INDEX_NONE, InRegionID);
-        const TArray<FServiceInstance>* RegionInstancesPtr = ContextMapPtr->Find(RegionKey);
-        if (RegionInstancesPtr && RegionInstancesPtr->Num() > 0)
-        {
-            return true;
-        }
-    }
-    
-    // Check for global services
-    FString GlobalKey = GetServiceContextKey(INDEX_NONE, INDEX_NONE);
-    const TArray<FServiceInstance>* GlobalInstancesPtr = ContextMapPtr->Find(GlobalKey);
-    if (GlobalInstancesPtr && GlobalInstancesPtr->Num() > 0)
-    {
-        return true;
     }
     
     return false;
@@ -375,30 +368,17 @@ bool FCoreServiceLocator::RegisterServiceProvider(TScriptInterface<IServiceProvi
         return false;
     }
     
-    // Initialize provider's services
-    if (!InProvider->InitializeServices())
+    // Lock for thread safety
+    FScopedWriteLock Lock(ServiceMapRWLock);
+    
+    // Add provider to list
+    ServiceProviders.AddUnique(InProvider);
+    
+    // Initialize services from this provider
+    if (IsInitialized())
     {
-        UE_LOG(LogTemp, Error, TEXT("FCoreServiceLocator::RegisterServiceProvider failed - provider '%s' initialization failed"),
-            *InProvider->GetProviderName().ToString());
-        return false;
+        InProvider->InitializeServices();
     }
-    
-    // Lock for thread safety (for the ServiceProviders array)
-    FRWScopeLock Lock(ServiceMapLock, SLT_Write);
-    
-    // Add provider to the list
-    ServiceProviders.Add(InProvider);
-    
-    // Register provider's services
-    bool bSuccess = InProvider->RegisterServices(this, InZoneID, InRegionID);
-    if (!bSuccess)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("FCoreServiceLocator::RegisterServiceProvider - provider '%s' failed to register some services"),
-            *InProvider->GetProviderName().ToString());
-    }
-    
-    UE_LOG(LogTemp, Verbose, TEXT("FCoreServiceLocator::RegisterServiceProvider - registered provider '%s'"),
-        *InProvider->GetProviderName().ToString());
     
     return true;
 }
@@ -418,9 +398,9 @@ bool FCoreServiceLocator::UnregisterServiceProvider(TScriptInterface<IServicePro
     }
     
     // Lock for thread safety
-    FRWScopeLock Lock(ServiceMapLock, SLT_Write);
+    FScopedWriteLock Lock(ServiceMapRWLock);
     
-    // Find provider in the list
+    // Find and remove provider
     int32 ProviderIndex = ServiceProviders.Find(InProvider);
     if (ProviderIndex == INDEX_NONE)
     {
@@ -429,22 +409,11 @@ bool FCoreServiceLocator::UnregisterServiceProvider(TScriptInterface<IServicePro
         return false;
     }
     
-    // Unregister provider's services
-    bool bSuccess = InProvider->UnregisterServices(this, InZoneID, InRegionID);
-    if (!bSuccess)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("FCoreServiceLocator::UnregisterServiceProvider - provider '%s' failed to unregister some services"),
-            *InProvider->GetProviderName().ToString());
-    }
-    
-    // Remove provider from the list
-    ServiceProviders.RemoveAt(ProviderIndex);
-    
-    // Shutdown provider's services
+    // Shut down services from this provider
     InProvider->ShutdownServices();
     
-    UE_LOG(LogTemp, Verbose, TEXT("FCoreServiceLocator::UnregisterServiceProvider - unregistered provider '%s'"),
-        *InProvider->GetProviderName().ToString());
+    // Remove provider from list
+    ServiceProviders.RemoveAt(ProviderIndex);
     
     return true;
 }
@@ -459,13 +428,12 @@ TArray<const UClass*> FCoreServiceLocator::GetAllServiceTypes() const
     }
     
     // Lock for thread safety
-    FRWScopeLock Lock(ServiceMapLock, SLT_ReadOnly);
+    FScopedReadLock Lock(ServiceMapRWLock);
     
-    // Collect all service types
-    for (const auto& ServiceTypePair : ServiceMap)
+    // Collect all registered service types
+    for (const auto& InterfacePair : ServiceMap)
     {
-        const FName& InterfaceName = ServiceTypePair.Key;
-        const UClass* InterfaceClass = FindObject<UClass>(nullptr, *InterfaceName.ToString());
+        UClass* InterfaceClass = FindObject<UClass>(ANY_PACKAGE, *InterfacePair.Key.ToString());
         if (InterfaceClass)
         {
             Result.Add(InterfaceClass);
@@ -534,13 +502,17 @@ IServiceLocator& IServiceLocator::Get()
     // Thread-safe singleton initialization
     if (!FCoreServiceLocator::bSingletonInitialized)
     {
-        // Use the static method to properly handle initialization
-        if (!FCoreServiceLocator::bSingletonInitialized.AtomicSet(true))
+        static FSpinLock InitializationLock;
+        FScopedSpinLock Lock(InitializationLock);
+        
+        // Double-checked locking pattern
+        if (!FCoreServiceLocator::bSingletonInitialized)
         {
             // Create and initialize the singleton instance with proper access
             FCoreServiceLocator* NewSingleton = new FCoreServiceLocator();
             NewSingleton->Initialize();
             FCoreServiceLocator::Singleton = NewSingleton;
+            FCoreServiceLocator::bSingletonInitialized.AtomicSet(true);
         }
     }
     
@@ -652,7 +624,7 @@ typename FCoreServiceLocator::FFastPathEntry* FCoreServiceLocator::GetFastPathFo
     }
     
     // If no exact match, look for a compatible fast path with lock
-    FScopeLock Lock(&FastPathLock);
+    FScopedSpinLock Lock(FastPathLock);
     
     // Try finding an entry with matching type but different zone/region
     for (auto& Pair : FastPathCache)
@@ -684,7 +656,7 @@ bool FCoreServiceLocator::RegisterFastPath(const UClass* InInterfaceType, void* 
     uint32 TypeHash = GetTypeHash(InInterfaceType->GetFName());
     
     // Create a fast path entry with lock
-    FScopeLock Lock(&FastPathLock);
+    FScopedSpinLock Lock(FastPathLock);
     
     // Check if we already have a fast path for this type and context
     FFastPathEntry* ExistingEntry = nullptr;

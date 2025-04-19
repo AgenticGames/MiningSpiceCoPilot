@@ -7,7 +7,6 @@
 #include "Containers/Map.h"
 #include "Templates/SharedPointer.h"
 #include "HAL/ThreadSafeBool.h"
-#include "Misc/SpinLock.h"
 #include "HAL/CriticalSection.h"
 #include "SDFTypeRegistry.h" // Include the SDFTypeRegistry to use its ESIMD_InstructionSet enum
 #include "Interfaces/IServiceLocator.h"
@@ -15,6 +14,7 @@
 #include "Interfaces/IMemoryManager.h"
 #include "Interfaces/IPoolAllocator.h"
 #include "HAL/ThreadSafeCounter.h" // For atomic operations
+#include "ThreadSafety.h"
 
 /**
  * SVO node class types for classification in the registry
@@ -319,7 +319,7 @@ private:
     bool bSupportsAVX512;
     
     /** Lock for thread-safe access to the registry data */
-    mutable FCriticalSection RegistryLock;
+    mutable FSpinLock RegistryLock;
     
     /** Singleton instance of the registry */
     static FSVOTypeRegistry* Singleton;

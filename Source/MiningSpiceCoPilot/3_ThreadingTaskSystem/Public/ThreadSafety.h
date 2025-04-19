@@ -737,24 +737,98 @@ private:
     bool bLocked;
 };
 
-/** Helper functions for thread safety operations */
-namespace FThreadSafetyHelpers
+/**
+ * Helpers for thread-safe operations
+ */
+class MININGSPICECOPILOT_API FThreadSafetyHelpers
 {
-    // Forward declarations for template specializations or classes
-    class FRunnableAdapter;
+public:
+    /**
+     * Atomically compares a counter to a comparand and sets to a new value if equal
+     * @param Counter The counter to modify
+     * @param OutOldValue The previous value of the counter
+     * @param NewValue The new value to set if Counter equals Comparand
+     * @param Comparand The value to compare against
+     * @return True if the counter was modified, false otherwise
+     */
+    static bool AtomicCompareExchange(FThreadSafeCounter& Counter, int32& OutOldValue, int32 NewValue, int32 Comparand)
+    {
+        OutOldValue = Counter.GetValue();
+        if (OutOldValue == Comparand)
+        {
+            // Try to update the counter atomically
+            void* CounterPtr = &Counter;
+            return FPlatformAtomics::InterlockedCompareExchange((volatile int32*)CounterPtr, NewValue, Comparand) == Comparand;
+        }
+        return false;
+    }
+};
+
+/**
+ * RAII-style spin lock guard for FSpinLock
+ * Automatically acquires lock on construction and releases on destruction
+ */
+class MININGSPICECOPILOT_API FScopedSpinLock
+{
+public:
+    /**
+     * Constructor
+     * @param InLock Spin lock to acquire
+     */
+    FScopedSpinLock(FSpinLock& InLock)
+        : Lock(InLock)
+        , bLocked(true)
+    {
+        Lock.Lock();
+    }
     
-    /** Tries to lock a TAtomic<int32> */
-    bool TryLock(TAtomic<int32>& LockVar);
+    /**
+     * Constructor for const locks
+     * @param InLock Const spin lock to acquire
+     */
+    FScopedSpinLock(const FSpinLock& InLock)
+        : Lock(const_cast<FSpinLock&>(InLock))
+        , bLocked(true)
+    {
+        Lock.Lock();
+    }
     
-    /** Locks a TAtomic<int32> */
-    void Lock(TAtomic<int32>& LockVar);
+    /** Destructor */
+    ~FScopedSpinLock()
+    {
+        if (bLocked)
+        {
+            Lock.Unlock();
+        }
+    }
     
-    /** Unlocks a TAtomic<int32> */
-    void Unlock(TAtomic<int32>& LockVar);
+    /** Explicitly unlock before destruction */
+    void Unlock()
+    {
+        if (bLocked)
+        {
+            Lock.Unlock();
+            bLocked = false;
+        }
+    }
     
-    /** Helper for atomic compare-exchange on FThreadSafeCounter */
-    bool AtomicCompareExchange(FThreadSafeCounter& Counter, int32& InOutCurrentValue, int32 NewValue);
-}
+    /** Check if we're currently holding the lock */
+    bool IsLocked() const
+    {
+        return bLocked;
+    }
+    
+private:
+    /** The lock we're managing */
+    FSpinLock& Lock;
+    
+    /** Whether we currently hold the lock */
+    bool bLocked;
+    
+    /** Disable copying */
+    FScopedSpinLock(const FScopedSpinLock&) = delete;
+    FScopedSpinLock& operator=(const FScopedSpinLock&) = delete;
+};
 
 /**
  * Wait-free counter implementation

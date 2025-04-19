@@ -7,11 +7,11 @@
 #include "Containers/Map.h"
 #include "Templates/SharedPointer.h"
 #include "HAL/ThreadSafeBool.h"
-#include "Misc/SpinLock.h"
 #include "Interfaces/IServiceLocator.h"
 #include "TypeVersionMigrationInfo.h"
 #include "Interfaces/IMemoryManager.h"
 #include "Interfaces/IPoolAllocator.h"
+#include "ThreadSafety.h"
 
 /**
  * Transaction concurrency level for zone operations
@@ -249,30 +249,33 @@ private:
     /** Map of registered transaction types by ID */
     TMap<uint32, TSharedRef<FZoneTransactionTypeInfo>> TransactionTypeMap;
     
-    /** Map of registered transaction types by name for fast lookup */
+    /** Map of registered transaction type names to IDs */
     TMap<FName, uint32> TransactionTypeNameMap;
     
-    /** Map of registered zone grid configurations by name */
+    /** Map of registered zone grid configurations */
     TMap<FName, TSharedRef<FZoneGridConfig>> ZoneGridConfigMap;
     
-    /** Name of the default zone grid configuration */
+    /** Default zone grid configuration name */
     FName DefaultZoneGridConfigName;
     
     /** Counter for generating unique type IDs */
-    uint32 NextTypeId;
+    FThreadSafeCounter NextTypeId;
     
-    /** Thread-safe flag indicating if the registry has been initialized */
+    /** Flag indicating whether the registry is initialized */
     FThreadSafeBool bIsInitialized;
     
-    /** Schema version of this registry */
+    /** Current schema version */
     uint32 SchemaVersion;
     
-    /** Lock for thread-safe access to the registry maps */
-    mutable FRWLock RegistryLock;
+    /** Registry lock for thread safety - Replace FRWLock with FSpinLock */
+    mutable FSpinLock RegistryLock;
     
-    /** Singleton instance of the registry */
+    /** Transaction type version counter for optimistic concurrency */
+    FThreadSafeCounter TypeVersion;
+    
+    /** Singleton instance */
     static FZoneTypeRegistry* Singleton;
     
-    /** Thread-safe initialization flag for the singleton */
+    /** Flag indicating whether singleton has been initialized */
     static FThreadSafeBool bSingletonInitialized;
 };

@@ -5,12 +5,35 @@
 #include "CoreMinimal.h"
 #include "Templates/SharedPointer.h"
 #include "Interfaces/IServiceLocator.h"
+#include "Interfaces/IService.h"
 #include "HAL/ThreadSafeBool.h"
 #include "Containers/Map.h"
 #include "Misc/SpinLock.h"
 #include "UObject/ScriptInterface.h"
 #include "HAL/CriticalSection.h"
 #include "HAL/ThreadSafeCounter.h" // For atomic operations
+#include "ThreadSafety.h"
+
+/**
+ * Structure for cached service entry with version information
+ */
+struct FCachedServiceEntry
+{
+    /** The cached service instance */
+    TSharedPtr<IService> Service;
+    
+    /** The version at which this service was cached */
+    uint32 Version;
+    
+    /** Default constructor */
+    FCachedServiceEntry() : Version(0) {}
+    
+    /** Constructor with service and version */
+    FCachedServiceEntry(TSharedPtr<IService> InService, uint32 InVersion)
+        : Service(InService)
+        , Version(InVersion)
+    {}
+};
 
 /**
  * Core implementation of the service locator for the mining system
@@ -19,11 +42,14 @@
 class MININGSPICECOPILOT_API FCoreServiceLocator : public IServiceLocator
 {
 public:
-    /** Constructor */
+    /** Default constructor */
     FCoreServiceLocator();
     
     /** Destructor */
     virtual ~FCoreServiceLocator();
+    
+    // Make IServiceLocator a friend class to allow it to access our private static members
+    friend class IServiceLocator;
     
     //~ Begin IServiceLocator Interface
     virtual bool Initialize() override;
@@ -67,11 +93,39 @@ public:
      */
     static FString GetServiceContextKey(int32 InZoneID, int32 InRegionID);
     
-    /** Singleton instance of the service locator */
-    static FCoreServiceLocator* Singleton;
-    
-    /** Thread-safe initialization flag for the singleton */
-    static FThreadSafeBool bSingletonInitialized;
+    /**
+     * Gets the singleton instance of the service locator
+     * @return Reference to the singleton instance
+     */
+    static FCoreServiceLocator& Get()
+    {
+        if (!bSingletonInitialized)
+        {
+            // Create thread-safe singleton using atomic operations
+            FSpinLock InitializationLock;
+            
+            // Double-checked locking pattern with memory barriers
+            if (!bSingletonInitialized)
+            {
+                FScopedSpinLock Lock(InitializationLock);
+                
+                if (!bSingletonInitialized)
+                {
+                    Singleton = new FCoreServiceLocator();
+                    bSingletonInitialized.AtomicSet(true);
+                    
+                    // Auto-initialize
+                    if (!Singleton->IsInitialized())
+                    {
+                        Singleton->Initialize();
+                    }
+                }
+            }
+        }
+        
+        check(Singleton);
+        return *Singleton;
+    }
     
     /**
      * Registers memory allocators from MemoryPoolManager with the service locator
@@ -139,6 +193,112 @@ public:
      */
     bool RegisterFastPath(const UClass* InInterfaceType, void* InServiceInstance, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE);
     
+    /**
+     * Thread-safe service resolution with optimistic read pattern and thread-local caching
+     * @param ServiceName Name of the service to resolve
+     * @return Shared pointer to the resolved service, or nullptr if not found
+     */
+    template<typename T>
+    TSharedPtr<T> ResolveServiceOptimistic(const FName& ServiceName)
+    {
+        // Check thread-local cache first
+        TMap<FName, FCachedServiceEntry>& ThreadCache = GetThreadLocalCache();
+        if (ThreadCache.Contains(ServiceName))
+        {
+            FWaitFreeCounter* VersionCounter = ServiceVersions.FindRef(ServiceName);
+            if (VersionCounter && ThreadCache[ServiceName].Version == VersionCounter->GetValue())
+            {
+                // Cache hit with current version
+                return StaticCastSharedPtr<T>(ThreadCache[ServiceName].Service);
+            }
+        }
+        
+        // Cache miss or version mismatch, try optimistic read
+        FWaitFreeCounter* VersionCounter = ServiceVersions.FindRef(ServiceName);
+        if (VersionCounter)
+        {
+            uint32 InitialVersion = VersionCounter->GetValue();
+            
+            // Read service with shared lock (read-lock)
+            TSharedPtr<IService> Service;
+            {
+                FScopedReadLock ReadLock(ServiceMapRWLock);
+                // Find service entry
+                TMap<FString, TArray<FServiceInstance>>* ContextMap = ServiceMap.Find(ServiceName);
+                if (ContextMap && ContextMap->Num() > 0)
+                {
+                    // Get first available service instance for simplicity
+                    // A more advanced implementation would check for zone/region specifics
+                    for (auto& Pair : *ContextMap)
+                    {
+                        if (Pair.Value.Num() > 0 && Pair.Value[0].ServiceInstance)
+                        {
+                            Service = TSharedPtr<IService>((IService*)Pair.Value[0].ServiceInstance);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Check if version is still valid
+            if (Service.IsValid() && VersionCounter->GetValue() == InitialVersion)
+            {
+                // Update thread-local cache
+                ThreadCache.Add(ServiceName, FCachedServiceEntry(Service, InitialVersion));
+                return StaticCastSharedPtr<T>(Service);
+            }
+        }
+        
+        // Fallback to standard resolution
+        void* ServicePtr = ResolveService(T::StaticClass());
+        if (ServicePtr)
+        {
+            TSharedPtr<IService> Service = TSharedPtr<IService>((IService*)ServicePtr);
+            
+            // Add to version tracking if needed
+            if (!ServiceVersions.Contains(ServiceName))
+            {
+                FScopedWriteLock WriteLock(ServiceMapRWLock);
+                if (!ServiceVersions.Contains(ServiceName))
+                {
+                    ServiceVersions.Add(ServiceName, FThreadSafety::Get().CreateWaitFreeCounter(1));
+                }
+            }
+            
+            // Update thread-local cache
+            FWaitFreeCounter* VersionCounter = ServiceVersions.FindRef(ServiceName);
+            if (VersionCounter)
+            {
+                ThreadCache.Add(ServiceName, FCachedServiceEntry(Service, VersionCounter->GetValue()));
+            }
+            
+            return StaticCastSharedPtr<T>(Service);
+        }
+        
+        return nullptr;
+    }
+
+    /**
+     * Updates the version counter for a service
+     * This should be called whenever a service is modified, registered, or unregistered
+     * @param ServiceName Name of the service
+     */
+    void UpdateServiceVersion(const FName& ServiceName)
+    {
+        FScopedWriteLock WriteLock(ServiceMapRWLock);
+        
+        FWaitFreeCounter* VersionCounter = ServiceVersions.FindRef(ServiceName);
+        if (!VersionCounter)
+        {
+            VersionCounter = FThreadSafety::Get().CreateWaitFreeCounter(1);
+            ServiceVersions.Add(ServiceName, VersionCounter);
+        }
+        else
+        {
+            VersionCounter->Increment();
+        }
+    }
+
 private:
     /** Structure to hold a service instance and its context */
     struct FServiceInstance
@@ -185,6 +345,12 @@ private:
     /** Map of service instances by interface type name and context key */
     TMap<FName, TMap<FString, TArray<FServiceInstance>>> ServiceMap;
     
+    /** Map of service zone assignments */
+    TMap<FName, int32> ServiceZoneMap;
+    
+    /** Map of service versions for optimistic access */
+    TMap<FName, FWaitFreeCounter*> ServiceVersions;
+    
     /** Map of registered service providers */
     TArray<TScriptInterface<class IServiceProvider>> ServiceProviders;
     
@@ -192,12 +358,12 @@ private:
     TMap<uint32, FFastPathEntry> FastPathCache;
     
     /** Lock for accessing the fast-path cache */
-    FCriticalSection FastPathLock;
+    FSpinLock FastPathLock;
     
-    /** Read-write lock for thread-safe access to the service maps */
-    mutable FRWLock ServiceMapLock;
+    /** Reader-writer lock for thread-safe access to the service maps */
+    mutable FMiningReaderWriterLock ServiceMapRWLock;
     
-    /** Thread-safe flag indicating if the locator has been initialized */
+    /** Flag indicating whether the locator has been initialized */
     FThreadSafeBool bIsInitialized;
     
     /** Counter for tracking fast-path cache hits */
@@ -205,4 +371,44 @@ private:
     
     /** Counter for tracking standard resolution fallbacks */
     FThreadSafeCounter StandardResolutionCount;
+    
+    /** Singleton instance */
+    static FCoreServiceLocator* Singleton;
+    
+    /** Flag indicating whether singleton has been initialized */
+    static FThreadSafeBool bSingletonInitialized;
+    
+    /** Initialize a thread-local service cache for fast access */
+    struct FThreadLocalServiceCache
+    {
+        /** Constructor */
+        FThreadLocalServiceCache() 
+        {
+            // Initialize with reasonable capacity
+            Cache.Reserve(16);
+        }
+        
+        /** The cached services mapped by name */
+        TMap<FName, FCachedServiceEntry> Cache;
+        
+        /** Gets the thread-local cache instance */
+        static FThreadLocalServiceCache& Get() 
+        {
+            // C++11 thread_local guarantees initialization is thread-safe and happens only once per thread
+            static thread_local FThreadLocalServiceCache Instance;
+            return Instance;
+        }
+    };
+    
+    /** Helper method to access the thread-local cache */
+    static TMap<FName, FCachedServiceEntry>& GetThreadLocalCache()
+    {
+        return FThreadLocalServiceCache::Get().Cache;
+    }
+    
+    /** Helper method to invalidate thread-local cache */
+    static void InvalidateThreadLocalCache()
+    {
+        FThreadLocalServiceCache::Get().Cache.Empty();
+    }
 };

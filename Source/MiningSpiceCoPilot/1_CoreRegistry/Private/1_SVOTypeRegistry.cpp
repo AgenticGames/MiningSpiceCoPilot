@@ -8,7 +8,7 @@
 #include "Interfaces/IMemoryManager.h"
 #include "MemoryPoolManager.h"
 #include "Interfaces/IServiceLocator.h"
-#include "Misc/ScopeLock.h"
+#include "ThreadSafety.h"
 #include "SVOAllocator.h" // Include SVOAllocator for ConfigureTypeLayout
 #include "HAL/ThreadSafeCounter.h" // For atomic operations
 
@@ -71,7 +71,7 @@ void FSVOTypeRegistry::Shutdown()
     if (bIsInitialized)
     {
         // Lock for thread safety
-        FScopeLock Lock(&this->RegistryLock);
+        FScopedSpinLock Lock(this->RegistryLock);
         
         // Clear all registered types
         NodeTypeMap.Empty();
@@ -106,7 +106,7 @@ bool FSVOTypeRegistry::Validate(TArray<FString>& OutErrors) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&this->RegistryLock);
+    FScopedSpinLock Lock(this->RegistryLock);
     
     bool bIsValid = true;
     
@@ -184,7 +184,7 @@ void FSVOTypeRegistry::Clear()
     if (IsInitialized())
     {
         // Lock for thread safety
-        FScopeLock Lock(&this->RegistryLock);
+        FScopedSpinLock Lock(this->RegistryLock);
         
         // Clear all registered types
         NodeTypeMap.Empty();
@@ -212,7 +212,7 @@ bool FSVOTypeRegistry::SetTypeVersion(uint32 TypeId, uint32 NewVersion, bool bMi
     }
     
     // Use scoped lock for thread safety
-    FScopeLock Lock(&this->RegistryLock);
+    FScopedSpinLock Lock(this->RegistryLock);
     
     // Get mutable type info
     TSharedRef<FSVONodeTypeInfo>& TypeInfo = NodeTypeMap[TypeId];
@@ -354,7 +354,7 @@ uint32 FSVOTypeRegistry::RegisterNodeType(
     }
     
     // Use read-write scoped lock for thread safety
-    FScopeLock Lock(&this->RegistryLock);
+    FScopedSpinLock Lock(this->RegistryLock);
     
     // Double-check that the type isn't already registered (needed for thread safety)
     if (NodeTypeNameMap.Contains(InTypeName))
@@ -570,7 +570,7 @@ const FSVONodeTypeInfo* FSVOTypeRegistry::GetNodeTypeInfo(uint32 InTypeId) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&this->RegistryLock);
+    FScopedSpinLock Lock(this->RegistryLock);
     
     // Look up type by ID
     const TSharedRef<FSVONodeTypeInfo>* TypeInfoPtr = NodeTypeMap.Find(InTypeId);
@@ -590,7 +590,7 @@ const FSVONodeTypeInfo* FSVOTypeRegistry::GetNodeTypeInfoByName(const FName& InT
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&this->RegistryLock);
+    FScopedSpinLock Lock(this->RegistryLock);
     
     // Look up type ID by name
     const uint32* TypeIdPtr = NodeTypeNameMap.Find(InTypeName);
@@ -617,7 +617,7 @@ TArray<FSVONodeTypeInfo> FSVOTypeRegistry::GetAllNodeTypes() const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&this->RegistryLock);
+    FScopedSpinLock Lock(this->RegistryLock);
     
     // Collect all type infos
     Result.Reserve(NodeTypeMap.Num());
@@ -639,7 +639,7 @@ TArray<FSVONodeTypeInfo> FSVOTypeRegistry::GetNodeTypesByClass(ESVONodeClass InN
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&this->RegistryLock);
+    FScopedSpinLock Lock(this->RegistryLock);
     
     // Collect type infos matching the class
     for (const auto& TypeInfoPair : NodeTypeMap)
@@ -662,7 +662,7 @@ bool FSVOTypeRegistry::IsNodeTypeRegistered(uint32 InTypeId) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&this->RegistryLock);
+    FScopedSpinLock Lock(this->RegistryLock);
     
     return NodeTypeMap.Contains(InTypeId);
 }
@@ -675,7 +675,7 @@ bool FSVOTypeRegistry::IsNodeTypeRegistered(const FName& InTypeName) const
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&this->RegistryLock);
+    FScopedSpinLock Lock(this->RegistryLock);
     
     return NodeTypeNameMap.Contains(InTypeName);
 }
@@ -769,7 +769,7 @@ bool FSVOTypeRegistry::RegisterCapabilities(uint32 TypeId, uint32 Capabilities)
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&this->RegistryLock);
+    FScopedSpinLock Lock(this->RegistryLock);
     
     // Get mutable type info
     TSharedRef<FSVONodeTypeInfo>& TypeInfo = NodeTypeMap[TypeId];
@@ -806,7 +806,7 @@ bool FSVOTypeRegistry::OptimizeNodeLayout(uint32 TypeId, bool bUseZOrderCurve, b
     }
     
     // Lock for thread safety
-    FScopeLock Lock(&this->RegistryLock);
+    FScopedSpinLock Lock(this->RegistryLock);
     
     // Check if type exists
     if (!NodeTypeMap.Contains(TypeId))
@@ -922,7 +922,7 @@ bool FSVOTypeRegistry::TryOptimisticRegisterNodeType(
     // Now try to acquire the lock and update if nothing has changed
     bool bLockAcquired = false;
     {
-        FScopeLock Lock(&this->RegistryLock);
+        FScopedSpinLock Lock(this->RegistryLock);
         
         // Check if conditions are still valid
         if (!NodeTypeNameMap.Contains(InTypeName) && NextTypeId.GetValue() == TentativeTypeId)
@@ -978,7 +978,7 @@ void FSVOTypeRegistry::SynchronizePoolCreation(uint32 TypeId)
     }
     
     // Use a short scope lock to avoid contention
-    FScopeLock Lock(&this->RegistryLock);
+    FScopedSpinLock Lock(this->RegistryLock);
     
     // Double check if pool exists after acquiring lock
     if (MemoryManager->GetPoolForType(TypeId))

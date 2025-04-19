@@ -1,0 +1,125 @@
+[1/4] Compile [x64] 1_SDFTypeRegistry.cpp
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(21): warning C5038: data member 'FSDFTypeRegistry::NextOperationId' will be initialized after data member 'FSDFTypeRegistry::bIsInitialized'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(595): error C2665: 'TMapBase<KeyType,ValueType,SetAllocator,KeyFuncs>::Add': no overloaded function could convert all the argument types
+        with
+        [
+            KeyType=uint32,
+            ValueType=TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,
+            SetAllocator=FDefaultSetAllocator,
+            KeyFuncs=TDefaultMapHashableKeyFuncs<uint32,TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,false>
+        ]
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\Core\Public\Containers\Map.h(412): note: could be 'ValueType &TMapBase<KeyType,ValueType,SetAllocator,KeyFuncs>::Add(KeyType &&,ValueType &&)'
+        with
+        [
+            ValueType=TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,
+            KeyType=uint32,
+            SetAllocator=FDefaultSetAllocator,
+            KeyFuncs=TDefaultMapHashableKeyFuncs<uint32,TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,false>
+        ]
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(595): note: 'ValueType &TMapBase<KeyType,ValueType,SetAllocator,KeyFuncs>::Add(KeyType &&,ValueType &&)': cannot convert argument 1 from 'uint32' to 'KeyType &&'
+        with
+        [
+            ValueType=TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,
+            KeyType=uint32,
+            SetAllocator=FDefaultSetAllocator,
+            KeyFuncs=TDefaultMapHashableKeyFuncs<uint32,TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,false>
+        ]
+        and
+        [
+            KeyType=uint32
+        ]
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(595): note: You cannot bind an lvalue to an rvalue reference
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\Core\Public\Containers\Map.h(411): note: or       'ValueType &TMapBase<KeyType,ValueType,SetAllocator,KeyFuncs>::Add(KeyType &&,const ValueType &)'
+        with
+        [
+            ValueType=TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,
+            KeyType=uint32,
+            SetAllocator=FDefaultSetAllocator,
+            KeyFuncs=TDefaultMapHashableKeyFuncs<uint32,TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,false>
+        ]
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(595): note: 'ValueType &TMapBase<KeyType,ValueType,SetAllocator,KeyFuncs>::Add(KeyType &&,const ValueType &)': cannot convert argument 1 from 'uint32' to 'KeyType &&'
+        with
+        [
+            ValueType=TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,
+            KeyType=uint32,
+            SetAllocator=FDefaultSetAllocator,
+            KeyFuncs=TDefaultMapHashableKeyFuncs<uint32,TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,false>
+        ]
+        and
+        [
+            KeyType=uint32
+        ]
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(595): note: You cannot bind an lvalue to an rvalue reference
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\Core\Public\Containers\Map.h(410): note: or       'ValueType &TMapBase<KeyType,ValueType,SetAllocator,KeyFuncs>::Add(const KeyType &,ValueType &&)'
+        with
+        [
+            ValueType=TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,
+            KeyType=uint32,
+            SetAllocator=FDefaultSetAllocator,
+            KeyFuncs=TDefaultMapHashableKeyFuncs<uint32,TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,false>
+        ]
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(595): note: 'ValueType &TMapBase<KeyType,ValueType,SetAllocator,KeyFuncs>::Add(const KeyType &,ValueType &&)': cannot convert argument 2 from 'TSharedRef<ObjectType,ESPMode::ThreadSafe>' to 'ValueType &&'
+        with
+        [
+            ValueType=TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,
+            KeyType=uint32,
+            SetAllocator=FDefaultSetAllocator,
+            KeyFuncs=TDefaultMapHashableKeyFuncs<uint32,TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,false>
+        ]
+        and
+        [
+            ObjectType=FSharedBufferManager
+        ]
+        and
+        [
+            ValueType=TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>
+        ]
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(595): note: Reason: cannot convert from 'TSharedRef<ObjectType,ESPMode::ThreadSafe>' to 'ValueType'
+        with
+        [
+            ObjectType=FSharedBufferManager
+        ]
+        and
+        [
+            ValueType=TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>
+        ]
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(595): note: No user-defined-conversion operator available that can perform this conversion, or the operator cannot be called
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\Core\Public\Containers\Map.h(409): note: or       'ValueType &TMapBase<KeyType,ValueType,SetAllocator,KeyFuncs>::Add(const KeyType &,const ValueType &)'
+        with
+        [
+            ValueType=TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,
+            KeyType=uint32,
+            SetAllocator=FDefaultSetAllocator,
+            KeyFuncs=TDefaultMapHashableKeyFuncs<uint32,TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,false>
+        ]
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(595): note: 'ValueType &TMapBase<KeyType,ValueType,SetAllocator,KeyFuncs>::Add(const KeyType &,const ValueType &)': cannot convert argument 2 from 'TSharedRef<ObjectType,ESPMode::ThreadSafe>' to 'const ValueType &'
+        with
+        [
+            ValueType=TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,
+            KeyType=uint32,
+            SetAllocator=FDefaultSetAllocator,
+            KeyFuncs=TDefaultMapHashableKeyFuncs<uint32,TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>,false>
+        ]
+        and
+        [
+            ObjectType=FSharedBufferManager
+        ]
+        and
+        [
+            ValueType=TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>
+        ]
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(595): note: Reason: cannot convert from 'TSharedRef<ObjectType,ESPMode::ThreadSafe>' to 'const ValueType'
+        with
+        [
+            ObjectType=FSharedBufferManager
+        ]
+        and
+        [
+            ValueType=TSharedRef<FSharedFieldBuffer,ESPMode::ThreadSafe>
+        ]
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(595): note: No user-defined-conversion operator available that can perform this conversion, or the operator cannot be called
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(595): note: while trying to match the argument list '(uint32, TSharedRef<ObjectType,ESPMode::ThreadSafe>)'
+        with
+        [
+            ObjectType=FSharedBufferManager
+        ]

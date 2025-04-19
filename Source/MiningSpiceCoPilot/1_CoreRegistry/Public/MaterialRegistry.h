@@ -18,6 +18,8 @@
 #include "TypeVersionMigrationInfo.h"
 #include "Interfaces/IMemoryManager.h"
 #include "Interfaces/IPoolAllocator.h"
+#include "Templates/SharedPointer.h"
+#include "ThreadSafety.h"
 
 // Forward declarations
 class UMaterialInstanceDynamic;
@@ -813,7 +815,7 @@ private:
     uint32 SchemaVersion;
     
     /** Lock for thread-safe access to the registry maps */
-    mutable FRWLock RegistryLock;
+    mutable FSpinLock RegistryLock;
     
     /** Critical section for initialization and shutdown */
     FCriticalSection InitializationLock;

@@ -1,0 +1,617 @@
+## Core Lock Types in Unreal Engine
+
+1. **FCriticalSection** - (`Runtime/Core/Public/HAL/CriticalSection.h`)
+   - Basic mutex implementation
+   - Methods: `Lock()`, `Unlock()`, `TryLock()`
+   - Use with `FScopeLock` for RAII-style automatic management
+
+2. **FSpinLock** - (`Runtime/Core/Public/Misc/SpinLock.h`)
+   - Lightweight lock that spins instead of putting thread to sleep
+   - Better for short-held locks with minimal contention
+   - Methods: `Lock()`, `Unlock()`, `TryLock()`
+   - Use with `FScopedSpinLock` for automatic management
+
+3. **FRWLock** - (`Runtime/Core/Public/Misc/ScopeRWLock.h`)
+   - Reader-writer lock allowing multiple readers but exclusive writers
+   - Methods: `ReadLock()`, `WriteLock()`, `ReadUnlock()`, `WriteUnlock()`
+   - Use with `FRWScopeLock` for automatic management
+
+4. **FMiningReaderWriterLock** - (Project-specific in ThreadSafety.h)
+   - Custom reader-writer lock optimized for shared distance field state
+   - Methods: `ReadLock()`, `WriteLock()`, `ReadUnlock()`, `WriteUnlock()`
+   - Use with `FScopedReadLock` or `FScopedWriteLock` for automatic management
+
+## Atomic Operations
+
+1. **FThreadSafeCounter** - (`Runtime/Core/Public/HAL/ThreadSafeCounter.h`)
+   - Thread-safe integer counter
+   - Methods: `Increment()`, `Decrement()`, `Add()`, `Set()`, `GetValue()`
+
+2. **FThreadSafeBool** - (`Runtime/Core/Public/HAL/ThreadSafeBool.h`)
+   - Thread-safe boolean
+   - Methods: `AtomicSet()`, operators
+
+3. **FPlatformAtomics** - (`Runtime/Core/Public/HAL/PlatformAtomics.h`)
+   - Low-level atomic operations
+   - Methods: `InterlockedIncrement()`, `InterlockedDecrement()`, `InterlockedAdd()`, etc.
+
+## Hierarchical and Specialized Locks
+
+1. **FHierarchicalLock** - (Project-specific in ThreadSafety.h)
+   - Enforces a global lock ordering to prevent deadlocks
+   - Methods: `Lock()`, `Unlock()`
+
+2. **FHybridLock** - (Project-specific in ThreadSafety.h)
+   - Adaptive lock that switches between spinlock and critical section
+   - Methods: `Lock()`, `Unlock()`
+
+3. **FZoneBasedLock** - (Project-specific in ThreadSafety.h)
+   - Locks specific zones/regions of data independently
+   - Methods: `LockZone()`, `UnlockZone()`, `LockMultipleZones()`
+   - Use with `FScopedZoneLock` or `FScopedMultiZoneLock`
+
+## Synchronization Objects
+
+1. **FEvent** - (`Runtime/Core/Public/HAL/Event.h`)
+   - Synchronization primitive for thread signaling
+   - Methods: `Wait()`, `Trigger()`
+
+2. **FSVOFieldReadLock** - (Project-specific in ThreadSafety.h)
+   - Version-based field access control
+   - Methods: `BeginRead()`, `BeginWrite()`, `EndWrite()`
+
+## RAII Lock Guards
+
+1. **FScopeLock** - (`Runtime/Core/Public/Misc/ScopeLock.h`)
+   - RAII guard for FCriticalSection
+   - Automatically locks on construction, unlocks on destruction
+
+2. **FScopedSpinLock** - (`Runtime/Core/Public/Misc/ScopedSpinLock.h` or ThreadSafety.h)
+   - RAII guard for FSpinLock
+   - Automatically locks on construction, unlocks on destruction
+
+3. **FRWScopeLock** - (`Runtime/Core/Public/Misc/ScopeRWLock.h`)
+   - RAII guard for FRWLock
+   - Constructor takes a lock mode parameter (SLT_ReadOnly or SLT_Write)
+
+4. **FScopedReadLock/FScopedWriteLock** - (Project-specific in ThreadSafety.h)
+   - RAII guards for FMiningReaderWriterLock
+
+These lock types provide different performance characteristics and are useful in different scenarios:
+- **FCriticalSection**: General-purpose mutex, good default choice
+- **FSpinLock**: Better for very short critical sections
+- **FRWLock**: For read-heavy workloads where concurrent reads are acceptable
+- **Atomic operations**: For the simplest thread-safe operations on primitive types
+- **Specialized locks**: For specific performance needs or application domains
+
+## PUT MY CIUSTOM LOOCKS HERE
+
+```cpp
+/**
+ * Lightweight spin lock implementation for Mining system
+ * Provides fast locking with minimal overhead for short-held locks
+ */
+class MININGSPICECOPILOT_API FSpinLock
+{
+public:
+    /** Constructor */
+    FSpinLock() : bLocked(0) {}
+    
+    /** Acquires the lock */
+    void Lock()
+    {
+        while (FPlatformAtomics::InterlockedCompareExchange(&bLocked, 1, 0) != 0)
+        {
+            FPlatformProcess::Yield();
+        }
+    }
+    
+    /** Releases the lock */
+    void Unlock()
+    {
+        FPlatformAtomics::InterlockedExchange(&bLocked, 0);
+    }
+    
+    /** Tries to acquire the lock without waiting */
+    bool TryLock()
+    {
+        return FPlatformAtomics::InterlockedCompareExchange(&bLocked, 1, 0) == 0;
+    }
+    
+private:
+    /** Lock state (0 = unlocked, 1 = locked) */
+    volatile int32 bLocked;
+};
+
+/**
+ * High-performance spin lock implementation optimized for low contention scenarios
+ * Uses exponential backoff to reduce CPU usage under contention
+ */
+class MININGSPICECOPILOT_API FSimpleSpinLock
+{
+private:
+    /** The lock state - 0 means unlocked, 1 means locked */
+    volatile int32 LockState;
+
+public:
+    /** Constructor */
+    FORCEINLINE FSimpleSpinLock() : LockState(0) {}
+
+    /** Destructor */
+    FORCEINLINE ~FSimpleSpinLock() {}
+
+    /**
+     * Acquires the lock, spinning until successful
+     * Uses exponential backoff to reduce CPU usage during contention
+     */
+    FORCEINLINE void Lock()
+    {
+        // First attempt - optimistic lock acquisition without backoff
+        if (TryLock())
+        {
+            return;
+        }
+
+        // Enter contention path with exponential backoff
+        uint32 SpinCount = 0;
+        while (!TryLock())
+        {
+            // Exponential backoff - prevents cache line thrashing and excessive CPU usage
+            if (SpinCount < 10u)
+            {
+                // Initial backoff - use CPU yield/pause instruction
+                for (uint32 i = 0; i < (1u << SpinCount); ++i)
+                {
+                    FPlatformProcess::Yield();
+                }
+            }
+            else if (SpinCount < 20u)
+            {
+                // Medium backoff - sleep for short periods
+                FPlatformProcess::SleepNoStats(0.0001f); // 0.1ms
+            }
+            else
+            {
+                // Long backoff - sleep for longer periods
+                FPlatformProcess::SleepNoStats(0.001f); // 1ms
+            }
+            
+            // Increment spin count, capping at 30 to prevent overflow
+            SpinCount = FMath::Min(SpinCount + 1, 30u);
+        }
+    }
+
+    /**
+     * Attempts to acquire the lock without spinning
+     * @return True if lock was acquired, false otherwise
+     */
+    FORCEINLINE bool TryLock()
+    {
+        // Atomically exchange 0 with 1, returns the previous value
+        return FPlatformAtomics::InterlockedCompareExchange(&LockState, 1, 0) == 0;
+    }
+
+    /**
+     * Releases the lock
+     */
+    FORCEINLINE void Unlock()
+    {
+        // Memory barrier to ensure all writes while lock was held are visible
+        FPlatformAtomics::InterlockedExchange(&LockState, 0);
+    }
+
+    /**
+     * Checks if the lock is currently held
+     * @return True if locked, false if unlocked
+     */
+    FORCEINLINE bool IsLocked() const
+    {
+        return LockState != 0;
+    }
+};
+
+/**
+ * Reader-writer lock optimized for shared distance field state
+ * Provides fast access for read-heavy workloads with minimal contention
+ */
+class MININGSPICECOPILOT_API FMiningReaderWriterLock
+{
+public:
+    /** Constructor */
+    FMiningReaderWriterLock();
+    
+    /** Destructor */
+    ~FMiningReaderWriterLock();
+    
+    /**
+     * Acquires a read lock (shared access)
+     * @param TimeoutMs Maximum time to wait in milliseconds (0 for no timeout)
+     * @return True if the lock was acquired
+     */
+    bool ReadLock(uint32 TimeoutMs = 0);
+    
+    /** Releases a read lock */
+    void ReadUnlock();
+    
+    /**
+     * Acquires a write lock (exclusive access)
+     * @param TimeoutMs Maximum time to wait in milliseconds (0 for no timeout)
+     * @return True if the lock was acquired
+     */
+    bool WriteLock(uint32 TimeoutMs = 0);
+    
+    /** Releases a write lock */
+    void WriteUnlock();
+    
+    /** Checks if a thread is currently holding a write lock */
+    bool IsWriteLocked() const;
+    
+    /** Gets the number of active readers */
+    int32 GetReaderCount() const;
+    
+    /** Gets whether a write is pending */
+    bool IsWritePending() const;
+    
+    /** Tries to upgrade from a read lock to a write lock */
+    bool TryUpgradeToWriteLock();
+    
+    /** Downgrades from a write lock to a read lock */
+    void DowngradeToReadLock();
+
+private:
+    /** Number of active readers */
+    FThreadSafeCounter ReaderCount;
+    
+    /** Flag indicating if a writer is active */
+    FThreadSafeCounter WriterActive;
+    
+    /** Flag indicating if a writer is waiting */
+    FThreadSafeCounter WriterWaiting;
+    
+    /** ID of the thread currently holding a write lock */
+    FThreadSafeCounter WriterThreadId;
+    
+    /** Event for writers to wait on */
+    FEvent* WriterEvent;
+    
+    /** Event for readers to wait on */
+    FEvent* ReaderEvent;
+    
+    /** Gets the current thread ID */
+    static uint32 GetCurrentThreadId();
+};
+
+/**
+ * Hierarchical lock to prevent deadlocks
+ * Enforces a global lock ordering by hierarchy level
+ */
+class MININGSPICECOPILOT_API FHierarchicalLock
+{
+public:
+    /** Constructor */
+    explicit FHierarchicalLock(uint32 InLevel);
+    
+    /** Destructor */
+    ~FHierarchicalLock();
+    
+    /**
+     * Acquires the lock
+     * @param TimeoutMs Maximum time to wait in milliseconds (0 for no timeout)
+     * @return True if the lock was acquired
+     */
+    bool Lock(uint32 TimeoutMs = 0);
+    
+    /** Releases the lock */
+    void Unlock();
+    
+    /** Gets the hierarchy level of this lock */
+    uint32 GetLevel() const;
+    
+    /** Gets whether this lock is currently held by the calling thread */
+    bool IsLockedByCurrentThread() const;
+
+    /** Thread-specific highest acquired lock level - stored using platform TLS */
+    static uint32 GetThreadHighestLockLevel();
+    static void SetThreadHighestLockLevel(uint32 Level);
+
+private:
+    /** Lock hierarchy level */
+    uint32 Level;
+    
+    /** The actual lock */
+    FCriticalSection InternalLock;
+    
+    /** Thread ID that currently holds the lock */
+    FThreadSafeCounter OwnerThreadId;
+    
+    /** Whether the lock is currently held */
+    FThreadSafeCounter LockCount;
+    
+    /** TLS slot for the ThreadHighestLockLevel */
+    static uint32 ThreadHighestLockLevelTLS;
+};
+
+/**
+ * A hybrid lock that can switch between spin lock and critical section based on contention
+ */
+class MININGSPICECOPILOT_API FHybridLock
+{
+public:
+    /** Constructor */
+    FHybridLock();
+    
+    /** Destructor */
+    ~FHybridLock();
+    
+    /**
+     * Acquires the lock
+     * @param TimeoutMs Maximum time to wait in milliseconds (0 for no timeout)
+     * @return True if the lock was acquired
+     */
+    bool Lock(uint32 TimeoutMs = 0);
+    
+    /** Releases the lock */
+    void Unlock();
+    
+    /** Gets the contention count */
+    uint32 GetContentionCount() const;
+    
+    /** Resets contention statistics */
+    void ResetContentionStats();
+    
+    /** Sets the threshold for switching lock types */
+    void SetContentionThreshold(uint32 Threshold);
+
+private:
+    /** Critical section for high-contention case */
+    FCriticalSection SlowLock;
+    
+    /** Spin lock for low-contention case */
+    TAtomic<int32> FastLock;
+    
+    /** Current contention count */
+    FThreadSafeCounter ContentionCount;
+    
+    /** Contention threshold for switching lock types */
+    uint32 ContentionThreshold;
+    
+    /** Whether to use the slow lock */
+    FThreadSafeCounter bUseSlowLock;
+    
+    /** Updates contention statistics */
+    void UpdateContentionStats();
+};
+
+/**
+ * Wait-free read lock for SDF fields
+ * Provides versioned access to SDF fields without blocking readers
+ */
+class MININGSPICECOPILOT_API FSVOFieldReadLock
+{
+public:
+    /** Constructor */
+    FSVOFieldReadLock();
+    
+    /** Destructor */
+    ~FSVOFieldReadLock();
+    
+    /**
+     * Begins a read operation, returning the current version
+     * @return The current version of the field
+     */
+    uint32 BeginRead();
+    
+    /**
+     * Attempts to begin a write operation
+     * @return True if write lock was acquired, false if another thread is already writing
+     */
+    bool BeginWrite();
+    
+    /**
+     * Completes a write operation, incrementing the version counter
+     */
+    void EndWrite();
+    
+    /**
+     * Gets the current version of the field
+     * @return The current version of the field
+     */
+    uint32 GetCurrentVersion() const;
+    
+private:
+    /** The current version of the field */
+    FThreadSafeCounter CurrentVersion;
+    
+    /** Whether an update is in progress */
+    FThreadSafeCounter UpdateInProgress;
+};
+
+/**
+ * Zone-based lock for efficient concurrent access to SVO+SDF zones
+ * Uses one lock per zone and enforces consistent lock acquisition order to prevent deadlocks
+ */
+class MININGSPICECOPILOT_API FZoneBasedLock
+{
+public:
+    /**
+     * Constructor
+     * @param ZoneCount Number of zones to manage
+     */
+    FZoneBasedLock(int32 ZoneCount);
+    
+    /** Destructor */
+    ~FZoneBasedLock();
+    
+    /**
+     * Locks a specific zone
+     * @param ZoneId ID of the zone to lock
+     * @param TimeoutMs Maximum time to wait in milliseconds (0 for no wait)
+     * @return True if the lock was acquired
+     */
+    bool LockZone(int32 ZoneId, uint32 TimeoutMs = 0);
+    
+    /**
+     * Tries to lock a zone without waiting
+     * @param ZoneId ID of the zone to lock
+     * @return True if the lock was acquired
+     */
+    bool TryLockZone(int32 ZoneId);
+    
+    /**
+     * Unlocks a previously locked zone
+     * @param ZoneId ID of the zone to unlock
+     */
+    void UnlockZone(int32 ZoneId);
+    
+    /**
+     * Locks multiple zones in a deadlock-safe manner
+     * @param ZoneIds Array of zone IDs to lock
+     * @param TimeoutMs Maximum time to wait in milliseconds (0 for no wait)
+     * @return True if all locks were acquired
+     */
+    bool LockMultipleZones(const TArray<int32>& ZoneIds, uint32 TimeoutMs = 0);
+    
+    /**
+     * Unlocks multiple previously locked zones
+     * @param ZoneIds Array of zone IDs to unlock
+     */
+    void UnlockMultipleZones(const TArray<int32>& ZoneIds);
+    
+    /**
+     * Checks if a zone is currently locked
+     * @param ZoneId ID of the zone to check
+     * @return True if the zone is locked
+     */
+    bool IsZoneLocked(int32 ZoneId) const;
+    
+    /**
+     * Gets the ID of the thread that owns a zone lock
+     * @param ZoneId ID of the zone to check
+     * @return Thread ID of the owner, or INDEX_NONE if unowned
+     */
+    int32 GetZoneOwner(int32 ZoneId) const;
+
+private:
+    /** Number of zones managed by this lock */
+    int32 ZoneCount;
+    
+    /** ID of the thread that owns this lock */
+    int32 OwnerThreadId;
+    
+    /** Array of individual zone locks */
+    TArray<FSpinLock*> ZoneLocks;
+    
+    /** Array of zone owner thread IDs */
+    TArray<FThreadSafeCounter> ZoneOwners;
+};
+
+/**
+ * Scoped read lock for reader-writer lock
+ * Automatically acquires read lock on construction and releases on destruction
+ */
+class MININGSPICECOPILOT_API FScopedReadLock
+{
+public:
+    /**
+     * Constructor
+     * @param InLock Reader-writer lock to acquire read lock on
+     * @param TimeoutMs Maximum time to wait in milliseconds (0 for no timeout)
+     */
+    FScopedReadLock(FMiningReaderWriterLock& InLock, uint32 TimeoutMs = 0);
+    
+    /** Destructor */
+    ~FScopedReadLock();
+    
+    /** Checks if the lock was successfully acquired */
+    bool IsLocked() const;
+
+private:
+    /** The reader-writer lock */
+    FMiningReaderWriterLock& Lock;
+    
+    /** Whether the lock was acquired */
+    bool bLocked;
+};
+
+/**
+ * Scoped write lock for reader-writer lock
+ * Automatically acquires write lock on construction and releases on destruction
+ */
+class MININGSPICECOPILOT_API FScopedWriteLock
+{
+public:
+    /**
+     * Constructor
+     * @param InLock Reader-writer lock to acquire write lock on
+     * @param TimeoutMs Maximum time to wait in milliseconds (0 for no timeout)
+     */
+    FScopedWriteLock(FMiningReaderWriterLock& InLock, uint32 TimeoutMs = 0);
+    
+    /** Destructor */
+    ~FScopedWriteLock();
+    
+    /** Checks if the lock was successfully acquired */
+    bool IsLocked() const;
+
+private:
+    /** The reader-writer lock */
+    FMiningReaderWriterLock& Lock;
+    
+    /** Whether the lock was acquired */
+    bool bLocked;
+};
+
+/**
+ * Scoped spin lock guard
+ * Automatically acquires spin lock on construction and releases on destruction
+ */
+class MININGSPICECOPILOT_API FScopedSpinLock
+{
+public:
+    /**
+     * Constructor
+     * @param InLock Spin lock to acquire
+     */
+    FScopedSpinLock(FSpinLock& InLock)
+        : Lock(InLock)
+        , bLocked(true)
+    {
+        Lock.Lock();
+    }
+    
+    /** Destructor */
+    ~FScopedSpinLock()
+    {
+        if (bLocked)
+        {
+            Lock.Unlock();
+        }
+    }
+    
+    /** Explicitly unlock before destruction */
+    void Unlock()
+    {
+        if (bLocked)
+        {
+            Lock.Unlock();
+            bLocked = false;
+        }
+    }
+    
+    /** Check if we're currently holding the lock */
+    bool IsLocked() const
+    {
+        return bLocked;
+    }
+    
+private:
+    /** The lock we're managing */
+    FSpinLock& Lock;
+    
+    /** Whether we currently hold the lock */
+    bool bLocked;
+    
+    /** Disable copying */
+    FScopedSpinLock(const FScopedSpinLock&) = delete;
+    FScopedSpinLock& operator=(const FScopedSpinLock&) = delete;
+};

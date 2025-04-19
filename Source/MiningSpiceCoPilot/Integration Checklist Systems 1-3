@@ -24,13 +24,22 @@ Source\MiningSpiceCoPilot\# SYSTEM 3 Threading and Async Task System REFINED.txt
 
 ## Core Thread-Safe Registry Operations
 
-1. ⚙️ **Thread-Safe Type Registration** 
+1. ✅ ⚙️ **Thread-Safe Type Registration** 
    - `IRegistry` implementations need integration with `FThreadSafety` from `ThreadSafety.h`
    - Implementation: 
      - Replace standard locks in all registry classes with `FSpinLock` from `ThreadSafety.h`
+       - Update each registry's `RegistryLock` member to use `FSpinLock` instead of `FCriticalSection`
+       - Replace all `FScopeLock` usage with `FScopedSpinLock` for RAII-style locking
+       - Example: `FScopedSpinLock Lock(RegistryLock);` instead of `FScopeLock Lock(&RegistryLock);`
      - Add contention tracking for high-traffic registration points using `FThreadSafety::RecordContention()`
+       - Add in RegisterType/RegisterTransactionType methods: `FThreadSafety::Get().RecordContention(&RegistryLock);`
+       - Implement tracking in hot paths like type lookups: `if (!bLockAcquired) { FThreadSafety::Get().RecordContention(&RegistryLock); }`
      - Update `FZoneTypeRegistry::RegisterTransactionType` to use optimistic locking for concurrent registration
+       - Implement with atomic operations: check version, prepare update, validate version hasn't changed, commit with atomic compare-exchange
+       - Pattern: `if (FThreadSafetyHelpers::AtomicCompareExchange(TypeVersion, ExpectedVersion, NewVersion)) { /* Commit changes */ }`
      - Implement thread-safe singleton pattern in all registry Get() methods using atomic operations
+       - Use double-checked locking pattern with memory barriers
+       - Pattern: `if (!Instance) { FScopedSpinLock Lock(InitializationLock); if (!Instance) { Instance = new FRegistryType(); } }`
      - Required files: `ZoneTypeRegistry.h`, `MaterialRegistry.h`, `SDFTypeRegistry.h`, `SVOTypeRegistry.h`, `ThreadSafety.h`
      - Ensures miners can safely register new material types and zone operations during gameplay without crashes or data corruption
 
@@ -38,9 +47,19 @@ Source\MiningSpiceCoPilot\# SYSTEM 3 Threading and Async Task System REFINED.txt
    - `FServiceLocator::ResolveService` needs thread safety from `FThreadSafety` primitives
    - Implementation:
      - Update `FServiceLocator` to use reader-writer lock from `FMiningReaderWriterLock` for service resolution
+       - Replace existing `ServiceMapLock` with `FMiningReaderWriterLock ServiceMapRWLock;`
+       - Use `FScopedReadLock` for service lookups: `FScopedReadLock ReadLock(ServiceMapRWLock);`
+       - Use `FScopedWriteLock` for service registration: `FScopedWriteLock WriteLock(ServiceMapRWLock);`
      - Implement lock-free fast-path for frequently accessed services with versioned access
+       - Add service version counter: `TMap<FName, FWaitFreeCounter*> ServiceVersions;`
+       - Create optimistic read pattern: check version, read service, validate version unchanged
+       - Pattern: `uint32 Version = ServiceVersions[ServiceName]->GetValue(); TSharedPtr<IService> Service = ServiceMap[ServiceName]; if (Version == ServiceVersions[ServiceName]->GetValue()) { return Service; }`
      - Add zone-aware service resolution that coordinates with `FTransactionManager`
+       - Use transaction context to track accessed zones: `FMiningTransactionContext* Context = FTransactionManager::Get().GetCurrentTransaction();`
+       - Add service zone tracking: `if (Context) { Context->AddAccessedZone(ServiceZoneMap[ServiceName]); }`
      - Create specialized thread-local caching for repeated service lookups
+       - Add thread-local cache: `static thread_local TMap<FName, FCachedServiceEntry> ThreadLocalCache;`
+       - Validate cache with versions: `if (ThreadLocalCache.Contains(ServiceName) && ThreadLocalCache[ServiceName].Version == ServiceVersions[ServiceName]->GetValue()) { return ThreadLocalCache[ServiceName].Service; }`
      - Required files: `CoreServiceLocator.h`, `ThreadSafety.h`, `TransactionManager.h`, `IServiceLocator.h`
      - Improves performance when multiple mining operations in different areas need access to the same service instances
 
@@ -48,9 +67,20 @@ Source\MiningSpiceCoPilot\# SYSTEM 3 Threading and Async Task System REFINED.txt
    - `FZoneTypeRegistry` needs deep integration with `FTransactionManager` from `TransactionManager.h`
    - Implementation:
      - Add transaction type capabilities from registry to inform `FTransactionManager` optimizations
+       - Extend `FZoneTransactionTypeInfo` with conflict metrics: `TArray<float> HistoricalConflictRates; uint32 TotalExecutions; uint32 ConflictCount;`
+       - Add capability flags: `bool bSupportsPartialExecution; bool bCanMergeResults; ETransactionPriority Priority;`
      - Link `FZoneTypeRegistry::RegisterTransactionType` with `FTransactionManager::UpdateFastPathThreshold`
+       - Modify RegisterTransactionType to call UpdateFastPathThreshold after registration:
+       - Code: `FTransactionManager::Get().UpdateFastPathThreshold(TypeId, InTypeInfo.FastPathThreshold);`
+       - Add conflict rate feedback: `FZoneTypeRegistry::UpdateConflictRate(uint32 TypeId, float NewRate) { /* Update and call FTransactionManager */ }`
      - Create callback mechanism for transaction statistics to update registry metadata
+       - Add registration for transaction callbacks: `TMap<uint32, FTransactionCompletionDelegate> CompletionCallbacks;`
+       - Create delegate type: `DECLARE_DELEGATE_TwoParams(FTransactionCompletionDelegate, uint32 /*TypeId*/, const FTransactionStats& /*Stats*/);`
+       - Register in TransactionManager: `FTransactionManager::Get().RegisterCompletionCallback(TypeId, FTransactionCompletionDelegate::CreateRaw(this, &FZoneTypeRegistry::OnTransactionCompleted));`
      - Implement zone hierarchy awareness for nested transactions
+       - Add zone hierarchy tracking: `TMap<int32, TArray<int32>> ZoneHierarchy; // Parent -> Children`
+       - Propagate transaction locks: `for (int32 ChildZone : ZoneHierarchy[ParentZone]) { Context->AddAccessedZone(ChildZone); }`
+       - Create zone grouping API: `bool FZoneTypeRegistry::RegisterZoneHierarchy(int32 ParentZone, const TArray<int32>& ChildZones);`
      - Required files: `ZoneTypeRegistry.h`, `TransactionManager.h`, `ITransactionManager.h`, `ThreadSafety.h`
      - Enables the system to optimize mining operations based on material types, reducing conflicts when multiple miners work in close proximity
 
@@ -58,9 +88,20 @@ Source\MiningSpiceCoPilot\# SYSTEM 3 Threading and Async Task System REFINED.txt
    - `FMaterialRegistry` needs integration with version tracking from `FTransactionManager`
    - Implementation:
      - Add material channel version tracking to `FMaterialRegistry` using `FThreadSafeCounter`
+       - Add version tracking members: `TMap<int32, FThreadSafeCounter*> MaterialChannelVersions;`
+       - Create version tracking methods: `FThreadSafeCounter* GetOrCreateMaterialChannelVersion(int32 ChannelId);`
+       - Increment versions in modification methods: `MaterialChannelVersions[ChannelId]->Increment();`
      - Integrate `FMaterialRegistry::GetMaterialType` with `FTransactionManager::GetOrCreateMaterialVersion`
+       - Modify GetMaterialType to record access in transaction context: 
+       - Code: `FMiningTransactionContext* Context = FTransactionManager::Get().GetCurrentTransaction(); if (Context) { Context->AddAccessedMaterial(ZoneId, MaterialId); }`
+       - Create helper method: `bool FMaterialRegistry::RecordMaterialAccess(uint32 TypeId, int32 ZoneId, bool bIsWrite = false);`
      - Create specialized version validators for material inheritance chains
+       - Add inheritance-aware validation: `bool ValidateMaterialTypeVersion(uint32 TypeId, const TArray<FVersionRecord>& VersionRecords);`
+       - Track parent-child relationships in version system: `TMap<uint32, TArray<uint32>> TypeInheritanceMap; // ParentId -> ChildIds`
+       - Implement hierarchical version validation: `for (uint32 ChildId : TypeInheritanceMap[ParentId]) { if (!ValidateMaterialTypeVersion(ChildId, VersionRecords)) return false; }`
      - Implement optimistic concurrency for material property updates
+       - Create optimistic update pattern: `uint32 InitialVersion = GetMaterialVersion(TypeId, ZoneId); /* prepare update */; if (ValidateMaterialVersion(TypeId, ZoneId, InitialVersion)) { /* commit update */ return true; } else { /* retry or abort */ }`
+       - Add retry mechanism with backoff: `for(int32 Attempt=0; Attempt < MaxRetries; Attempt++) { /* optimistic update */ if (success) return true; FPlatformProcess::Sleep(FMath::Min(0.001f * FMath::Pow(2.0f, Attempt), 0.1f)); }`
      - Required files: `MaterialRegistry.h`, `TransactionManager.h`, `ThreadSafety.h`
      - Allows multiple miners to safely modify different properties of the same material type without conflicts
 
@@ -68,9 +109,45 @@ Source\MiningSpiceCoPilot\# SYSTEM 3 Threading and Async Task System REFINED.txt
    - `FTaskScheduler` needs type information from registry system for mining operations
    - Implementation:
      - Enhance `FTaskScheduler` to query type capabilities from `FSVOTypeRegistry` and `FSDFTypeRegistry`
+       - Add type capability query methods: `static ETypeCapabilities GetTypeCapabilities(uint32 TypeId, ERegistryType RegistryType);`
+       - Create registry type enum: `enum class ERegistryType { SVO, SDF, Material, Zone };`
+       - Implement capability mapping: `static EThreadOptimizationFlags MapCapabilitiesToOptimizationFlags(ETypeCapabilities Capabilities);`
+       - Add type-aware task configuration: `FTaskConfig& SetTypeId(uint32 TypeId, ERegistryType RegistryType);`
      - Create type-aware task creation helpers in registry interfaces
-     - Add type-specific worker thread specialization based on registry metadata
+       - Add to IRegistry interface: `virtual uint64 ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskFunc, const FTaskConfig& Config = FTaskConfig());`
+       - Implement in derived classes: `uint64 FSVOTypeRegistry::ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskFunc, const FTaskConfig& Config) { FTaskConfig TypedConfig = Config; TypedConfig.SetTypeId(TypeId, ERegistryType::SVO); return FTaskScheduler::Get().ScheduleTask(TaskFunc, TypedConfig); }`
+       - Add type-specific worker thread specialization based on registry metadata
+       - Extend FMiningTaskWorker with protected accessors for private members:
+       ```cpp
+       class FSpecializedTaskWorker : public FMiningTaskWorker 
+       { 
+       public: 
+           ETypeCapabilities SupportedCapabilities;
+           
+       protected:
+           // Override virtual method for specialized task selection
+           virtual FMiningTask* SelectNextTask() override;
+       };
+       ```
+       - Modify FMiningTaskWorker to support extension:
+       ```cpp
+       // Add to FMiningTaskWorker class
+       protected:
+           // Accessor methods needed by specialized workers
+           class FTaskScheduler* GetScheduler() const { return Scheduler; }
+           void IncrementTasksProcessed() { TasksProcessed.Increment(); }
+           
+           // Virtual method for task selection that can be overridden
+           virtual FMiningTask* SelectNextTask();
+       ```
+       - Create specialized worker pools: `TMap<ETypeCapabilities, TArray<FSpecializedTaskWorker*>> SpecializedWorkers;`
+       - Add worker preference matching: `FMiningTaskWorker* FTaskScheduler::FindBestWorkerForTask(const FMiningTask* Task);`
+       - Implement capability-based routing: `if (Task->HasTypeId()) { ETypeCapabilities Caps = GetTypeCapabilities(Task->GetTypeId(), Task->GetRegistryType()); return FindWorkerWithCapabilities(Caps); }`
      - Implement SIMD capability detection through registry for optimized task execution
+       - Add SIMD capability detection: `static EProcessorFeatures DetectProcessorFeatures();`
+       - Create SIMD-aware task variants: `enum class ESIMDVariant { None, SSE2, SSE4, AVX, AVX2, AVX512, Neon };`
+       - Register optimized function variants: `bool RegisterTypeOperationVariant(uint32 TypeId, ESIMDVariant Variant, TFunction<void(void*,void*)> ImplFunc);`
+       - Select best variant at runtime: `TFunction<void(void*,void*)> GetBestTypeOperationVariant(uint32 TypeId, EProcessorFeatures AvailableFeatures);`
      - Required files: `TaskScheduler.h`, `SVOTypeRegistry.h`, `SDFTypeRegistry.h`, `ITaskScheduler.h`
      - Optimizes mining tasks based on ore/rock types being processed, using specialized algorithms per material
 
@@ -78,9 +155,50 @@ Source\MiningSpiceCoPilot\# SYSTEM 3 Threading and Async Task System REFINED.txt
    - Clearly define thread safety boundaries between registries using `FThreadSafety` tools
    - Implementation:
      - Define hierarchical locking order for all registry operations using `FHierarchicalLock`
+       - Define registry locking levels: `enum class ERegistryLockLevel : uint32 { Service = 100, Zone = 200, Material = 300, SVO = 400, SDF = 500 };`
+       - Replace standard locks with hierarchical locks: `FHierarchicalLock* MaterialRegistryLock = FThreadSafety::Get().CreateHierarchicalLock((uint32)ERegistryLockLevel::Material);`
+       - Use in registry methods: `if (MaterialRegistryLock->Lock(TimeoutMs)) { /* Critical section */ MaterialRegistryLock->Unlock(); }`
+       - Add helper class: `class FScopedHierarchicalLock { public: FScopedHierarchicalLock(FHierarchicalLock* InLock) : Lock(InLock), bLocked(InLock->Lock()) {} ~FScopedHierarchicalLock() { if (bLocked && Lock) Lock->Unlock(); } private: FHierarchicalLock* Lock; bool bLocked; };`
      - Implement deadlock prevention for cross-registry operations
+       - Add deadlock detection: `bool FThreadSafety::DetectPotentialDeadlock(const FString& LockName, uint32 TimeoutMs);`
+       - Create registry operation sequence validator: `bool ValidateRegistryOperationSequence(const TArray<ERegistryLockLevel>& LockSequence);`
+       - Add validation to high-level operations: `check(ValidateRegistryOperationSequence({ERegistryLockLevel::Material, ERegistryLockLevel::Zone}));`
+       - Implement resource hierarchy: `TMultiMap<void*, void*> ResourceHierarchy; // Resource -> Dependencies`
      - Create wait-free read paths for frequent type lookups
+       - Add versioned type tables with atomic operations:
+       ```cpp
+       struct FVersionedTypeTable { 
+           TAtomic<uint32> Version;
+           TMap<uint32, TSharedRef<FTypeInfo>> Types;
+           
+           // Helper methods for atomic access
+           uint32 LoadVersion() const { return Version.Load(); }
+           void IncrementVersion() { Version.Increment(); } 
+           bool CompareExchangeVersion(uint32& OutOldVersion, uint32 NewVersion, uint32 ExpectedVersion) {
+               return Version.CompareExchange(OutOldVersion, NewVersion, ExpectedVersion);
+           }
+       };
+       ```
+       - Implement lock-free read pattern: 
+       ```cpp
+       uint32 TableVersion = TypeTable.LoadVersion();
+       TSharedRef<FTypeInfo> TypeInfo = TypeTable.Types[TypeId];
+       if (TableVersion == TypeTable.LoadVersion()) { 
+           // Version hasn't changed, TypeInfo is valid
+           return TypeInfo;
+       } else { 
+           // Fallback to locked path
+           FScopedLock Lock(&RegistryLock);
+           return TypeTable.Types[TypeId];
+       }
+       ```
+       - Create thread-local type cache: `static thread_local TMap<uint32, FCachedTypeInfo> ThreadLocalTypeCache;`
+       - Add version validation: `if (ThreadLocalTypeCache.Contains(TypeId) && ThreadLocalTypeCache[TypeId].Version == CurrentTypeVersion) { return ThreadLocalTypeCache[TypeId].TypeInfo; }`
      - Add contention metrics collection for registry access patterns
+       - Create contention tracking struct: `struct FRegistryContentionStats { uint32 AttemptCount; uint32 SuccessCount; uint32 TimeoutCount; double TotalWaitTimeMs; };`
+       - Add tracking to registry operations: `double StartTime = FPlatformTime::Seconds(); bool bAcquired = RegistryLock->Lock(TimeoutMs); double EndTime = FPlatformTime::Seconds(); UpdateContentionStats(RegistryName, bAcquired, (EndTime-StartTime)*1000.0);`
+       - Implement regular reporting: `void FThreadSafety::LogRegistryContentionReport(float ReportingIntervalSeconds);`
+       - Create visualization data: `TArray<FContentionDataPoint> GenerateContentionHeatmapData(const FString& RegistryName, float TimeWindowSeconds);`
      - Required files: All Registry headers, `ThreadSafety.h`, `IRegistry.h`
      - Prevents mining operations from freezing when multiple systems need to access the type registry simultaneously
 
@@ -88,9 +206,39 @@ Source\MiningSpiceCoPilot\# SYSTEM 3 Threading and Async Task System REFINED.txt
    - `FSDFTypeRegistry` needs specialized thread safety from `FSVOFieldReadLock`
    - Implementation:
      - Integrate `FSDFTypeRegistry::RegisterFieldOperation` with `FSVOFieldReadLock` for versioned access
+       - Add FSVOFieldReadLock as a member: `FSVOFieldReadLock* FieldOperationsLock;`
+       - Initialize in constructor: `FieldOperationsLock = FThreadSafety::Get().CreateSVOFieldReadLock();`
+       - Implement versioned write in RegisterFieldOperation: `uint32 InitialVersion = FieldOperationsLock->BeginWrite(); /* registration logic */ FieldOperationsLock->EndWrite();`
+       - Add version tracking for read operations: `uint32 Version = FieldOperationsLock->BeginRead(); /* read operation */ // No explicit end needed`
      - Implement wait-free field operation lookup for frequently used operations
+       - Create versioned cache: `struct FFieldOperationCacheEntry { uint32 Version; TSharedRef<FSDFOperationInfo> OperationInfo; };`
+       - Add thread-local cache: `static thread_local TMap<uint32, FFieldOperationCacheEntry> ThreadLocalOperationCache;`
+       - Implement optimistic read pattern: `uint32 CurrentVersion = FieldOperationsLock->GetCurrentVersion(); if (ThreadLocalOperationCache.Contains(OpId) && ThreadLocalOperationCache[OpId].Version == CurrentVersion) { return ThreadLocalOperationCache[OpId].OperationInfo; }`
+       - Add cache invalidation: `void InvalidateFieldOperationCache() { ThreadLocalOperationCache.Empty(); }`
      - Create specialized read-mostly synchronization for distance field evaluation
+       - Add dedicated read lock: `FSVOFieldReadLock* EvaluationLock;`
+       - Create field evaluation context: `struct FFieldEvaluationContext { uint32 Version; bool IsValid() const { return EvaluationLock->GetCurrentVersion() == Version; } };`
+       - Implement validation check: `bool ValidateEvaluationContext(const FFieldEvaluationContext& Context) { return Context.IsValid(); }`
+       - Create batched field evaluation: `template<typename T> bool EvaluateFieldBatch(const TArray<FVector>& Points, TArray<T>& Results, FFieldEvaluationContext& OutContext);`
      - Add optimistic concurrency for field operation registration
+       - Implement optimistic registration with retry: 
+       - Code: ```
+           for (int32 Attempt = 0; Attempt < MaxRetries; ++Attempt) {
+               uint32 InitialVersion = FieldOperationsLock->GetCurrentVersion();
+               // Prepare the operation info
+               if (FieldOperationsLock->BeginWrite()) {
+                   if (InitialVersion == FieldOperationsLock->GetCurrentVersion()) {
+                       // Registration logic
+                       FieldOperationsLock->EndWrite();
+                       return OperationId;
+                   }
+                   FieldOperationsLock->EndWrite();
+               }
+               // Backoff
+               FPlatformProcess::Sleep(FMath::Min(0.001f * FMath::Pow(2.0f, Attempt), 0.1f));
+           }
+           ```
+       - Add conflict detection: `bool HasFieldOperationConflict(uint32 OpId1, uint32 OpId2) { /* Check if operations can run concurrently */ }`
      - Required files: `SDFTypeRegistry.h`, `ThreadSafety.h`
      - Allows miners to safely modify terrain while other players are viewing/interacting with the same area
 
@@ -98,9 +246,23 @@ Source\MiningSpiceCoPilot\# SYSTEM 3 Threading and Async Task System REFINED.txt
    - Async loading of type data needs `FAsyncTaskManager` integration
    - Implementation:
      - Create async type registration tasks using `FAsyncTaskManager`
+       - Define operation type: `static const FString TypeRegistrationOperation = TEXT("TypeRegistration");`
+       - Register operation type in initialization: `FAsyncTaskManager::Get().RegisterOperationType(TypeRegistrationOperation, [](uint64 OpId, const FString& Name) { return new FTypeRegistrationOperation(OpId, Name); });`
+       - Create operation implementation: `class FTypeRegistrationOperation : public FAsyncOperationImpl { /* Task implementation */ };`
+       - Add helper methods to registry classes: `uint64 FSDFTypeRegistry::BeginAsyncTypeRegistration(const FString& SourceAsset);`
      - Implement progress tracking for large type registrations
+       - Define progress fields: `struct FTypeRegistrationProgress { int32 TotalTypes; int32 ProcessedTypes; int32 FailedTypes; TArray<FString> ErrorMessages; };`
+       - Update progress in registration task: `void UpdateProgress(int32 Processed, int32 Total) { Progress.Percentage = (float)Processed / Total; Progress.StageMessage = FString::Printf(TEXT("Registered %d of %d types"), Processed, Total); Operation->SetProgress(Progress); }`
+       - Add detailed progress monitoring: `FAsyncProgressDelegate ProgressDelegate = FAsyncProgressDelegate::CreateUObject(this, &UTypeRegistrationSubsystem::OnTypeRegistrationProgress);`
      - Add cancellation support for interrupted type loading
+       - Implement cancellation checkpoint: `if (Operation->IsCancellationRequested()) { AbortRegistration(); return false; }`
+       - Create cleanup for partial registration: `void AbortRegistration() { /* Remove partially registered types */ }`
+       - Add transaction-like behavior: `void BeginTypeRegistrationBatch(); bool CommitTypeRegistrationBatch(); void RollbackTypeRegistrationBatch();`
      - Create versioning protection during async type loading
+       - Add versioning for type batches: `uint32 TypeBatchVersion = 0;`
+       - Increment on batch completion: `void FinalizeTypeBatch() { FPlatformAtomics::InterlockedIncrement(&TypeBatchVersion); }`
+       - Create version validator: `bool IsTypeBatchCurrent(uint32 BatchVersion) { return BatchVersion == TypeBatchVersion; }`
+       - Implement isolation during loading: `TMap<uint32, TSharedRef<FSDFFieldTypeInfo>> PendingTypes; bool MergePendingTypes();`
      - Required files: `AsyncTaskManager.h`, All Registry headers, `IAsyncOperation.h`
      - Enables loading new mining equipment and material types without interrupting gameplay
 
@@ -130,9 +292,74 @@ Source\MiningSpiceCoPilot\# SYSTEM 3 Threading and Async Task System REFINED.txt
     - Integrate `FParallelExecutor` with registry batch operations
     - Implementation:
       - Create batch type registration API using `FParallelExecutor`
+        - Define batch registration interface: `template<typename T> bool RegisterTypesBatch(const TArray<T>& TypeInfos, TArray<uint32>& OutTypeIds, EParallelExecutionMode Mode = EParallelExecutionMode::Automatic);`
+        - Implement using ParallelFor: `return FParallelExecutor::Get().ParallelFor(TypeInfos.Num(), [&](int32 Index) { OutTypeIds[Index] = RegisterSingleType(TypeInfos[Index]); }, FParallelConfig().SetExecutionMode(Mode));`
+        - Add specialized versions for different registries: `bool FSVOTypeRegistry::RegisterVoxelTypesBatch(const TArray<FSVOVoxelTypeInfo>& TypeInfos, TArray<uint32>& OutTypeIds);`
+        - Create pre-validation function: `bool PrevalidateTypes(const TArray<T>& TypeInfos, TArray<FString>& OutErrors);`
       - Implement parallel validation for type consistency checks
+        - Define validation task: `bool ValidateTypeConsistency(bool bParallel = true);`
+        - Create parallel validation implementation: 
+        - Code: ```
+            TArray<bool> ValidationResults;
+            ValidationResults.SetNum(AllTypes.Num());
+            return FParallelExecutor::Get().ParallelFor(AllTypes.Num(), [&](int32 Index) {
+                ValidationResults[Index] = ValidateSingleType(AllTypes[Index]);
+            });
+            ```
+        - Add validation context: `struct FTypeValidationContext { TArray<FString> Errors; FCriticalSection ErrorLock; };`
+        - Implement thread-safe error collection: `void AddValidationError(FTypeValidationContext& Context, const FString& Error) { FScopeLock Lock(&Context.ErrorLock); Context.Errors.Add(Error); }`
       - Add parallel type initialization during system startup
+        - Implement ParallelForWithDependencies in FParallelExecutor:
+        ```cpp
+        /**
+         * Executes a function for items with dependencies in parallel
+         * @param ItemCount Total number of items to process
+         * @param WorkFunction Function to execute for each item
+         * @param DependencyFunction Function that returns dependencies for an item
+         * @return True if all items were processed successfully
+         */
+        bool ParallelForWithDependencies(
+            int32 ItemCount, 
+            TFunction<void(int32)> WorkFunction,
+            TFunction<TArray<int32>(int32)> DependencyFunction);
+        ```
+        - Implementation details:
+        ```cpp
+        bool FParallelExecutor::ParallelForWithDependencies(
+            int32 ItemCount, 
+            TFunction<void(int32)> WorkFunction,
+            TFunction<TArray<int32>(int32)> DependencyFunction)
+        {
+            // Build dependency graph
+            TArray<TArray<int32>> DependsOn;  // DependsOn[i] = items that i depends on
+            TArray<TArray<int32>> DependedOnBy; // DependedOnBy[i] = items that depend on i
+            TArray<int32> InDegree;  // Number of dependencies for each item
+            
+            // Build graph and process in topological order
+            // [...implementation...]
+            
+            // Process each level in parallel
+            for (const TArray<int32>& Level : Levels)
+            {
+                bool Success = ParallelFor(Level.Num(), [&](int32 Index)
+                {
+                    WorkFunction(Level[Index]);
+                });
+                
+                if (!Success) return false;
+            }
+            
+            return true;
+        }
+        ```
+        - Split initialization process into phases: `bool PreInitializeTypes(); bool ParallelInitializeTypes(); bool PostInitializeTypes();`
+        - Initialize types in dependency order: `FParallelExecutor::Get().ParallelForWithDependencies(TypeNodes.Num(), [&](int32 Index) { InitializeType(TypeNodes[Index]); }, [&](int32 Index) { return GetTypeDependencies(TypeNodes[Index]); });`
+        - Add initialization stages: `enum class ETypeInitStage { Allocation, Properties, Validation, Finalization };`
       - Create specialized executors for type-specific operations
+        - Add type-specific parallel methods: `bool ParallelMaterialOperation(EMaterialOpType OpType, const TArray<uint32>& MaterialIds);`
+        - Create SIMD-optimized execution: `bool ParallelSDFOperation(ESDFOperationType OpType, const TArray<FVector>& EvaluationPoints, TArray<float>& Results);`
+        - Implement with specialized executor: `return FParallelExecutor::Get().ParallelForSDF(EvaluationPoints.Num(), [&](int32 Start, int32 End) { /* SIMD-optimized processing */ });`
+        - Add cache-friendly algorithm: `void OptimizeForCacheCoherence(TArray<uint32>& TypeIds);`
       - Required files: `ParallelExecutor.h`, All Registry headers
       - Speeds up loading times when initializing large procedurally generated mining worlds
 
