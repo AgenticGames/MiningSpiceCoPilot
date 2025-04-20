@@ -20,6 +20,8 @@
 #include "Interfaces/IPoolAllocator.h"
 #include "Templates/SharedPointer.h"
 #include "ThreadSafety.h"
+#include "../../3_ThreadingTaskSystem/Public/TaskScheduler.h"
+#include "../../3_ThreadingTaskSystem/Public/AsyncTaskTypes.h"
 
 // Forward declarations
 class UMaterialInstanceDynamic;
@@ -505,6 +507,9 @@ public:
     virtual void Clear() override;
     virtual bool SetTypeVersion(uint32 TypeId, uint32 NewVersion, bool bMigrateInstanceData = true) override;
     virtual uint32 GetTypeVersion(uint32 TypeId) const override;
+    virtual ERegistryType GetRegistryType() const override;
+    virtual ETypeCapabilities GetTypeCapabilities(uint32 TypeId) const override;
+    virtual uint64 ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskFunc, const struct FTaskConfig& Config) override;
     //~ End IRegistry Interface
     
     /**
@@ -739,7 +744,46 @@ public:
     
     /** Gets the singleton instance of the material registry */
     static FMaterialRegistry& Get();
-    
+
+    /**
+     * Begins asynchronous type registration from a source asset
+     * @param SourceAsset Path to the asset containing material type definitions
+     * @return Operation ID for tracking the async registration, 0 if failed
+     */
+    uint64 BeginAsyncTypeRegistration(const FString& SourceAsset);
+
+    /**
+     * Begins asynchronous batch registration of multiple material types
+     * @param TypeInfos Array of material type information to register
+     * @return Operation ID for tracking the async registration, 0 if failed
+     */
+    uint64 BeginAsyncMaterialTypeBatchRegistration(const TArray<FMaterialTypeInfo>& TypeInfos);
+
+    /**
+     * Registers for progress updates from an async type registration
+     * @param OperationId ID of the async operation
+     * @param Callback Delegate to call with progress updates
+     * @param UpdateIntervalMs Minimum interval between updates in milliseconds
+     * @return True if registration was successful
+     */
+    bool RegisterTypeRegistrationProgressCallback(uint64 OperationId, const FAsyncProgressDelegate& Callback, uint32 UpdateIntervalMs = 100);
+
+    /**
+     * Registers for completion notification from an async type registration
+     * @param OperationId ID of the async operation
+     * @param Callback Delegate to call when registration completes
+     * @return True if registration was successful
+     */
+    bool RegisterTypeRegistrationCompletionCallback(uint64 OperationId, const FTypeRegistrationCompletionDelegate& Callback);
+
+    /**
+     * Cancels an in-progress async type registration
+     * @param OperationId ID of the async operation to cancel
+     * @param bWaitForCancellation Whether to wait for the operation to be fully cancelled
+     * @return True if cancellation was successful or in progress
+     */
+    bool CancelAsyncTypeRegistration(uint64 OperationId, bool bWaitForCancellation = false);
+
 private:
     /** Generates a unique type ID for new material type registrations */
     uint32 GenerateUniqueTypeId();

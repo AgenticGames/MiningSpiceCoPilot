@@ -13,6 +13,28 @@
 #include "String/Find.h"
 
 /**
+ * Registry lock hierarchy levels for deadlock prevention
+ * Defines a strict ordering of registry locks to prevent circular dependencies
+ */
+enum class ERegistryLockLevel : uint32
+{
+    /** Service registry - lowest level */
+    Service = 100,
+    
+    /** Zone registry - level above services */
+    Zone = 200,
+    
+    /** Material registry - level above zones */
+    Material = 300,
+    
+    /** SVO (Sparse Voxel Octree) registry - level above materials */
+    SVO = 400,
+    
+    /** SDF (Signed Distance Field) registry - highest level */
+    SDF = 500
+};
+
+/**
  * Lightweight spin lock implementation for Mining system
  * Provides fast locking with minimal overhead for short-held locks
  */
@@ -46,6 +68,127 @@ public:
 private:
     /** Lock state (0 = unlocked, 1 = locked) */
     volatile int32 bLocked;
+};
+
+/**
+ * Registry operation validator for deadlock prevention
+ * Tracks lock acquisition history and validates lock hierarchies
+ */
+class MININGSPICECOPILOT_API FRegistryOperationValidator
+{
+public:
+    /**
+     * Checks if a lock can be safely acquired based on lock history
+     * Prevents violation of the lock hierarchy
+     * 
+     * @param Level The level of the lock to acquire
+     * @return True if the lock can be safely acquired
+     */
+    static bool CanSafelyAcquireLock(ERegistryLockLevel Level)
+    {
+        TArray<ERegistryLockLevel>& LockHistory = GetThreadLockHistoryInternal();
+        
+        // If no locks are held, any lock can be acquired
+        if (LockHistory.Num() == 0)
+        {
+            return true;
+        }
+        
+        // Check that the level is lower than the highest lock level already held
+        // Higher value means lower in the hierarchy (SDF = 500 > Material = 300)
+        uint32 CurrentLevel = static_cast<uint32>(LockHistory.Last());
+        uint32 NewLevel = static_cast<uint32>(Level);
+        
+        return NewLevel > CurrentLevel;
+    }
+    
+    /**
+     * Adds a lock to the thread's lock history
+     * 
+     * @param Level The level of the lock being acquired
+     */
+    static void AddLockToHistory(ERegistryLockLevel Level)
+    {
+        TArray<ERegistryLockLevel>& LockHistory = GetThreadLockHistoryInternal();
+        LockHistory.Add(Level);
+    }
+    
+    /**
+     * Removes a lock from the thread's lock history
+     * 
+     * @param Level The level of the lock being released
+     */
+    static void RemoveLockFromHistory(ERegistryLockLevel Level)
+    {
+        TArray<ERegistryLockLevel>& LockHistory = GetThreadLockHistoryInternal();
+        
+        // Find and remove the last occurrence of this lock level
+        for (int32 Index = LockHistory.Num() - 1; Index >= 0; --Index)
+        {
+            if (LockHistory[Index] == Level)
+            {
+                LockHistory.RemoveAt(Index);
+                break;
+            }
+        }
+    }
+    
+    /**
+     * Gets the thread's current lock history
+     * 
+     * @return Array of lock levels currently held by this thread
+     */
+    static TArray<ERegistryLockLevel> GetThreadLockHistory()
+    {
+        return GetThreadLockHistoryInternal();
+    }
+    
+    /**
+     * Clears the thread's lock history
+     * Used for cleanup or when recovering from errors
+     */
+    static void ClearThreadLockHistory()
+    {
+        TArray<ERegistryLockLevel>& LockHistory = GetThreadLockHistoryInternal();
+        LockHistory.Reset();
+    }
+    
+    /**
+     * Validates a lock acquisition sequence to prevent deadlocks
+     * 
+     * @param LockSequence The sequence of locks to validate
+     * @return True if the sequence is valid, false if it could cause a deadlock
+     */
+    static bool ValidateRegistryOperationSequence(const TArray<ERegistryLockLevel>& LockSequence)
+    {
+        // Check that the sequence follows the hierarchy (ascending order of uint32 values)
+        for (int32 i = 0; i < LockSequence.Num() - 1; ++i)
+        {
+            uint32 CurrentLevel = static_cast<uint32>(LockSequence[i]);
+            uint32 NextLevel = static_cast<uint32>(LockSequence[i + 1]);
+            
+            // If the next lock is not higher in the hierarchy (lower in value), sequence is invalid
+            if (NextLevel <= CurrentLevel)
+            {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+private:
+    /**
+     * Gets the thread-local lock history
+     * @return Reference to the thread's lock history
+     */
+    static TArray<ERegistryLockLevel>& GetThreadLockHistoryInternal()
+    {
+        // Thread-local storage ensures each thread has its own history
+        // This approach avoids the "data with thread storage duration may not have dll interface" error
+        static thread_local TArray<ERegistryLockLevel> LocalHistory;
+        return LocalHistory;
+    }
 };
 
 /**
@@ -226,6 +369,89 @@ private:
 };
 
 /**
+ * RAII style hierarchical lock
+ * Automatically acquires lock on construction and releases on destruction
+ * Also validates lock ordering against the registry hierarchy
+ */
+class MININGSPICECOPILOT_API FScopedHierarchicalLock
+{
+public:
+    /**
+     * Constructor
+     * @param InLock The hierarchical lock to acquire
+     * @param InLevel Registry lock level for validation
+     * @param TimeoutMs Maximum time to wait in milliseconds (0 for no timeout)
+     */
+    FScopedHierarchicalLock(FHierarchicalLock* InLock, ERegistryLockLevel InLevel, uint32 TimeoutMs = 0)
+        : Lock(InLock)
+        , Level(InLevel)
+        , bLocked(false)
+    {
+        if (Lock)
+        {
+            if (FRegistryOperationValidator::CanSafelyAcquireLock(Level))
+            {
+                bLocked = Lock->Lock(TimeoutMs);
+                if (bLocked)
+                {
+                    FRegistryOperationValidator::AddLockToHistory(Level);
+                }
+            }
+            else
+            {
+                // Log the violation in debug builds
+                UE_LOG(LogTemp, Error, TEXT("Lock hierarchy violation detected! Attempting to acquire %s lock while holding incompatible locks."),
+                    *UEnum::GetValueAsString(Level));
+                
+                // In shipping builds, we'll still try to acquire the lock but log the error
+                bLocked = Lock->Lock(TimeoutMs);
+                if (bLocked)
+                {
+                    FRegistryOperationValidator::AddLockToHistory(Level);
+                }
+            }
+        }
+    }
+    
+    /** Destructor */
+    ~FScopedHierarchicalLock()
+    {
+        if (bLocked && Lock)
+        {
+            FRegistryOperationValidator::RemoveLockFromHistory(Level);
+            Lock->Unlock();
+        }
+    }
+    
+    /** Returns whether the lock was successfully acquired */
+    bool IsLocked() const
+    {
+        return bLocked;
+    }
+    
+    /** Explicitly unlocks if currently locked */
+    void Unlock()
+    {
+        if (bLocked && Lock)
+        {
+            FRegistryOperationValidator::RemoveLockFromHistory(Level);
+            Lock->Unlock();
+            bLocked = false;
+        }
+    }
+    
+private:
+    /** The hierarchical lock */
+    FHierarchicalLock* Lock;
+    
+    /** Registry lock level */
+    ERegistryLockLevel Level;
+    
+    /** Whether the lock is currently held */
+    bool bLocked;
+};
+
+/**
  * A hybrid lock that can switch between spin lock and critical section based on contention
  */
 class MININGSPICECOPILOT_API FHybridLock
@@ -312,6 +538,166 @@ public:
 private:
     /** Underlying atomic counter */
     std::atomic<int32> Counter;
+};
+
+/**
+ * Versioned type table for registry implementations
+ * Provides atomic access to type information with optimistic concurrency
+ */
+template<typename TTypeInfo>
+class MININGSPICECOPILOT_API FVersionedTypeTable
+{
+public:
+    /** Constructor */
+    FVersionedTypeTable()
+        : Version(0)
+    {
+    }
+    
+    /** Gets the current version */
+    uint32 LoadVersion() const
+    {
+        return Version.load(std::memory_order_acquire);
+    }
+    
+    /** Increments the version */
+    void IncrementVersion()
+    {
+        Version.fetch_add(1, std::memory_order_acq_rel);
+    }
+    
+    /**
+     * Atomically compares and exchanges the version
+     * @param OutOldVersion The old version value if the exchange fails
+     * @param NewVersion The new version to set
+     * @param ExpectedVersion The expected current version
+     * @return True if the exchange was successful
+     */
+    bool CompareExchangeVersion(uint32& OutOldVersion, uint32 NewVersion, uint32 ExpectedVersion)
+    {
+        OutOldVersion = ExpectedVersion;
+        return Version.compare_exchange_strong(OutOldVersion, NewVersion, std::memory_order_acq_rel);
+    }
+    
+    /**
+     * Gets a type info by ID
+     * @param TypeId The ID of the type to retrieve
+     * @return Shared reference to the type info, or nullptr if not found
+     */
+    TSharedPtr<TTypeInfo> GetTypeInfo(uint32 TypeId) const
+    {
+        FScopedReadLock ReadLock(TypeTableLock);
+        auto* Found = Types.Find(TypeId);
+        if (Found)
+        {
+            return *Found;
+        }
+        return nullptr;
+    }
+    
+    /**
+     * Gets a type info by ID with version validation
+     * @param TypeId The ID of the type to retrieve
+     * @param OutVersion Receives the version at time of retrieval
+     * @return Shared reference to the type info, or nullptr if not found
+     */
+    TSharedPtr<TTypeInfo> GetTypeInfoVersioned(uint32 TypeId, uint32& OutVersion) const
+    {
+        // Load the current version
+        OutVersion = LoadVersion();
+        
+        // Try optimistic read first
+        {
+            FScopedReadLock ReadLock(TypeTableLock);
+            auto* Found = Types.Find(TypeId);
+            if (Found)
+            {
+                return *Found;
+            }
+        }
+        
+        return nullptr;
+    }
+    
+    /**
+     * Adds or updates a type info
+     * @param TypeId The ID of the type to add or update
+     * @param TypeInfo The type info to store
+     */
+    void AddOrUpdateTypeInfo(uint32 TypeId, TSharedRef<TTypeInfo> TypeInfo)
+    {
+        FScopedWriteLock WriteLock(TypeTableLock);
+        Types.Add(TypeId, TypeInfo);
+        IncrementVersion();
+    }
+    
+    /**
+     * Removes a type info
+     * @param TypeId The ID of the type to remove
+     * @return True if the type was found and removed
+     */
+    bool RemoveTypeInfo(uint32 TypeId)
+    {
+        FScopedWriteLock WriteLock(TypeTableLock);
+        if (Types.Remove(TypeId) > 0)
+        {
+            IncrementVersion();
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * Gets all type IDs
+     * @return Array of all type IDs
+     */
+    TArray<uint32> GetAllTypeIds() const
+    {
+        TArray<uint32> Result;
+        FScopedReadLock ReadLock(TypeTableLock);
+        Types.GetKeys(Result);
+        return Result;
+    }
+    
+    /**
+     * Gets all type infos
+     * @return Map of all type IDs to type infos
+     */
+    TMap<uint32, TSharedRef<TTypeInfo>> GetAllTypeInfos() const
+    {
+        FScopedReadLock ReadLock(TypeTableLock);
+        return Types;
+    }
+    
+    /**
+     * Clears all type infos
+     */
+    void Clear()
+    {
+        FScopedWriteLock WriteLock(TypeTableLock);
+        Types.Empty();
+        IncrementVersion();
+    }
+    
+    /**
+     * Gets the number of types in the table
+     * @return Number of types
+     */
+    int32 Num() const
+    {
+        FScopedReadLock ReadLock(TypeTableLock);
+        return Types.Num();
+    }
+
+private:
+    /** Table of type infos */
+    TMap<uint32, TSharedRef<TTypeInfo>> Types;
+    
+    /** Current version of the table */
+    std::atomic<uint32> Version;
+    
+    /** Lock for table modification */
+    mutable FMiningReaderWriterLock TypeTableLock;
 };
 
 /**
@@ -754,13 +1140,8 @@ public:
     static bool AtomicCompareExchange(FThreadSafeCounter& Counter, int32& OutOldValue, int32 NewValue, int32 Comparand)
     {
         OutOldValue = Counter.GetValue();
-        if (OutOldValue == Comparand)
-        {
-            // Try to update the counter atomically
-            void* CounterPtr = &Counter;
-            return FPlatformAtomics::InterlockedCompareExchange((volatile int32*)CounterPtr, NewValue, Comparand) == Comparand;
-        }
-        return false;
+        volatile int32* CounterPtr = reinterpret_cast<volatile int32*>(&Counter);
+        return FPlatformAtomics::InterlockedCompareExchange(CounterPtr, NewValue, Comparand) == Comparand;
     }
 };
 
@@ -831,5 +1212,47 @@ private:
 };
 
 /**
- * Wait-free counter implementation
+ * Utility class for atomic operations
+ * Provides helper methods for safely working with atomic values
  */
+class MININGSPICECOPILOT_API FAtomicUtils
+{
+public:
+    /**
+     * Performs an atomic compare-exchange operation on a ThreadSafeCounter
+     * 
+     * @param Counter The counter to operate on
+     * @param OutOldValue Receives the old value from the counter
+     * @param NewValue The value to set if the comparison succeeds
+     * @param Comparand The value to compare against
+     * @return True if the exchange was performed, false otherwise
+     */
+    static bool AtomicCompareExchange(FThreadSafeCounter& Counter, int32& OutOldValue, int32 NewValue, int32 Comparand)
+    {
+        // Access the internal counter value directly
+        OutOldValue = Counter.GetValue();
+        
+        // Get a pointer to the counter's internal value for atomic operation
+        // This is safe because we know FThreadSafeCounter wraps a volatile int32
+        volatile int32* CounterPtr = reinterpret_cast<volatile int32*>(&Counter);
+        
+        // Perform the atomic compare-exchange operation
+        int32 Result = FPlatformAtomics::InterlockedCompareExchange(CounterPtr, NewValue, Comparand);
+        
+        // If the result equals the comparand, the exchange was performed
+        return Result == Comparand;
+    }
+    
+    /**
+     * Performs an atomic exchange operation on a ThreadSafeCounter
+     * 
+     * @param Counter The counter to operate on
+     * @param NewValue The value to set
+     * @return The previous value of the counter
+     */
+    static int32 AtomicExchange(FThreadSafeCounter& Counter, int32 NewValue)
+    {
+        volatile int32* CounterPtr = reinterpret_cast<volatile int32*>(&Counter);
+        return FPlatformAtomics::InterlockedExchange(CounterPtr, NewValue);
+    }
+};

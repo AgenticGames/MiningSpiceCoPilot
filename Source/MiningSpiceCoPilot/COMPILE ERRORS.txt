@@ -1,5 +1,3 @@
------- Building 4 action(s) started ------
 [1/4] Compile [x64] 1_ZoneTypeRegistry.cpp
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(14): warning C5038: data member 'FZoneTypeRegistry::bIsInitialized' will be initialized after data member 'FZoneTypeRegistry::SchemaVersion'
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(809): error C4930: 'FScopedSpinLock Lock(FSpinLock (__cdecl *)(void))': prototyped function not called (was a variable definition intended?)
-Trace file written to C:/Users/Shazbot/AppData/Local/UnrealBuildTool/Log.uba with size 2.7kb
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1190): error C2511: 'bool FZoneTypeRegistry::RegisterTypeRegistrationCompletionCallback(uint64,const FAsyncCompletionDelegate &)': overloaded member function not found in 'FZoneTypeRegistry'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\ZoneTypeRegistry.h(233): note: see declaration of 'FZoneTypeRegistry'

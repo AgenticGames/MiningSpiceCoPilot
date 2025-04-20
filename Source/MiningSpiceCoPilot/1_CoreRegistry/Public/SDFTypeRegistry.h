@@ -14,6 +14,8 @@
 #include "Interfaces/IPoolAllocator.h"
 #include "SharedBufferManager.h"
 #include "ThreadSafety.h"
+#include "../../3_ThreadingTaskSystem/Public/TaskScheduler.h"
+#include "../../3_ThreadingTaskSystem/Public/AsyncTaskTypes.h"
 
 /**
  * SDF field operation types for CSG operations
@@ -227,6 +229,9 @@ struct MININGSPICECOPILOT_API FSDFFieldTypeInfo
     /** Whether this field supports incremental updates */
     bool bSupportsIncrementalUpdates;
     
+    /** Whether this field type uses optimized memory access patterns */
+    bool bOptimizedAccess;
+    
     /** Capabilities flags for this field type (bitwise combination of ESDFFieldCapabilities) */
     uint32 CapabilitiesFlags;
     
@@ -252,6 +257,7 @@ struct MININGSPICECOPILOT_API FSDFFieldTypeInfo
         , bSupportsHotReload(false)
         , bSupportsVersionedSerialization(true)
         , bSupportsIncrementalUpdates(false)
+        , bOptimizedAccess(false)
         , CapabilitiesFlags(0)
         , DataSize(0)
     {
@@ -503,6 +509,9 @@ public:
     virtual void Clear() override;
     virtual bool SetTypeVersion(uint32 TypeId, uint32 NewVersion, bool bMigrateInstanceData = true) override;
     virtual uint32 GetTypeVersion(uint32 TypeId) const override;
+    virtual ERegistryType GetRegistryType() const override;
+    virtual ETypeCapabilities GetTypeCapabilities(uint32 TypeId) const override;
+    virtual uint64 ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskFunc, const FTaskConfig& Config) override;
     //~ End IRegistry Interface
     
     /**
@@ -609,6 +618,13 @@ public:
     bool IsOperationRegistered(uint32 InOperationId) const;
     
     /**
+     * Checks if an operation is registered by name
+     * @param InOperationName Name of the operation
+     * @return True if the operation is registered
+     */
+    bool IsOperationRegistered(const FName& InOperationName) const;
+    
+    /**
      * Checks if an operation type is compatible with GPU acceleration
      * @param InOperationType The operation type to check
      * @return True if the operation can be accelerated on GPU
@@ -643,6 +659,52 @@ public:
     
     /** Gets the singleton instance of the SDF type registry */
     static FSDFTypeRegistry& Get();
+    
+    /**
+     * Begins asynchronous type registration from a source asset
+     * @param SourceAsset Path to the asset containing field type definitions
+     * @return Operation ID for tracking the async registration, 0 if failed
+     */
+    uint64 BeginAsyncTypeRegistration(const FString& SourceAsset);
+
+    /**
+     * Begins asynchronous batch registration of multiple field types
+     * @param TypeInfos Array of field type information to register
+     * @return Operation ID for tracking the async registration, 0 if failed
+     */
+    uint64 BeginAsyncFieldTypeBatchRegistration(const TArray<FSDFFieldTypeInfo>& TypeInfos);
+
+    /**
+     * Begins asynchronous batch registration of multiple operations
+     * @param OperationInfos Array of operation information to register
+     * @return Operation ID for tracking the async registration, 0 if failed
+     */
+    uint64 BeginAsyncOperationsBatchRegistration(const TArray<FSDFOperationInfo>& OperationInfos);
+
+    /**
+     * Registers for progress updates from an async type registration
+     * @param OperationId ID of the async operation
+     * @param Callback Delegate to call with progress updates
+     * @param UpdateIntervalMs Minimum interval between updates in milliseconds
+     * @return True if registration was successful
+     */
+    bool RegisterTypeRegistrationProgressCallback(uint64 OperationId, const FAsyncProgressDelegate& Callback, uint32 UpdateIntervalMs = 100);
+
+    /**
+     * Registers for completion notification from an async type registration
+     * @param OperationId ID of the async operation
+     * @param Callback Delegate to call when registration completes
+     * @return True if registration was successful
+     */
+    bool RegisterTypeRegistrationCompletionCallback(uint64 OperationId, const FTypeRegistrationCompletionDelegate& Callback);
+
+    /**
+     * Cancels an in-progress async type registration
+     * @param OperationId ID of the async operation to cancel
+     * @param bWaitForCancellation Whether to wait for the operation to be fully cancelled
+     * @return True if cancellation was successful or in progress
+     */
+    bool CancelAsyncTypeRegistration(uint64 OperationId, bool bWaitForCancellation = false);
     
 private:
     /** Generates a unique type ID for new field type registrations */
@@ -691,26 +753,23 @@ private:
     /** Field operation cache */
     TMap<uint32, FFieldOperationCacheEntry> OperationCache;
     
-    /** Cached memory allocator */
-    IPoolAllocator* MemoryAllocator;
-    
     /** Pool of field evaluation contexts */
     TArray<FFieldEvaluationContext> EvaluationContextPool;
     
     /** Mutex for accessing the evaluation context pool */
     FSpinLock ContextPoolLock;
     
-    /** Flag indicating whether the registry is initialized */
-    FThreadSafeBool bIsInitialized;
-    
-    /** Current schema version */
-    uint32 SchemaVersion;
-    
     /** Next available type ID */
     FThreadSafeCounter NextTypeId;
     
     /** Next available operation ID */
     FThreadSafeCounter NextOperationId;
+    
+    /** Flag indicating whether the registry is initialized */
+    FThreadSafeBool bIsInitialized;
+    
+    /** Current schema version */
+    uint32 SchemaVersion;
     
     /** Singleton instance */
     static FSDFTypeRegistry* Singleton;

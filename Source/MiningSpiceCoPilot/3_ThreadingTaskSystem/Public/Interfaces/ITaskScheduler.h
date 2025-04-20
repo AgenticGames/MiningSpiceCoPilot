@@ -64,6 +64,18 @@ struct MININGSPICECOPILOT_API FTaskConfig
     /** Priority boost for retried tasks */
     uint8 RetryPriorityBoost;
     
+    /** Type ID for registry integration (0 for no specific type) */
+    uint32 TypeId;
+    
+    /** Registry type for the type ID */
+    ERegistryType RegistryType;
+    
+    /** Type-specific thread optimization flags */
+    EThreadOptimizationFlags OptimizationFlags;
+    
+    /** SIMD variant preference for task execution */
+    ESIMDVariant SIMDVariant;
+    
     /** Constructor with default values */
     FTaskConfig()
         : Priority(ETaskPriority::Normal)
@@ -75,7 +87,46 @@ struct MININGSPICECOPILOT_API FTaskConfig
         , bAutoRetry(false)
         , MaxRetries(0)
         , RetryPriorityBoost(0)
+        , TypeId(0)
+        , RegistryType(ERegistryType::None)
+        , OptimizationFlags(EThreadOptimizationFlags::None)
+        , SIMDVariant(ESIMDVariant::None)
     {
+    }
+    
+    /**
+     * Sets the type ID and registry type
+     * @param InTypeId The type ID to set
+     * @param InRegistryType The registry type for the ID
+     * @return Reference to this config for chaining
+     */
+    FTaskConfig& SetTypeId(uint32 InTypeId, ERegistryType InRegistryType)
+    {
+        TypeId = InTypeId;
+        RegistryType = InRegistryType;
+        return *this;
+    }
+    
+    /**
+     * Sets the thread optimization flags
+     * @param InFlags The optimization flags to set
+     * @return Reference to this config for chaining
+     */
+    FTaskConfig& SetOptimizationFlags(EThreadOptimizationFlags InFlags)
+    {
+        OptimizationFlags = InFlags;
+        return *this;
+    }
+    
+    /**
+     * Sets the SIMD variant preference
+     * @param InVariant The SIMD variant to prefer
+     * @return Reference to this config for chaining
+     */
+    FTaskConfig& SetSIMDVariant(ESIMDVariant InVariant)
+    {
+        SIMDVariant = InVariant;
+        return *this;
     }
 };
 

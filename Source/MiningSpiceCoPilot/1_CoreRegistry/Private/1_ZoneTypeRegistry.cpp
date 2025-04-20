@@ -1,11 +1,18 @@
 ﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "ZoneTypeRegistry.h"
+#include "../Public/ZoneTypeRegistry.h"
 #include "Interfaces/IServiceLocator.h"
 #include "CoreServiceLocator.h"
 #include "ThreadSafety.h"
 #include "TransactionManager.h"
 #include "Interfaces/ITransactionManager.h"
+#include "MiningSpiceCoPilot/3_ThreadingTaskSystem/Public/TaskHelpers.h"
+#include "TypeRegistrationOperation.h"
+#include "../../3_ThreadingTaskSystem/Public/AsyncTaskManager.h"
+#include "../Public/Logging/LogMining.h"
+
+// Define ZoneTypeRegistrationOperationType
+static const FString ZoneTypeRegistrationOperationType = TEXT("ZoneTypeRegistration");
 
 // Initialize static members
 FZoneTypeRegistry* FZoneTypeRegistry::Instance = nullptr;
@@ -1000,4 +1007,204 @@ void FZoneTypeRegistry::OnTransactionCompleted(uint32 TypeId, const FTransaction
     
     UE_LOG(LogTemp, Verbose, TEXT("FZoneTypeRegistry::OnTransactionCompleted - transaction type %u completed with conflict rate %.2f"),
         TypeId, ConflictRate);
+}
+
+ERegistryType FZoneTypeRegistry::GetRegistryType() const
+{
+    return ERegistryType::Zone;
+}
+
+ETypeCapabilities FZoneTypeRegistry::GetTypeCapabilities(uint32 TypeId) const
+{
+    // Start with no capabilities
+    ETypeCapabilities Capabilities = ETypeCapabilities::None;
+    
+    // Check if this type is registered
+    if (!IsTransactionTypeRegistered(TypeId))
+    {
+        return Capabilities;
+    }
+    
+    // Get the zone type info
+    const FZoneTransactionTypeInfo* TypeInfo = GetTransactionTypeInfo(TypeId);
+    if (!TypeInfo)
+    {
+        return Capabilities;
+    }
+    
+    // Map zone capabilities to type capabilities
+    if (TypeInfo->bSupportsThreadSafeAccess)
+    {
+        Capabilities |= ETypeCapabilities::ThreadSafe;
+    }
+    
+    if (TypeInfo->bSupportsPartialProcessing)
+    {
+        Capabilities |= ETypeCapabilities::PartialExecution;
+    }
+    
+    if (TypeInfo->bSupportsIncrementalUpdates)
+    {
+        Capabilities |= ETypeCapabilities::IncrementalUpdates;
+    }
+    
+    if (TypeInfo->bLowContention)
+    {
+        Capabilities |= ETypeCapabilities::LowContention;
+    }
+    
+    if (TypeInfo->bSupportsResultMerging)
+    {
+        Capabilities |= ETypeCapabilities::ResultMerging;
+    }
+    
+    if (TypeInfo->bSupportsAsyncProcessing)
+    {
+        Capabilities |= ETypeCapabilities::AsyncOperations;
+    }
+    
+    return Capabilities;
+}
+
+uint64 FZoneTypeRegistry::ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskFunc, const FTaskConfig& Config)
+{
+    // Create a type-specific task configuration
+    FTaskConfig TypedConfig = Config;
+    TypedConfig.SetTypeId(TypeId, ERegistryType::Zone);
+    
+    // Set optimization flags based on type capabilities
+    ETypeCapabilities Capabilities = GetTypeCapabilities(TypeId);
+    EThreadOptimizationFlags OptimizationFlags = EThreadOptimizationFlags::None;
+    
+    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::ThreadSafe))
+    {
+        OptimizationFlags |= EThreadOptimizationFlags::ThreadAffinity;
+    }
+    
+    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::PartialExecution))
+    {
+        OptimizationFlags |= EThreadOptimizationFlags::DefaultScheduling;
+    }
+    
+    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::AsyncOperations))
+    {
+        OptimizationFlags |= EThreadOptimizationFlags::LowLatency;
+    }
+    
+    TypedConfig.SetOptimizationFlags(OptimizationFlags);
+    
+    // Schedule the task with the scheduler
+    return ScheduleTaskWithScheduler(TaskFunc, TypedConfig);
+}
+
+uint64 FZoneTypeRegistry::BeginAsyncTypeRegistration(const FString& SourceAsset)
+{
+    // Create the async operation through the AsyncTaskManager
+    IAsyncOperation& AsyncInterface = IAsyncOperation::Get();
+    FAsyncTaskManager& AsyncManager = static_cast<FAsyncTaskManager&>(AsyncInterface);
+    
+    // Ensure the factory is initialized
+    static bool bFactoryInitialized = false;
+    if (!bFactoryInitialized)
+    {
+        FTypeRegistrationOperationFactory::Initialize();
+        bFactoryInitialized = true;
+    }
+    
+    // Create and start the operation
+    uint64 OperationId = AsyncManager.CreateOperation(ZoneTypeRegistrationOperationType, FPaths::GetBaseFilename(SourceAsset));
+    if (OperationId == 0)
+    {
+        UE_LOG(LogMining, Error, TEXT("Failed to create async type registration operation for %s"), *SourceAsset);
+        return 0;
+    }
+    
+    // Set the source asset parameter
+    TMap<FString, FString> Parameters;
+    Parameters.Add(TEXT("SourceAsset"), SourceAsset);
+    
+    // Start the operation
+    if (!AsyncManager.StartOperation(OperationId, Parameters))
+    {
+        UE_LOG(LogMining, Error, TEXT("Failed to start async type registration operation for %s"), *SourceAsset);
+        return 0;
+    }
+    
+    return OperationId;
+}
+
+uint64 FZoneTypeRegistry::BeginAsyncTransactionTypeBatchRegistration(const TArray<FZoneTransactionTypeInfo>& TypeInfos)
+{
+    if (TypeInfos.Num() == 0)
+    {
+        UE_LOG(LogMining, Warning, TEXT("Attempted to begin async transaction type batch registration with empty type list"));
+        return 0;
+    }
+    
+    // Create the async operation through the AsyncTaskManager
+    IAsyncOperation& AsyncInterface = IAsyncOperation::Get();
+    FAsyncTaskManager& AsyncManager = static_cast<FAsyncTaskManager&>(AsyncInterface);
+    
+    // Ensure the factory is initialized
+    static bool bFactoryInitialized = false;
+    if (!bFactoryInitialized)
+    {
+        FTypeRegistrationOperationFactory::Initialize();
+        bFactoryInitialized = true;
+    }
+    
+    // Create the operation
+    uint64 OperationId = AsyncManager.CreateOperation(ZoneTypeRegistrationOperationType, TEXT("TransactionTypeBatch"));
+    if (OperationId == 0)
+    {
+        UE_LOG(LogMining, Error, TEXT("Failed to create async type batch registration operation"));
+        return 0;
+    }
+    
+    // Get the operation object and configure it directly with the batch data
+    FAsyncOperationImpl* Operation = AsyncManager.GetOperationById(OperationId);
+    if (Operation)
+    {
+        FTypeRegistrationOperation* TypeRegistrationOp = static_cast<FTypeRegistrationOperation*>(Operation);
+        // Re-create the operation with the batch data
+        new (TypeRegistrationOp) FTypeRegistrationOperation(OperationId, TEXT("TransactionTypeBatch"), TypeInfos);
+    }
+    
+    // Start the operation
+    if (!AsyncManager.StartOperation(OperationId))
+    {
+        UE_LOG(LogMining, Error, TEXT("Failed to start async type batch registration operation"));
+        return 0;
+    }
+    
+    return OperationId;
+}
+
+bool FZoneTypeRegistry::RegisterTypeRegistrationProgressCallback(uint64 OperationId, const FAsyncProgressDelegate& Callback, uint32 UpdateIntervalMs)
+{
+    IAsyncOperation& AsyncInterface = IAsyncOperation::Get();
+    FAsyncTaskManager& AsyncManager = static_cast<FAsyncTaskManager&>(AsyncInterface);
+    return AsyncManager.RegisterProgressCallback(OperationId, Callback, UpdateIntervalMs);
+}
+
+bool FZoneTypeRegistry::RegisterTypeRegistrationCompletionCallback(uint64 OperationId, const FTypeRegistrationCompletionDelegate& Callback)
+{
+    IAsyncOperation& AsyncInterface = IAsyncOperation::Get();
+    FAsyncTaskManager& AsyncManager = static_cast<FAsyncTaskManager&>(AsyncInterface);
+    
+    // Create an adapter that converts FAsyncResult to bool for the callback
+    FAsyncCompletionDelegate AdapterDelegate;
+    AdapterDelegate.BindLambda([Callback](const FAsyncResult& Result) {
+        // Call the original callback with the success status from the result
+        Callback.ExecuteIfBound(Result.bSuccess);
+    });
+    
+    return AsyncManager.RegisterCompletionCallback(OperationId, AdapterDelegate);
+}
+
+bool FZoneTypeRegistry::CancelAsyncTypeRegistration(uint64 OperationId, bool bWaitForCancellation)
+{
+    IAsyncOperation& AsyncInterface = IAsyncOperation::Get();
+    FAsyncTaskManager& AsyncManager = static_cast<FAsyncTaskManager&>(AsyncInterface);
+    return AsyncManager.CancelOperation(OperationId, bWaitForCancellation);
 }

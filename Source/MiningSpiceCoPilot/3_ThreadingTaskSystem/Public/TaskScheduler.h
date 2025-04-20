@@ -13,9 +13,21 @@
 #include "HAL/ThreadSafeCounter.h"
 #include "Misc/SpinLock.h"
 #include "HAL/ThreadHeartBeat.h"
+#include "HAL/Runnable.h"
 
 // Forward declarations
 class FTaskDependencyVisualizer;
+
+// Using FTaskConfig and FTaskDependency from ITaskScheduler.h to avoid redefinition
+// struct MININGSPICECOPILOT_API FTaskConfig
+// {
+//     // Definition moved to ITaskScheduler.h
+// };
+
+// struct MININGSPICECOPILOT_API FTaskDependency
+// {
+//     // Definition moved to ITaskScheduler.h
+// };
 
 /**
  * NUMA node information for thread affinity optimization
@@ -77,6 +89,18 @@ public:
     /** Worker thread ID that executed the task */
     int32 ExecutingThreadId;
     
+    /** Type ID for registry integration */
+    uint32 TypeId;
+    
+    /** Registry type for the type ID */
+    ERegistryType RegistryType;
+    
+    /** Thread optimization flags */
+    EThreadOptimizationFlags OptimizationFlags;
+    
+    /** SIMD variant for execution */
+    ESIMDVariant SIMDVariant;
+    
     /** Constructor */
     FMiningTask(uint64 InId, TFunction<void()> InTaskFunction, const FTaskConfig& InConfig, const FString& InDesc);
     
@@ -109,6 +133,36 @@ public:
     
     /** Checks if the task dependencies are satisfied */
     bool AreDependenciesSatisfied(const TMap<uint64, FMiningTask*>& TaskMap) const;
+    
+    /** Checks if this task has a type ID */
+    bool HasTypeId() const
+    {
+        return TypeId != 0;
+    }
+    
+    /** Gets the type ID */
+    uint32 GetTypeId() const
+    {
+        return TypeId;
+    }
+    
+    /** Gets the registry type */
+    ERegistryType GetRegistryType() const
+    {
+        return RegistryType;
+    }
+    
+    /** Gets the thread optimization flags */
+    EThreadOptimizationFlags GetOptimizationFlags() const
+    {
+        return OptimizationFlags;
+    }
+    
+    /** Gets the SIMD variant */
+    ESIMDVariant GetSIMDVariant() const
+    {
+        return SIMDVariant;
+    }
 };
 
 /**
@@ -154,7 +208,7 @@ public:
     /** Gets the worker's processing stats */
     void GetStats(double& OutAverageTaskTimeMs, double& OutIdleTimePercent) const;
 
-private:
+protected:
     /** The task scheduler */
     class FTaskScheduler* Scheduler;
     
@@ -196,6 +250,54 @@ private:
     
     /** Time of last stats reset */
     double LastStatsResetTime;
+    
+    /** Accessor methods needed by specialized workers */
+    class FTaskScheduler* GetScheduler() const { return Scheduler; }
+    void IncrementTasksProcessed() { TasksProcessed.Increment(); }
+    
+    /** Virtual method for task selection that can be overridden */
+    virtual FMiningTask* SelectNextTask();
+};
+
+/**
+ * Specialized worker thread implementation that optimizes for specific type capabilities
+ * Prioritizes tasks that match supported capabilities
+ */
+class MININGSPICECOPILOT_API FSpecializedTaskWorker : public FMiningTaskWorker
+{
+public:
+    /** Constructor */
+    FSpecializedTaskWorker(class FTaskScheduler* InScheduler, int32 InThreadId, EThreadPriority InPriority, ETypeCapabilities InSupportedCapabilities)
+        : FMiningTaskWorker(InScheduler, InThreadId, InPriority)
+        , SupportedCapabilities(InSupportedCapabilities)
+    {
+    }
+    
+    /** Gets the supported capabilities */
+    ETypeCapabilities GetSupportedCapabilities() const
+    {
+        return SupportedCapabilities;
+    }
+    
+    /** Sets the supported capabilities */
+    void SetSupportedCapabilities(ETypeCapabilities InCapabilities)
+    {
+        SupportedCapabilities = InCapabilities;
+    }
+    
+    /** Checks if this worker supports the given capabilities */
+    bool SupportsCapabilities(ETypeCapabilities InCapabilities) const
+    {
+        // Check if all required capabilities are supported
+        return (static_cast<uint32>(SupportedCapabilities) & static_cast<uint32>(InCapabilities)) == static_cast<uint32>(InCapabilities);
+    }
+
+protected:
+    /** Specialized capabilities supported by this worker */
+    ETypeCapabilities SupportedCapabilities;
+    
+    /** Override for specialized task selection */
+    virtual FMiningTask* SelectNextTask() override;
 };
 
 /**
@@ -248,10 +350,80 @@ public:
     FMiningTask* GetTaskById(uint64 TaskId) const;
     
     /** Gets all tasks - exposed for task dependency visualization */
-    const TMap<uint64, FMiningTask*>& GetAllTasks() const { return AllTasks; }
+    TMap<uint64, FMiningTask*> GetAllTasks() const;
+    
+    /**
+     * Creates a specialized worker thread
+     * @param Capabilities The type capabilities this worker should specialize in
+     * @param Priority Thread priority for the worker
+     * @return Thread ID of the created worker
+     */
+    int32 CreateSpecializedWorker(ETypeCapabilities Capabilities, EThreadPriority Priority = TPri_Normal);
+    
+    /**
+     * Gets all specialized worker threads
+     * @return Map of capabilities to worker thread IDs
+     */
+    TMap<ETypeCapabilities, TArray<int32>> GetSpecializedWorkers() const;
+    
+    /**
+     * Gets type capabilities from a registry type and ID
+     * @param TypeId The type ID to query
+     * @param RegistryType The registry containing the type
+     * @return Capabilities of the specified type
+     */
+    static ETypeCapabilities GetTypeCapabilities(uint32 TypeId, ERegistryType RegistryType);
+    
+    /**
+     * Maps type capabilities to thread optimization flags
+     * @param Capabilities The capabilities to map
+     * @return Corresponding optimization flags
+     */
+    static EThreadOptimizationFlags MapCapabilitiesToOptimizationFlags(ETypeCapabilities Capabilities);
+    
+    /**
+     * Detects available processor features
+     * @return Mask of available processor features
+     */
+    static EProcessorFeatures DetectProcessorFeatures();
+    
+    /**
+     * Registers an optimized function variant for a type operation
+     * @param TypeId The type ID
+     * @param RegistryType The registry containing the type
+     * @param Variant The SIMD variant
+     * @param ImplFunc The implementation function
+     * @return True if registration succeeded
+     */
+    bool RegisterTypeOperationVariant(uint32 TypeId, ERegistryType RegistryType, ESIMDVariant Variant, TFunction<void(void*,void*)> ImplFunc);
+    
+    /**
+     * Gets the best available implementation for a type operation
+     * @param TypeId The type ID
+     * @param RegistryType The registry containing the type
+     * @return The implementation function or nullptr if not found
+     */
+    TFunction<void(void*,void*)> GetBestTypeOperationVariant(uint32 TypeId, ERegistryType RegistryType);
+    
+    /**
+     * Finds the best worker for a specific task
+     * @param Task The task to find a worker for
+     * @return Index of the most suitable worker, or -1 if no specialized workers are available
+     */
+    int32 FindBestWorkerForTask(const FMiningTask* Task);
+    
+    /**
+     * Finds a worker with specific capabilities
+     * @param Capabilities The required capabilities
+     * @return Index of a suitable worker, or -1 if no suitable worker is available
+     */
+    int32 FindWorkerWithCapabilities(ETypeCapabilities Capabilities);
     
     /** Thread local storage slot for worker ID */
     static uint32 WorkerThreadTLS;
+    
+    /** The singleton instance of the scheduler */
+    static FTaskScheduler* Instance;
     
     /** Friend class for dependency visualization */
     friend class FTaskDependencyVisualizer;
@@ -296,6 +468,27 @@ private:
     /** Task count by status */
     TMap<ETaskStatus, FThreadSafeCounter> TaskCountByStatus;
     
+    /** Cleanup thread */
+    FRunnableThread* CleanupThread;
+    
+    /** Specialized worker threads */
+    TMap<ETypeCapabilities, TArray<FSpecializedTaskWorker*>> SpecializedWorkers;
+    
+    /** Type operation implementations by variant */
+    TMap<uint64, TMap<ESIMDVariant, TFunction<void(void*,void*)>>> TypeOperationVariants;
+    
+    /** Available processor features */
+    EProcessorFeatures ProcessorFeatures;
+    
+    /** Lock for worker array access */
+    mutable FCriticalSection WorkerArrayLock;
+    
+    /** Lock for specialized worker map access */
+    mutable FCriticalSection SpecializedWorkerMapLock;
+    
+    /** Lock for type operation variants access */
+    mutable FCriticalSection TypeOperationVariantsLock;
+    
     /** Determines worker thread count based on available hardware */
     int32 DetermineWorkerThreadCount() const;
     
@@ -305,12 +498,30 @@ private:
     /** Generates a unique task ID */
     uint64 GenerateTaskId();
     
-    /** Removes completed tasks older than the specified age */
+    /** Cleans up completed tasks */
     void CleanupCompletedTasks(double MaxAgeSeconds = 300.0);
-
-    /** Singleton instance */
-    static FTaskScheduler* Instance;
     
-    /** Calculates NUMA-aware affinity mask for optimal thread placement */
+    /**
+     * Creates a combined key for type operation variants
+     * @param TypeId The type ID
+     * @param RegistryType The registry type
+     * @return Combined key
+     */
+    static uint64 CreateTypeOperationKey(uint32 TypeId, ERegistryType RegistryType)
+    {
+        return (static_cast<uint64>(RegistryType) << 32) | TypeId;
+    }
+    
+    /** Calculates NUMA-aware affinity mask */
     uint64 CalculateNumaAwareAffinityMask(int32 ThreadIndex, int32 TotalThreads, const TArray<FNumaNodeInfo>& NumaNodes);
 };
+
+/**
+ * Helper function to schedule a task using the task scheduler
+ * This function is used by registry implementations to avoid circular dependencies
+ * 
+ * @param TaskFunc The task function to execute
+ * @param Config Configuration for the task
+ * @return Task ID of the scheduled task
+ */
+// inline MININGSPICECOPILOT_API uint64 ScheduleTaskWithScheduler(TFunction<void()> TaskFunc, const struct FTaskConfig& Config);

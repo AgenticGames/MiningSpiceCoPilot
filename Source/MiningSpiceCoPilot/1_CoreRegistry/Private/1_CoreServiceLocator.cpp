@@ -433,7 +433,7 @@ TArray<const UClass*> FCoreServiceLocator::GetAllServiceTypes() const
     // Collect all registered service types
     for (const auto& InterfacePair : ServiceMap)
     {
-        UClass* InterfaceClass = FindObject<UClass>(ANY_PACKAGE, *InterfacePair.Key.ToString());
+        UClass* InterfaceClass = FindObject<UClass>(nullptr, *FString::Printf(TEXT("/Script/Engine.%s"), *InterfacePair.Key.ToString()));
         if (InterfaceClass)
         {
             Result.Add(InterfaceClass);

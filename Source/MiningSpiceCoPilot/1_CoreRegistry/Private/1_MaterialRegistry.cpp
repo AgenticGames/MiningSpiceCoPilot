@@ -10,12 +10,27 @@
 #include "NarrowBandAllocator.h"
 #include "CompressionUtility.h"
 #include "Misc/ScopeLock.h"
+#include "UObject/UObjectGlobals.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Interfaces/ITaskScheduler.h"
+#include "../../3_ThreadingTaskSystem/Public/TaskSystem/TaskTypes.h"
+#include "../../3_ThreadingTaskSystem/Public/TaskHelpers.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogMaterialRegistry, Log, All);
 
 // Initialize static members
 FMaterialRegistry* FMaterialRegistry::Singleton = nullptr;
 FThreadSafeBool FMaterialRegistry::bSingletonInitialized = false;
+
+/**
+ * Helper function to schedule a task using the task scheduler
+ * This function is used by registry implementations to avoid circular dependencies
+ * 
+ * @param TaskFunc The task function to execute
+ * @param Config Configuration for the task
+ * @return Task ID of the scheduled task
+ */
+
 
 FMaterialRegistry::FMaterialRegistry()
     : NextTypeId(1) // Reserve 0 as invalid/unregistered type ID
@@ -2206,4 +2221,90 @@ void FMaterialRegistry::SetupMemorySharingForDerivedMaterials(uint32 TypeId)
         UE_LOG(LogMaterialRegistry, Log, TEXT("Set up shared memory channels between '%s' and parent '%s'"),
             *TypeInfo->TypeName.ToString(), *ParentTypeInfo->TypeName.ToString());
     }
+}
+
+ERegistryType FMaterialRegistry::GetRegistryType() const
+{
+    return ERegistryType::Material;
+}
+
+ETypeCapabilities FMaterialRegistry::GetTypeCapabilities(uint32 TypeId) const
+{
+    // Start with no capabilities
+    ETypeCapabilities Capabilities = ETypeCapabilities::None;
+    
+    // Check if this type is registered
+    if (!IsMaterialTypeRegistered(TypeId))
+    {
+        return Capabilities;
+    }
+    
+    // Get the material type info
+    const FMaterialTypeInfo* TypeInfo = GetMaterialTypeInfo(TypeId);
+    if (!TypeInfo)
+    {
+        return Capabilities;
+    }
+    
+    // Map material capabilities to type capabilities
+    if (static_cast<bool>(TypeInfo->Capabilities & EMaterialCapabilities::SupportsMultiThreading))
+    {
+        Capabilities |= ETypeCapabilities::ThreadSafe;
+    }
+    
+    if (static_cast<bool>(TypeInfo->Capabilities & EMaterialCapabilities::SupportsSSE) ||
+        static_cast<bool>(TypeInfo->Capabilities & EMaterialCapabilities::SupportsAVX) ||
+        static_cast<bool>(TypeInfo->Capabilities & EMaterialCapabilities::SupportsAVX2) ||
+        static_cast<bool>(TypeInfo->Capabilities & EMaterialCapabilities::SupportsNeon))
+    {
+        Capabilities |= ETypeCapabilities::SIMDOperations;
+    }
+    
+    if (static_cast<bool>(TypeInfo->Capabilities & EMaterialCapabilities::SupportsIncrementalUpdates))
+    {
+        Capabilities |= ETypeCapabilities::IncrementalUpdates;
+    }
+    
+    if (static_cast<bool>(TypeInfo->Capabilities & EMaterialCapabilities::SupportsDynamicRehierarchization))
+    {
+        Capabilities |= ETypeCapabilities::CacheOptimized;
+    }
+    
+    if (static_cast<bool>(TypeInfo->Capabilities & EMaterialCapabilities::SupportsGPUCompute))
+    {
+        Capabilities |= ETypeCapabilities::Vectorizable;
+    }
+    
+    return Capabilities;
+}
+
+uint64 FMaterialRegistry::ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskFunc, const FTaskConfig& Config)
+{
+    // Create a type-specific task configuration
+    FTaskConfig TypedConfig = Config;
+    TypedConfig.SetTypeId(TypeId, ERegistryType::Material);
+    
+    // Set optimization flags based on type capabilities
+    ETypeCapabilities Capabilities = GetTypeCapabilities(TypeId);
+    EThreadOptimizationFlags OptimizationFlags = EThreadOptimizationFlags::None;
+    
+    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::SIMDOperations))
+    {
+        OptimizationFlags |= EThreadOptimizationFlags::SIMDAware;
+    }
+    
+    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::CacheOptimized))
+    {
+        OptimizationFlags |= EThreadOptimizationFlags::CacheLocality;
+    }
+    
+    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::ParallelProcessing))
+    {
+        OptimizationFlags |= EThreadOptimizationFlags::ComputeIntensive;
+    }
+    
+    TypedConfig.SetOptimizationFlags(OptimizationFlags);
+    
+    // Schedule the task with the scheduler
+    return ScheduleTaskWithScheduler(TaskFunc, TypedConfig);
 }

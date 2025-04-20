@@ -2,6 +2,7 @@
 
 #include "SDFTypeRegistry.h"
 #include "HAL/PlatformMisc.h"
+#include "MiningSpiceCoPilot/3_ThreadingTaskSystem/Public/TaskHelpers.h"
 
 
 
@@ -808,6 +809,19 @@ bool FSDFTypeRegistry::IsOperationRegistered(uint32 InOperationId) const
     return OperationMap.Contains(InOperationId);
 }
 
+bool FSDFTypeRegistry::IsOperationRegistered(const FName& InOperationName) const
+{
+    if (!IsInitialized())
+    {
+        return false;
+    }
+    
+    // Lock for thread safety
+    FScopedSpinLock Lock(RegistryLock);
+    
+    return OperationNameMap.Contains(InOperationName);
+}
+
 bool FSDFTypeRegistry::IsOperationGPUCompatible(ESDFOperationType InOperationType) const
 {
     // Union and intersection operations are well-suited for GPU
@@ -1050,4 +1064,88 @@ void FSDFTypeRegistry::SetDefaultOperationProperties(FSDFOperationInfo* OpInfo, 
     }
     
     OpInfo->Properties.GPUShaderName = FName(*ShaderName);
+}
+
+ERegistryType FSDFTypeRegistry::GetRegistryType() const
+{
+    return ERegistryType::SDF;
+}
+
+ETypeCapabilities FSDFTypeRegistry::GetTypeCapabilities(uint32 TypeId) const
+{
+    // Start with no capabilities
+    ETypeCapabilities Capabilities = ETypeCapabilities::None;
+    
+    // Check if this type is registered
+    if (!IsFieldTypeRegistered(TypeId))
+    {
+        return Capabilities;
+    }
+    
+    // Get the field type info
+    const FSDFFieldTypeInfo* TypeInfo = GetFieldTypeInfo(TypeId);
+    if (!TypeInfo)
+    {
+        return Capabilities;
+    }
+    
+    // Map SDF capabilities to type capabilities
+    if (TypeInfo->bSupportsGPU)
+    {
+        Capabilities |= ETypeCapabilities::Vectorizable;
+    }
+    
+    if (TypeInfo->bSupportsThreading)
+    {
+        Capabilities |= ETypeCapabilities::ThreadSafe;
+        Capabilities |= ETypeCapabilities::ParallelProcessing;
+    }
+    
+    if (TypeInfo->bSupportsSIMD)
+    {
+        Capabilities |= ETypeCapabilities::SIMDOperations;
+    }
+    
+    if (TypeInfo->bSupportsIncrementalUpdates)
+    {
+        Capabilities |= ETypeCapabilities::IncrementalUpdates;
+    }
+    
+    if (TypeInfo->bOptimizedAccess)
+    {
+        Capabilities |= ETypeCapabilities::CacheOptimized;
+    }
+    
+    return Capabilities;
+}
+
+uint64 FSDFTypeRegistry::ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskFunc, const FTaskConfig& Config)
+{
+    // Create a type-specific task configuration
+    FTaskConfig TypedConfig = Config;
+    TypedConfig.SetTypeId(TypeId, ERegistryType::SDF);
+    
+    // Set optimization flags based on type capabilities
+    ETypeCapabilities Capabilities = GetTypeCapabilities(TypeId);
+    EThreadOptimizationFlags OptimizationFlags = EThreadOptimizationFlags::None;
+    
+    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::SIMDOperations))
+    {
+        OptimizationFlags |= EThreadOptimizationFlags::SIMDAware;
+    }
+    
+    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::CacheOptimized))
+    {
+        OptimizationFlags |= EThreadOptimizationFlags::CacheLocality;
+    }
+    
+    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::ParallelProcessing))
+    {
+        OptimizationFlags |= EThreadOptimizationFlags::ComputeIntensive;
+    }
+    
+    TypedConfig.SetOptimizationFlags(OptimizationFlags);
+    
+    // Schedule the task with the scheduler
+    return ScheduleTaskWithScheduler(TaskFunc, TypedConfig);
 }

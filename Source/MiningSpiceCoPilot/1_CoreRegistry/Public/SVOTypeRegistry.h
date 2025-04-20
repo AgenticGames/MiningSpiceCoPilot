@@ -15,6 +15,8 @@
 #include "Interfaces/IPoolAllocator.h"
 #include "HAL/ThreadSafeCounter.h" // For atomic operations
 #include "ThreadSafety.h"
+#include "../../3_ThreadingTaskSystem/Public/TaskScheduler.h"
+#include "../../3_ThreadingTaskSystem/Public/AsyncTaskTypes.h"
 
 /**
  * SVO node class types for classification in the registry
@@ -98,6 +100,18 @@ struct MININGSPICECOPILOT_API FSVONodeTypeInfo
     /** Whether this node type supports concurrent access */
     bool bSupportsConcurrentAccess;
     
+    /** Whether this node type supports threading */
+    bool bSupportsThreading;
+    
+    /** Whether this node type supports spatial coherence */
+    bool bSupportsSpatialCoherence;
+    
+    /** Whether this node type supports incremental updates */
+    bool bSupportsIncrementalUpdates;
+    
+    /** Whether this node type uses optimized memory access patterns */
+    bool bOptimizedMemoryAccess;
+    
     /** Capabilities flags for this node type (bitwise combination of ESVONodeCapabilities) */
     uint32 CapabilitiesFlags;
     
@@ -123,6 +137,10 @@ struct MININGSPICECOPILOT_API FSVONodeTypeInfo
         , RequiredInstructionSet(ESIMD_InstructionSet::SSE2)
         , MemoryLayout(ESVOMemoryLayout::Sequential)
         , bSupportsConcurrentAccess(false)
+        , bSupportsThreading(false)
+        , bSupportsSpatialCoherence(false)
+        , bSupportsIncrementalUpdates(false)
+        , bOptimizedMemoryAccess(false)
         , CapabilitiesFlags(0)
         , PreferredThreadBlockSize(64)
         , bSupportsHotReload(false)
@@ -164,6 +182,9 @@ public:
     virtual void Clear() override;
     virtual bool SetTypeVersion(uint32 TypeId, uint32 NewVersion, bool bMigrateInstanceData = true) override;
     virtual uint32 GetTypeVersion(uint32 TypeId) const override;
+    virtual ERegistryType GetRegistryType() const override;
+    virtual ETypeCapabilities GetTypeCapabilities(uint32 TypeId) const override;
+    virtual uint64 ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskFunc, const FTaskConfig& Config) override;
     //~ End IRegistry Interface
     
     /**
@@ -274,6 +295,45 @@ public:
     /** Gets the singleton instance of the SVO type registry */
     static FSVOTypeRegistry& Get();
     
+    /**
+     * Begins asynchronous type registration from a source asset
+     * @param SourceAsset Path to the asset containing node type definitions
+     * @return Operation ID for tracking the async registration, 0 if failed
+     */
+    uint64 BeginAsyncTypeRegistration(const FString& SourceAsset);
+
+    /**
+     * Begins asynchronous batch registration of multiple node types
+     * @param TypeInfos Array of node type information to register
+     * @return Operation ID for tracking the async registration, 0 if failed
+     */
+    uint64 BeginAsyncNodeTypeBatchRegistration(const TArray<FSVONodeTypeInfo>& TypeInfos);
+
+    /**
+     * Registers for progress updates from an async type registration
+     * @param OperationId ID of the async operation
+     * @param Callback Delegate to call with progress updates
+     * @param UpdateIntervalMs Minimum interval between updates in milliseconds
+     * @return True if registration was successful
+     */
+    bool RegisterTypeRegistrationProgressCallback(uint64 OperationId, const FAsyncProgressDelegate& Callback, uint32 UpdateIntervalMs = 100);
+
+    /**
+     * Registers for completion notification from an async type registration
+     * @param OperationId ID of the async operation
+     * @param Callback Delegate to call when registration completes
+     * @return True if registration was successful
+     */
+    bool RegisterTypeRegistrationCompletionCallback(uint64 OperationId, const FTypeRegistrationCompletionDelegate& Callback);
+
+    /**
+     * Cancels an in-progress async type registration
+     * @param OperationId ID of the async operation to cancel
+     * @param bWaitForCancellation Whether to wait for the operation to be fully cancelled
+     * @return True if cancellation was successful or in progress
+     */
+    bool CancelAsyncTypeRegistration(uint64 OperationId, bool bWaitForCancellation = false);
+    
 private:
     /** Generates a unique type ID for new registrations */
     uint32 GenerateUniqueTypeId();
@@ -312,8 +372,15 @@ private:
     /** Flag indicating if SIMD capabilities have been detected */
     bool bSIMDCapabilitiesDetected;
     
+    /** Counter for tracking memory pool contention */
+    FThreadSafeCounter PoolContentionCount;
+    
     /** Flags indicating which SIMD instruction sets are available */
     bool bSupportsSSE2;
+    
+    /** Counter for tracking optimistic lock failures */
+    FThreadSafeCounter OptimisticLockFailures;
+    
     bool bSupportsAVX;
     bool bSupportsAVX2;
     bool bSupportsAVX512;
@@ -326,10 +393,4 @@ private:
     
     /** Thread-safe flag for singleton initialization */
     static FThreadSafeBool bSingletonInitialized;
-    
-    /** Counter for tracking memory pool contention */
-    FThreadSafeCounter PoolContentionCount;
-    
-    /** Counter for tracking optimistic lock failures */
-    FThreadSafeCounter OptimisticLockFailures;
 };

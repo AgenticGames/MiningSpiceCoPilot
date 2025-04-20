@@ -12,6 +12,8 @@
 #include "Interfaces/IMemoryManager.h"
 #include "Interfaces/IPoolAllocator.h"
 #include "ThreadSafety.h"
+#include "../../3_ThreadingTaskSystem/Public/TaskScheduler.h"
+#include "../../3_ThreadingTaskSystem/Public/AsyncTaskTypes.h"
 
 // Forward declarations
 class FTransactionManager;
@@ -112,6 +114,24 @@ struct MININGSPICECOPILOT_API FZoneTransactionTypeInfo
     /** Whether this transaction has a read-validate-write pattern */
     bool bHasReadValidateWritePattern;
     
+    /** Whether this transaction type supports thread-safe access */
+    bool bSupportsThreadSafeAccess;
+    
+    /** Whether this transaction type supports partial processing */
+    bool bSupportsPartialProcessing;
+    
+    /** Whether this transaction type supports incremental updates */
+    bool bSupportsIncrementalUpdates;
+    
+    /** Whether this transaction type has low contention characteristics */
+    bool bLowContention;
+    
+    /** Whether results from this transaction type can be merged */
+    bool bSupportsResultMerging;
+    
+    /** Whether this transaction type supports asynchronous processing */
+    bool bSupportsAsyncProcessing;
+    
     /** Schema version for this transaction type */
     uint32 SchemaVersion;
     
@@ -132,6 +152,34 @@ struct MININGSPICECOPILOT_API FZoneTransactionTypeInfo
     
     /** Transaction priority for scheduling */
     ETransactionPriority Priority;
+    
+    /** Default constructor */
+    FZoneTransactionTypeInfo()
+        : TypeId(0)
+        , ConcurrencyLevel(ETransactionConcurrency::ReadOnly)
+        , RetryStrategy(ERetryStrategy::None)
+        , MaxRetries(3)
+        , BaseRetryIntervalMs(100)
+        , MaterialChannelId(-1)
+        , ConflictPriority(0)
+        , bRequiresVersionTracking(false)
+        , bSupportsFastPath(false)
+        , FastPathThreshold(0.1f)
+        , bHasReadValidateWritePattern(false)
+        , bSupportsThreadSafeAccess(false)
+        , bSupportsPartialProcessing(false)
+        , bSupportsIncrementalUpdates(false)
+        , bLowContention(false)
+        , bSupportsResultMerging(false)
+        , bSupportsAsyncProcessing(false)
+        , SchemaVersion(1)
+        , TotalExecutions(0)
+        , ConflictCount(0)
+        , bSupportsPartialExecution(false)
+        , bCanMergeResults(false)
+        , Priority(ETransactionPriority::Normal)
+    {
+    }
 };
 
 /**
@@ -201,6 +249,9 @@ public:
     virtual void Clear() override;
     virtual bool SetTypeVersion(uint32 TypeId, uint32 NewVersion, bool bMigrateInstanceData = true) override;
     virtual uint32 GetTypeVersion(uint32 TypeId) const override;
+    virtual ERegistryType GetRegistryType() const override;
+    virtual ETypeCapabilities GetTypeCapabilities(uint32 TypeId) const override;
+    virtual uint64 ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskFunc, const FTaskConfig& Config) override;
     //~ End IRegistry Interface
     
     /**
@@ -341,7 +392,46 @@ public:
     
     /** Gets the singleton instance of the zone type registry */
     static FZoneTypeRegistry& Get();
-    
+
+    /**
+     * Begins asynchronous type registration from a source asset
+     * @param SourceAsset Path to the asset containing type definitions
+     * @return Operation ID for tracking the async registration, 0 if failed
+     */
+    uint64 BeginAsyncTypeRegistration(const FString& SourceAsset);
+
+    /**
+     * Begins asynchronous batch registration of multiple transaction types
+     * @param TypeInfos Array of transaction type information to register
+     * @return Operation ID for tracking the async registration, 0 if failed
+     */
+    uint64 BeginAsyncTransactionTypeBatchRegistration(const TArray<FZoneTransactionTypeInfo>& TypeInfos);
+
+    /**
+     * Registers a callback for progress updates during async type registration
+     * @param OperationId The ID of the operation to monitor
+     * @param Callback The callback to invoke with progress updates
+     * @param UpdateIntervalMs How often to update progress (in milliseconds)
+     * @return True if the callback was registered successfully
+     */
+    bool RegisterTypeRegistrationProgressCallback(uint64 OperationId, const FAsyncProgressDelegate& Callback, uint32 UpdateIntervalMs = 100);
+
+    /**
+     * Registers a callback for completion of async type registration
+     * @param OperationId The ID of the operation to monitor
+     * @param Callback The callback to invoke when the operation completes
+     * @return True if the callback was registered successfully
+     */
+    bool RegisterTypeRegistrationCompletionCallback(uint64 OperationId, const FTypeRegistrationCompletionDelegate& Callback);
+
+    /**
+     * Cancels an ongoing async type registration
+     * @param OperationId ID of the async operation to cancel
+     * @param bWaitForCancellation Whether to wait for the operation to be fully cancelled
+     * @return True if cancellation was successful or in progress
+     */
+    bool CancelAsyncTypeRegistration(uint64 OperationId, bool bWaitForCancellation = false);
+
 private:
     /** Generates a unique type ID for new transaction type registrations */
     uint32 GenerateUniqueTypeId();
