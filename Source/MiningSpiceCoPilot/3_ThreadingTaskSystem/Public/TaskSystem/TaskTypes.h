@@ -33,7 +33,10 @@ enum class ETaskStatus : uint8
     Waiting UMETA(DisplayName = "Waiting for Dependencies"),
     
     /** Task is suspended and will resume later */
-    Suspended UMETA(DisplayName = "Suspended")
+    Suspended UMETA(DisplayName = "Suspended"),
+    
+    /** Sentinel value for enumeration count */
+    MaxValue UMETA(DisplayName = "Max Value", Hidden)
 };
 
 /**

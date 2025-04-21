@@ -25,6 +25,9 @@
 
 // Forward declarations
 class UMaterialInstanceDynamic;
+struct FMaterialPropertyInfo;
+struct FMaterialTypeInfo;
+struct FMaterialRelationship;
 
 /**
  * Enumeration of material priorities for conflict resolution
@@ -68,6 +71,83 @@ enum class EMaterialCapabilities : uint32
     SupportsLiveEditing = 1 << 18
 };
 ENUM_CLASS_FLAGS(EMaterialCapabilities);
+
+/**
+ * Information about a material property
+ */
+struct MININGSPICECOPILOT_API FMaterialPropertyInfo
+{
+    /** Property ID */
+    uint32 PropertyId;
+    
+    /** Property name */
+    FName PropertyName;
+    
+    /** Display name for UI */
+    FText DisplayName;
+    
+    /** Description for UI */
+    FText Description;
+    
+    /** Property category */
+    FName Category;
+    
+    /** Whether this property is exposed to blueprints */
+    bool bExposeToBlueprintGraph;
+    
+    /** Whether this property is serialized */
+    bool bSerializable;
+    
+    /** Whether this property supports hot reload */
+    bool bSupportsHotReload;
+    
+    /** Whether this property is inherited by child materials */
+    bool bInheritable;
+    
+    /** Parent property ID (for hierarchical properties) */
+    uint32 ParentPropertyId;
+    
+    /** Property schema version */
+    uint32 SchemaVersion;
+    
+    /** Default constructor */
+    FMaterialPropertyInfo()
+        : PropertyId(0)
+        , PropertyName(NAME_None)
+        , DisplayName(FText::GetEmpty())
+        , Description(FText::GetEmpty())
+        , Category(NAME_None)
+        , bExposeToBlueprintGraph(false)
+        , bSerializable(true)
+        , bSupportsHotReload(true)
+        , bInheritable(true)
+        , ParentPropertyId(0)
+        , SchemaVersion(1)
+    {
+    }
+    
+    /** Constructor with name */
+    FMaterialPropertyInfo(const FName& InName)
+        : PropertyId(0)
+        , PropertyName(InName)
+        , DisplayName(FText::FromName(InName))
+        , Description(FText::GetEmpty())
+        , Category(NAME_None)
+        , bExposeToBlueprintGraph(false)
+        , bSerializable(true)
+        , bSupportsHotReload(true)
+        , bInheritable(true)
+        , ParentPropertyId(0)
+        , SchemaVersion(1)
+    {
+    }
+    
+    /** Returns whether this property info is valid */
+    bool IsValid() const
+    {
+        return !PropertyName.IsNone();
+    }
+};
 
 /**
  * Base structure for material property data
@@ -388,6 +468,36 @@ struct MININGSPICECOPILOT_API FMaterialTypeInfo
     {
     }
     
+    /** Constructor from name */
+    explicit FMaterialTypeInfo(const FName& InTypeName)
+        : TypeId(0)
+        , TypeName(InTypeName)
+        , SchemaVersion(1)
+        , Priority(EMaterialPriority::Normal)
+        , ParentTypeId(0)
+        , DisplayName(FText::GetEmpty())
+        , Description(FText::GetEmpty())
+        , Category(NAME_None)
+        , CapabilitiesFlags(0)
+        , Capabilities(EMaterialCapabilities::None)
+        , bCanBeInstantiated(true)
+        , bIsAbstract(false)
+        , bHasVisualProperties(true)
+        , bIsComposite(false)
+        , bIsBlend(false)
+        , ChannelId(-1)
+        , ChannelCount(0)
+        , ResourceValueMultiplier(1.0f)
+        , BaseMiningResistance(1.0f)
+        , SoundAmplificationFactor(1.0f)
+        , ParticleEmissionMultiplier(1.0f)
+        , bIsMineable(true)
+        , bIsResource(false)
+        , bCanFracture(true)
+        , HotReloadId(FGuid::NewGuid())
+    {
+    }
+    
     /** Helper method to check if this material type has a specific capability */
     bool HasCapability(EMaterialCapabilities InCapability) const
     {
@@ -415,6 +525,12 @@ struct MININGSPICECOPILOT_API FMaterialTypeInfo
      * @return True if migration was successful
      */
     bool MigrateToCurrentVersion(uint32 CurrentSchemaVersion);
+    
+    /** Whether this material type info is valid */
+    bool IsValid() const
+    {
+        return TypeId != 0 && !TypeName.IsNone();
+    }
 };
 
 /**
@@ -452,6 +568,12 @@ struct MININGSPICECOPILOT_API FMaterialRelationship
     /** Schema version this relationship was created with */
     uint32 SchemaVersion;
     
+    /** Source material type name */
+    FName SourceTypeName;
+    
+    /** Target material type name */
+    FName TargetTypeName;
+    
     /** Constructor initializing with default values */
     FMaterialRelationship()
         : RelationshipId(0)
@@ -463,6 +585,8 @@ struct MININGSPICECOPILOT_API FMaterialRelationship
         , InteractionType(NAME_None)
         , InteractionPriority(0)
         , SchemaVersion(1)
+        , SourceTypeName(NAME_None)
+        , TargetTypeName(NAME_None)
     {
     }
     
@@ -491,12 +615,12 @@ struct MININGSPICECOPILOT_API FMaterialRelationship
 class MININGSPICECOPILOT_API FMaterialRegistry : public IRegistry
 {
 public:
-    /** Default constructor */
+    /** Constructor */
     FMaterialRegistry();
     
     /** Destructor */
     virtual ~FMaterialRegistry();
-    
+
     //~ Begin IRegistry Interface
     virtual bool Initialize() override;
     virtual void Shutdown() override;
@@ -513,57 +637,56 @@ public:
     //~ End IRegistry Interface
     
     /**
-     * Registers a new material type with the registry
-     * @param InTypeName Name of the material type
+     * Registers a material type
+     * @param InTypeInfo Material type information
+     * @param InTypeName Material type name
      * @param InPriority Priority for conflict resolution
-     * @param InParentTypeName Optional name of parent material type for inheritance
-     * @return Unique ID for the registered type, or 0 if registration failed
+     * @return Type ID for the registered type
      */
     uint32 RegisterMaterialType(
+        const FMaterialTypeInfo& InTypeInfo,
         const FName& InTypeName,
-        EMaterialPriority InPriority = EMaterialPriority::Normal,
-        const FName& InParentTypeName = NAME_None);
+        EMaterialPriority InPriority = EMaterialPriority::Normal
+    );
     
     /**
-     * Registers a relationship between two material types
-     * @param InSourceTypeName Name of the source material type
-     * @param InTargetTypeName Name of the target material type
-     * @param InCompatibilityScore Compatibility score (0-1)
-     * @param bInCanBlend Whether these materials can blend at interfaces
-     * @return Unique ID for the registered relationship, or 0 if registration failed
+     * Registers a material relationship
+     * @param InSourceTypeName Source material type name
+     * @param InTargetTypeName Target material type name
+     * @param InCompatibilityScore Compatibility score between the materials
+     * @return Relationship ID
      */
     uint32 RegisterMaterialRelationship(
         const FName& InSourceTypeName,
         const FName& InTargetTypeName,
-        float InCompatibilityScore = 0.5f,
-        bool bInCanBlend = false);
+        float InCompatibilityScore = 0.5f
+    );
     
     /**
-     * Allocates a channel ID for a material type
+     * Allocates a material channel for a type
      * @param InTypeId Material type ID
-     * @return Allocated channel ID, or -1 if allocation failed
+     * @return Channel ID or INDEX_NONE if allocation failed
      */
     int32 AllocateMaterialChannel(uint32 InTypeId);
     
     /**
-     * Gets information about a registered material type
-     * Uses optimistic read locking for high-performance in read-heavy scenarios
-     * @param InTypeId Unique ID of the material type
-     * @return Pointer to material type info, or nullptr if not found
+     * Gets material type information by ID
+     * @param InTypeId Material type ID
+     * @return Material type info or nullptr if not found
      */
     const FMaterialTypeInfo* GetMaterialTypeInfo(uint32 InTypeId) const;
     
     /**
-     * Gets information about a registered material type by name
-     * @param InTypeName Name of the material type
-     * @return Pointer to material type info, or nullptr if not found
+     * Gets material type information by name
+     * @param InTypeName Material type name
+     * @return Material type info or nullptr if not found
      */
     const FMaterialTypeInfo* GetMaterialTypeInfoByName(const FName& InTypeName) const;
     
     /**
-     * Gets information about a material relationship
-     * @param InRelationshipId Unique ID of the relationship
-     * @return Pointer to relationship info, or nullptr if not found
+     * Gets material relationship information by ID
+     * @param InRelationshipId Relationship ID
+     * @return Relationship info or nullptr if not found
      */
     const FMaterialRelationship* GetMaterialRelationship(uint32 InRelationshipId) const;
     
@@ -619,31 +742,30 @@ public:
     bool UpdateMaterialProperty(uint32 InTypeId, const FName& InPropertyName, const FString& InValue);
     
     /**
-     * Registers a custom property for a material type
+     * Registers a material property
      * @param InTypeId Material type ID
-     * @param InProperty Shared pointer to the property to register
+     * @param InProperty Material property to register
      * @return True if registration was successful
      */
     bool RegisterMaterialProperty(uint32 InTypeId, TSharedPtr<FMaterialPropertyBase> InProperty);
     
     /**
-     * Gets a custom property for a material type
+     * Gets a material property
      * @param InTypeId Material type ID
-     * @param InPropertyName Name of the property
-     * @return Shared pointer to the property, or nullptr if not found
+     * @param InPropertyName Property name
+     * @return Property or nullptr if not found
      */
     TSharedPtr<FMaterialPropertyBase> GetMaterialProperty(uint32 InTypeId, const FName& InPropertyName) const;
     
     /**
-     * Gets all custom properties for a material type
+     * Gets all properties for a material type
      * @param InTypeId Material type ID
-     * @return Map of property names to property pointers
+     * @return Map of property names to properties
      */
     TMap<FName, TSharedPtr<FMaterialPropertyBase>> GetAllMaterialProperties(uint32 InTypeId) const;
     
     /**
      * Inherits properties from a parent material type
-     * Enhanced with better property inheritance and conflict resolution
      * @param InChildTypeId Child material type ID
      * @param InParentTypeId Parent material type ID
      * @param bOverrideExisting Whether to override existing properties
@@ -652,7 +774,7 @@ public:
     bool InheritPropertiesFromParent(uint32 InChildTypeId, uint32 InParentTypeId, bool bOverrideExisting = false);
     
     /**
-     * Gets a material type's capability flags
+     * Gets material capabilities for a type
      * @param InTypeId Material type ID
      * @return Capability flags for the material type
      */
@@ -675,45 +797,41 @@ public:
     bool RemoveMaterialCapability(uint32 InTypeId, EMaterialCapabilities InCapability);
     
     /**
-     * Creates a deep copy of a material type with a new name
+     * Clones a material type
      * @param InSourceTypeId Source material type ID
-     * @param InNewTypeName Name for the new material type
+     * @param InNewTypeName Name for the cloned type
      * @param bInheritRelationships Whether to inherit relationships
-     * @return Unique ID for the cloned type, or 0 if cloning failed
+     * @return Type ID of the clone
      */
     uint32 CloneMaterialType(uint32 InSourceTypeId, const FName& InNewTypeName, bool bInheritRelationships = true);
     
     /**
-     * Handle hot reload of material types
-     * This ensures references remain valid when reloading the registry
-     * @return True if hot reload was successful
+     * Handles hot reload of material types
+     * @return True if the hot reload was successful
      */
     bool HandleHotReload();
     
     /**
-     * Updates all material types to the current schema version
-     * @return True if all migrations were successful
+     * Migrates all material types to the current schema version
+     * @return True if migration was successful
      */
     bool MigrateAllTypes();
     
     /**
-     * Creates a blueprint-friendly representation of all material types
-     * This prepares material data for blueprint access
+     * Creates Blueprint wrappers for registered material types
      */
     void CreateBlueprintWrappers();
     
     /**
-     * Detects available SIMD capabilities on the current hardware
-     * Updates material type capabilities based on what's available
-     * @return EMaterialCapabilities flags representing available hardware features
+     * Detects hardware capabilities for material operations
+     * @return Hardware capability flags
      */
     EMaterialCapabilities DetectHardwareCapabilities();
     
     /**
-     * Gets all material types in a specific category
-     * Useful for UI organization and filtering
-     * @param InCategory The category to filter by
-     * @return Array of material types in the specified category
+     * Gets material types by category
+     * @param InCategory Category to filter by
+     * @return Array of material types in the category
      */
     TArray<FMaterialTypeInfo> GetMaterialTypesByCategory(const FName& InCategory) const;
     
@@ -721,155 +839,253 @@ public:
      * Sets the category for a material type
      * @param InTypeId Material type ID
      * @param InCategory Category name
-     * @return True if the category was set successfully
+     * @return True if the category was set
      */
     bool SetMaterialCategory(uint32 InTypeId, const FName& InCategory);
     
     /**
-     * Sets up SIMD-optimized memory layout for material fields
-     * Integrates with NarrowBandAllocator to configure optimized field access
-     * @param InTypeId Material type ID to configure
-     * @param bEnableVectorization Whether to enable vectorized operations
-     * @return True if setup was successful
+     * Sets up material fields for visualization and editing
+     * @param InTypeId Material type ID
+     * @param bEnableVectorization Whether to enable SIMD optimization
+     * @return True if fields were set up successfully
      */
     bool SetupMaterialFields(uint32 InTypeId, bool bEnableVectorization = true);
     
     /**
-     * Creates a visualization of the material type hierarchy
-     * Useful for debugging material relationships
-     * @param OutVisualizationData Output string containing visualization data
-     * @return True if visualization was generated successfully
+     * Creates a visualization of the type hierarchy
+     * @param OutVisualizationData Output string with visualization data
+     * @return True if visualization was created
      */
     bool CreateTypeHierarchyVisualization(FString& OutVisualizationData) const;
     
-    /** Gets the singleton instance of the material registry */
+    /** Gets the singleton instance */
     static FMaterialRegistry& Get();
-
+    
     /**
-     * Begins asynchronous type registration from a source asset
-     * @param SourceAsset Path to the asset containing material type definitions
-     * @return Operation ID for tracking the async registration, 0 if failed
+     * Begins async type registration from an asset
+     * @param SourceAsset Path to the asset to load types from
+     * @return Operation ID for tracking
      */
     uint64 BeginAsyncTypeRegistration(const FString& SourceAsset);
-
+    
     /**
-     * Begins asynchronous batch registration of multiple material types
-     * @param TypeInfos Array of material type information to register
-     * @return Operation ID for tracking the async registration, 0 if failed
+     * Begins async batch registration of material types
+     * @param TypeInfos Array of material type information
+     * @return Operation ID for tracking
      */
     uint64 BeginAsyncMaterialTypeBatchRegistration(const TArray<FMaterialTypeInfo>& TypeInfos);
-
+    
     /**
-     * Registers for progress updates from an async type registration
-     * @param OperationId ID of the async operation
-     * @param Callback Delegate to call with progress updates
-     * @param UpdateIntervalMs Minimum interval between updates in milliseconds
+     * Registers a progress callback for type registration
+     * @param OperationId Operation ID from BeginAsyncTypeRegistration
+     * @param Callback Progress callback
+     * @param UpdateIntervalMs Update interval in milliseconds
      * @return True if registration was successful
      */
     bool RegisterTypeRegistrationProgressCallback(uint64 OperationId, const FAsyncProgressDelegate& Callback, uint32 UpdateIntervalMs = 100);
-
+    
     /**
-     * Registers for completion notification from an async type registration
-     * @param OperationId ID of the async operation
-     * @param Callback Delegate to call when registration completes
+     * Registers a completion callback for type registration
+     * @param OperationId Operation ID from BeginAsyncTypeRegistration
+     * @param Callback Completion callback
      * @return True if registration was successful
      */
     bool RegisterTypeRegistrationCompletionCallback(uint64 OperationId, const FTypeRegistrationCompletionDelegate& Callback);
-
+    
     /**
-     * Cancels an in-progress async type registration
-     * @param OperationId ID of the async operation to cancel
-     * @param bWaitForCancellation Whether to wait for the operation to be fully cancelled
-     * @return True if cancellation was successful or in progress
+     * Cancels an async type registration
+     * @param OperationId Operation ID from BeginAsyncTypeRegistration
+     * @param bWaitForCancellation Whether to wait for the cancellation to complete
+     * @return True if cancellation was successful
      */
     bool CancelAsyncTypeRegistration(uint64 OperationId, bool bWaitForCancellation = false);
+    
+    /**
+     * Gets material type info optimized for NUMA locality
+     * Uses NUMA-local caching for improved performance on multi-socket systems
+     * 
+     * @param InTypeId Material type ID
+     * @return Material type info or nullptr if not found
+     */
+    const FMaterialTypeInfo* GetMaterialTypeInfoNUMAOptimized(uint32 InTypeId) const;
+    
+    /**
+     * Sets the preferred NUMA domain for a material type
+     * Allows optimizing data locality for frequently accessed material types
+     * 
+     * @param InTypeId Material type ID
+     * @param DomainId NUMA domain ID
+     * @return True if the domain was set
+     */
+    bool SetPreferredNUMADomainForType(uint32 InTypeId, uint32 DomainId);
+    
+    /**
+     * Gets the preferred NUMA domain for a material type
+     * 
+     * @param InTypeId Material type ID
+     * @return Preferred NUMA domain ID or MAX_uint32 if not set
+     */
+    uint32 GetPreferredNUMADomainForType(uint32 InTypeId) const;
+    
+    /**
+     * Prefetches material types to a specific NUMA domain
+     * Useful for optimizing access patterns before intensive operations
+     * 
+     * @param TypeIds Array of type IDs to prefetch
+     * @param DomainId Target NUMA domain
+     */
+    void PrefetchTypesToDomain(const TArray<uint32>& TypeIds, uint32 DomainId);
+    
+    /**
+     * Records access to a material type from a specific thread
+     * Used for optimizing NUMA domain assignments
+     * 
+     * @param InTypeId Material type ID
+     * @param ThreadId Thread ID (0 for current thread)
+     * @param bIsWrite Whether the access is for writing
+     */
+    void RecordMaterialTypeAccess(uint32 InTypeId, uint32 ThreadId = 0, bool bIsWrite = false) const;
+    
+    /**
+     * Gets NUMA-specific statistics for material types
+     * 
+     * @return Map of domain IDs to access statistics
+     */
+    TMap<uint32, FString> GetNUMAAccessStats() const;
+    
+    /**
+     * Optimizes material type placement across NUMA domains
+     * Analyzes access patterns and migrates types to optimal domains
+     * 
+     * @return Number of types that were migrated
+     */
+    int32 OptimizeTypeNUMAPlacement();
+
+    /**
+     * Registers a material type relationship
+     * @param InSourceTypeName Name of the source material type
+     * @param InTargetTypeName Name of the target material type
+     * @param InCompatibilityScore Compatibility score (0.0-1.0) with higher values indicating better compatibility
+     * @param bInCanBlend Whether the materials can blend together
+     * @return Relationship ID, or 0 if registration failed
+     */
+    uint32 RegisterMaterialRelationship(
+        const FName& InSourceTypeName,
+        const FName& InTargetTypeName,
+        float InCompatibilityScore = 0.5f,
+        bool bInCanBlend = true);
 
 private:
     /** Generates a unique type ID for new material type registrations */
     uint32 GenerateUniqueTypeId();
     
-    /** Generates a unique relationship ID for new material relationship registrations */
+    /** Generates a unique relationship ID for new material relationships */
     uint32 GenerateUniqueRelationshipId();
     
-    /** Gets a mutable pointer to a material type info */
-    TSharedRef<FMaterialTypeInfo>* GetMutableMaterialTypeInfo(uint32 InTypeId);
+    /** Gets a modifiable material type info pointer */
+    TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* GetMutableMaterialTypeInfo(uint32 InTypeId);
     
     /**
-     * Allocates channel memory for material type using NarrowBandAllocator
-     * Integrates with memory management system to optimize material storage
-     * @param TypeInfo Material type information
+     * Allocates memory for material channels
+     * @param TypeInfo Material type info to allocate for
      */
-    void AllocateChannelMemory(const TSharedRef<FMaterialTypeInfo>& TypeInfo);
+    void AllocateChannelMemory(const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>& TypeInfo);
     
-    /**
-     * Sets up memory sharing between related material types
-     * Optimizes memory usage by sharing channels between parent and child materials
-     * @param TypeId Material type ID to set up sharing for
-     */
+    /** Sets up memory sharing for derived materials */
     void SetupMemorySharingForDerivedMaterials(uint32 TypeId);
     
-    /** Ensures that a property map exists for a material type */
+    /** Ensures a property map exists for a type */
     void EnsurePropertyMap(uint32 InTypeId);
     
     /**
-     * Helper function for creating type hierarchy visualization
-     * @param InTypeId Type ID to visualize
-     * @param InDepth Current depth in hierarchy
-     * @param OutVisualizationData String to append visualization data to
+     * Recursively visualizes a type hierarchy
+     * @param InTypeId Root type ID
+     * @param InDepth Current recursion depth
+     * @param OutVisualizationData Output visualization string
      */
     void VisualizeTypeHierarchy(uint32 InTypeId, int32 InDepth, FString& OutVisualizationData) const;
     
-    /** Map of registered material types by ID */
-    TMap<uint32, TSharedRef<FMaterialTypeInfo>> MaterialTypeMap;
+    /** Map of material types by ID */
+    TMap<uint32, TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>> MaterialTypes;
     
-    /** Map of registered material types by name for fast lookup */
-    TMap<FName, uint32> MaterialTypeNameMap;
+    /** Map of material type information */
+    TMap<uint32, TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>> MaterialTypeMap;
     
-    /** Map of registered material types by hot reload ID for reference preservation */
-    TMap<FGuid, uint32> MaterialTypeHotReloadMap;
-    
-    /** Map of registered material relationships by ID */
-    TMap<uint32, TSharedRef<FMaterialRelationship>> RelationshipMap;
-    
-    /** Multimap of relationship IDs by source material type ID */
-    TMultiMap<uint32, uint32> RelationshipsBySourceMap;
-    
-    /** Multimap of relationship IDs by target material type ID */
-    TMultiMap<uint32, uint32> RelationshipsByTargetMap;
-    
-    /** Map of material properties by material type ID and property name */
+    /** Map of material property information */
     TMap<uint32, TMap<FName, TSharedPtr<FMaterialPropertyBase>>> MaterialPropertyMap;
     
-    /** Map of material types by category for efficient filtering */
+    /** Map of material types by name */
+    TMap<FName, uint32> MaterialTypeNameMap;
+    
+    /** Map of child types by parent type ID */
+    TMultiMap<uint32, uint32> MaterialTypeHierarchy;
+    
+    /** Map of material relationships by ID */
+    TMap<uint32, TSharedRef<FMaterialRelationship, ESPMode::ThreadSafe>> MaterialRelationships;
+    
+    /** Map of material properties by type ID */
+    TMap<uint32, TMap<FName, TSharedPtr<FMaterialPropertyBase>>> MaterialProperties;
+    
+    /** Map of material channel versions by channel ID */
+    TMap<int32, FThreadSafeCounter*> MaterialChannelVersions;
+    
+    /** Map of material types by category */
     TMultiMap<FName, uint32> MaterialTypesByCategoryMap;
     
-    /** Counter for generating unique type IDs */
-    FThreadSafeCounter NextTypeId;
-    
-    /** Counter for generating unique relationship IDs */
-    FThreadSafeCounter NextRelationshipId;
-    
-    /** Counter for allocating channel IDs */
-    FThreadSafeCounter NextChannelId;
-    
-    /** Thread-safe flag indicating if the registry has been initialized */
-    FThreadSafeBool bIsInitialized;
-    
-    /** Schema version of this registry */
-    uint32 SchemaVersion;
-    
-    /** Lock for thread-safe access to the registry maps */
+    /** Lock for modifying material types */
     mutable FSpinLock RegistryLock;
     
-    /** Critical section for initialization and shutdown */
-    FCriticalSection InitializationLock;
+    /** Lock for modifying type hierarchy */
+    mutable FCriticalSection HierarchyLock;
     
-    /** Cached hardware capabilities */
+    /** Lock for modifying properties */
+    mutable FCriticalSection PropertyLock;
+    
+    /** Lock for async operations */
+    mutable FCriticalSection AsyncOperationLock;
+    
+    /* Maps to organize material relationships by source and target */
+    TMap<uint32, TArray<uint32>> RelationshipsBySourceMap;
+    TMap<uint32, TArray<uint32>> RelationshipsByTargetMap;
+    TMap<uint32, TSharedRef<FMaterialRelationship>> RelationshipMap;
+    
+    /** Next available type ID */
+    FThreadSafeCounter NextTypeId;
+    
+    /** Next available relationship ID */
+    FThreadSafeCounter NextRelationshipId;
+    
+    /** Current schema version */
+    uint32 CurrentSchemaVersion;
+    
+    /** Map of operation IDs to async operations */
+    TMap<uint64, class FAsyncOperationImpl*> AsyncOperations;
+    
+    /** Map of type IDs to preferred NUMA domains */
+    TMap<uint32, uint32> TypeNUMADomainPreferences;
+    
+    /** Lock for NUMA domain preferences */
+    mutable FCriticalSection NumaDomainLock;
+    
+    /** Map of type access statistics by domain */
+    mutable TMap<uint32, TMap<uint32, uint32>> TypeAccessByDomain;
+    
+    /** Lock for type access statistics */
+    mutable FCriticalSection TypeAccessLock;
+    
+    /** Detected hardware capabilities */
     EMaterialCapabilities HardwareCapabilities;
     
-    /** Singleton instance of the registry */
+    /** Singleton instance */
     static FMaterialRegistry* Singleton;
-    
-    /** Thread-safe initialization flag for the singleton */
     static FThreadSafeBool bSingletonInitialized;
+    
+    // Internal state
+    FThreadSafeBool bIsInitialized;
+    
+    // Counters for ID generation
+    uint32 NextChannelId;
+
+    /** Relationships between material types */
+    TMultiMap<uint32, uint32> TypeRelationships;
 };

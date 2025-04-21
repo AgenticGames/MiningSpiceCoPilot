@@ -1,0 +1,96 @@
+# COMPILER DEBUGGING HELPER TEMPLATE
+
+## HOW TO USE THIS DOCUMENT
+This document serves as a continuous record of your debugging journey. Follow these steps in order when using this template:
+
+!!!!!IMPORTANT, FOLLOW THESE INSTRUCTIONS IN ORDER!!!!!!!!
+```
+Stage 1: PRESETUP - Do this BEFORE applying any fixes
+
+1. Add the compiler errors you're working on to the current Attempt section
+2. Analyze previous attempts to identify successes, failures, and lessons learned
+3. Document in the PRESETUP section:
+   - Successes from previous attempts
+   - Persistent issues that remain
+   - Key lessons learned
+4. Update the GLOBAL sections at the bottom of the document based on your analysis:
+   - GLOBAL INSIGHTS
+   - GLOBAL CRITICAL LESSONS OF SUCCESS (for major breakthroughs)
+   - GLOBAL RESOLVED ISSUES (include specific error codes)
+   - GLOBAL PERSISTENT ISSUES (include specific error codes)
+
+Stage 2: POSTSETUP - After designing and implementing your fixes
+
+5. Develop a plan to address as many issues as possible
+6. Implement your fixes
+7. Document your attempted fixes in the current attempt section
+8. Include your theory explaining why each fix should work
+9. Create a new attempt entry for each debugging session
+10. Do not recompile.
+```
+
+## INTEGRATION INFO
+Integration task: [INTEGRATION TASK NAME]
+Checklist item: [CHECKLIST ITEM]
+Files modified:
+- [LIST OF MODIFIED FILES]
+
+## ORIGINAL IMPLEMENTATION PROMPT
+```
+[PASTE THE FULL IMPLEMENTATION PROMPT/DESCRIPTION FROM THE CHECKLIST HERE]
+```
+
+## IMPLEMENTATION DETAILS
+[DESCRIBE WHAT WAS IMPLEMENTED]
+
+-----------------------------------
+
+## TEMPLATE FOR ADDING NEW ATTEMPTS    
+
+### Attempt [Number] 
+#### Errors we are working on:
+```
+[COPY PASTE COMPILER ERRORS HERE]
+```
+
+## PRESETUP
+
+### Successes from previous attempts:
+- [LIST KEY SUCCESSES FROM PREVIOUS ATTEMPTS]
+
+### Persistent Issues:
+- [LIST ISSUES THAT REMAIN UNRESOLVED]
+
+### Lessons:
+- [LIST KEY LESSONS LEARNED]
+
+### Plan for fixing the issues:
+1. [FIRST STEP]
+2. [SECOND STEP]
+3. [ADDITIONAL STEPS AS NEEDED]
+
+## POSTSETUP
+
+#### Fixes Attempted:
+```cpp
+// 1. [DESCRIBE FIRST FIX]
+// Changed from:
+[ORIGINAL CODE]
+// To:
+[NEW CODE]
+
+// 2. [DESCRIBE SECOND FIX]
+// Changed from:
+[ORIGINAL CODE]
+// To:
+[NEW CODE]
+```
+
+#### Theory:
+```
+[EXPLAIN WHY THESE FIXES SHOULD WORK]
+- [SPECIFIC EXPLANATION FOR FIX 1]
+- [SPECIFIC EXPLANATION FOR FIX 2]
+- [LESSONS LEARNED FROM THIS ATTEMPT]
+```
+

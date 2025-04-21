@@ -309,7 +309,13 @@ class MININGSPICECOPILOT_API FTaskScheduler : public ITaskScheduler
 {
 public:
     /** Constructor */
-    FTaskScheduler();
+    FTaskScheduler() 
+        : bIsInitialized(false)
+        , NumLogicalCores(0)
+        , CleanupThread(nullptr)
+        , ProcessorFeatures(EProcessorFeatures::None)
+    {
+    }
     
     /** Destructor */
     virtual ~FTaskScheduler();
@@ -419,6 +425,29 @@ public:
      */
     int32 FindWorkerWithCapabilities(ETypeCapabilities Capabilities);
     
+    /**
+     * Calculates an affinity mask for a worker thread based on NUMA topology
+     * @param ThreadIndex Index of the thread
+     * @param TotalThreads Total number of threads
+     * @param NumaNodes NUMA node information
+     * @return Affinity mask for the thread
+     */
+    uint64 CalculateNumaAwareAffinityMask(int32 ThreadIndex, int32 TotalThreads, const TArray<FNumaNodeInfo>& NumaNodes);
+    
+    /**
+     * Determines the preferred NUMA domain for a specific type of operation
+     * @param TypeId The type ID
+     * @param RegistryType The registry containing the type
+     * @return Preferred NUMA domain ID, or MAX_uint32 if no preference
+     */
+    uint32 DeterminePreferredDomainForType(uint32 TypeId, ERegistryType RegistryType);
+    
+    /**
+     * Assigns workers to NUMA domains based on topology
+     * Balances worker threads across available memory domains
+     */
+    void AssignWorkersToNUMADomains();
+    
     /** Thread local storage slot for worker ID */
     static uint32 WorkerThreadTLS;
     
@@ -511,9 +540,6 @@ private:
     {
         return (static_cast<uint64>(RegistryType) << 32) | TypeId;
     }
-    
-    /** Calculates NUMA-aware affinity mask */
-    uint64 CalculateNumaAwareAffinityMask(int32 ThreadIndex, int32 TotalThreads, const TArray<FNumaNodeInfo>& NumaNodes);
 };
 
 /**

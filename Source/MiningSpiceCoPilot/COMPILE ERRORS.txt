@@ -1,3 +1,55 @@
-[1/4] Compile [x64] 1_ZoneTypeRegistry.cpp
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1190): error C2511: 'bool FZoneTypeRegistry::RegisterTypeRegistrationCompletionCallback(uint64,const FAsyncCompletionDelegate &)': overloaded member function not found in 'FZoneTypeRegistry'
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\ZoneTypeRegistry.h(233): note: see declaration of 'FZoneTypeRegistry'
+[1/4] Compile [x64] 1_MaterialRegistry.cpp
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(546): error C2672: 'MultiFind': no matching overloaded function found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(32): note: could be 'void MultiFind(const TMap<KeyType,TArray<TSrc,InAllocatorType>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,InValueType,false>> &,const KeyType &,TArray<PtrType,FDefaultAllocator> &)'
+        with
+        [
+            InValueType=TArray<TSrc,InAllocatorType>
+        ]
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(546): note: 'void MultiFind(const TMap<KeyType,TArray<TSrc,InAllocatorType>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,InValueType,false>> &,const KeyType &,TArray<PtrType,FDefaultAllocator> &)': could not deduce template argument for 'const TMap<KeyType,TArray<TSrc,InAllocatorType>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,InValueType,false>> &' from 'TMultiMap<uint32,uint32,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,ValueType,true>>'
+        with
+        [
+            InValueType=TArray<TSrc,InAllocatorType>
+        ]
+        and
+        [
+            InValueType=TArray<TSrc,InAllocatorType>
+        ]
+        and
+        [
+            KeyType=uint32,
+            ValueType=uint32
+        ]
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(772): error C2672: 'MultiFind': no matching overloaded function found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(32): note: could be 'void MultiFind(const TMap<KeyType,TArray<TSrc,InAllocatorType>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,InValueType,false>> &,const KeyType &,TArray<PtrType,FDefaultAllocator> &)'
+        with
+        [
+            InValueType=TArray<TSrc,InAllocatorType>
+        ]
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(772): note: 'void MultiFind(const TMap<KeyType,TArray<TSrc,InAllocatorType>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,InValueType,false>> &,const KeyType &,TArray<PtrType,FDefaultAllocator> &)': could not deduce template argument for 'const TMap<KeyType,TArray<TSrc,InAllocatorType>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,InValueType,false>> &' from 'const TMultiMap<uint32,uint32,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,ValueType,true>>'
+        with
+        [
+            InValueType=TArray<TSrc,InAllocatorType>
+        ]
+        and
+        [
+            InValueType=TArray<TSrc,InAllocatorType>
+        ]
+        and
+        [
+            KeyType=uint32,
+            ValueType=uint32
+        ]
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1599): error C2065: 'MaterialTypesByCategoryMap': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1638): error C2065: 'MaterialTypesByCategoryMap': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1643): error C2065: 'MaterialTypesByCategoryMap': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1655): error C2065: 'MaterialTypesByCategoryMap': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2392): error C2662: 'void FMaterialRegistry::RecordMaterialTypeAccess(uint32,uint32,bool)': cannot convert 'this' pointer from 'const FMaterialRegistry' to 'FMaterialRegistry &'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2392): note: Conversion loses qualifiers
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\MaterialRegistry.h(947): note: see declaration of 'FMaterialRegistry::RecordMaterialTypeAccess'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2392): note: while trying to match the argument list '(uint32, int, bool)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2408): error C2662: 'void FMaterialRegistry::RecordMaterialTypeAccess(uint32,uint32,bool)': cannot convert 'this' pointer from 'const FMaterialRegistry' to 'FMaterialRegistry &'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2408): note: Conversion loses qualifiers
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\MaterialRegistry.h(947): note: see declaration of 'FMaterialRegistry::RecordMaterialTypeAccess'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2408): note: while trying to match the argument list '(uint32, int, bool)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2586): error C4456: declaration of 'Lock' hides previous local declaration
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2523): note: see declaration of 'Lock'

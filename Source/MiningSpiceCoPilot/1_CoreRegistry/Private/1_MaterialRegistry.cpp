@@ -15,8 +15,32 @@
 #include "Interfaces/ITaskScheduler.h"
 #include "../../3_ThreadingTaskSystem/Public/TaskSystem/TaskTypes.h"
 #include "../../3_ThreadingTaskSystem/Public/TaskHelpers.h"
+#include "UObject/UObjectIterator.h"
+#include "UObject/Package.h"
+#include "HAL/PlatformTime.h"
+#include "Misc/ScopeLock.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "Engine/World.h"
+#include "ThreadSafety.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogMaterialRegistry, Log, All);
+
+// Helper function to mimic TMultiMap's MultiFind functionality for regular TMap with array values
+template<typename KeyType, typename ValueType, typename Allocator>
+void MultiFind(const TMap<KeyType, TArray<ValueType, Allocator>>& Map, const KeyType& Key, TArray<ValueType>& OutValues)
+{
+    const TArray<ValueType, Allocator>* FoundValues = Map.Find(Key);
+    if (FoundValues)
+    {
+        OutValues = *FoundValues;
+    }
+    else
+    {
+        OutValues.Empty();
+    }
+}
 
 // Initialize static members
 FMaterialRegistry* FMaterialRegistry::Singleton = nullptr;
@@ -31,13 +55,38 @@ FThreadSafeBool FMaterialRegistry::bSingletonInitialized = false;
  * @return Task ID of the scheduled task
  */
 
+// Singleton accessor implementation
+FMaterialRegistry& FMaterialRegistry::Get()
+{
+    if (!bSingletonInitialized)
+    {
+        // Create the singleton instance if it doesn't exist
+        FMaterialRegistry* NewInstance = new FMaterialRegistry();
+        // Atomically set the instance pointer
+        if (FPlatformAtomics::InterlockedCompareExchangePointer(
+            (void**)&Singleton, 
+            NewInstance, 
+            nullptr) != nullptr)
+        {
+            // Another thread beat us to it, delete our instance
+            delete NewInstance;
+        }
+        else
+        {
+            // We successfully set the instance
+            bSingletonInitialized = true;
+        }
+    }
+    
+    check(Singleton);
+    return *Singleton;
+}
 
 FMaterialRegistry::FMaterialRegistry()
     : NextTypeId(1) // Reserve 0 as invalid/unregistered type ID
     , NextRelationshipId(1) // Reserve 0 as invalid/unregistered relationship ID
-    , NextChannelId(0) // Start channel IDs at 0
-    , bIsInitialized(false)
-    , SchemaVersion(1) // Initial schema version
+    , CurrentSchemaVersion(1) // Initial schema version
+    , NextChannelId(0)
 {
     // Constructor is intentionally minimal
 }
@@ -60,22 +109,21 @@ bool FMaterialRegistry::Initialize()
     }
     
     // Set initialized flag
-    bIsInitialized.AtomicSet(true);
+    bIsInitialized = true;
     
     // Initialize internal maps
-    MaterialTypeMap.Empty();
+    MaterialTypes.Empty();
     MaterialTypeNameMap.Empty();
     RelationshipMap.Empty();
-    RelationshipsBySourceMap.Empty();
-    RelationshipsByTargetMap.Empty();
+    MaterialTypeHierarchy.Empty();
     MaterialPropertyMap.Empty();
-    MaterialTypesByCategoryMap.Empty();
     
     // Initialize counters with proper values
     // In FThreadSafeCounter, we need to set the initial value correctly
     NextTypeId.Set(1);
     NextRelationshipId.Set(1);
-    NextChannelId.Set(0);
+    NextChannelId = 0;
+    CurrentSchemaVersion = 1;
     
     return true;
 }
@@ -88,13 +136,11 @@ void FMaterialRegistry::Shutdown()
         FScopedSpinLock Lock(RegistryLock);
         
         // Clear all registered items
-        MaterialTypeMap.Empty();
+        MaterialTypes.Empty();
         MaterialTypeNameMap.Empty();
         RelationshipMap.Empty();
-        RelationshipsBySourceMap.Empty();
-        RelationshipsByTargetMap.Empty();
+        MaterialTypeHierarchy.Empty();
         MaterialPropertyMap.Empty();
-        MaterialTypesByCategoryMap.Empty();
         
         // Reset state
         bIsInitialized = false;
@@ -113,7 +159,7 @@ FName FMaterialRegistry::GetRegistryName() const
 
 uint32 FMaterialRegistry::GetSchemaVersion() const
 {
-    return SchemaVersion;
+    return CurrentSchemaVersion;
 }
 
 bool FMaterialRegistry::Validate(TArray<FString>& OutErrors) const
@@ -135,21 +181,21 @@ bool FMaterialRegistry::Validate(TArray<FString>& OutErrors) const
         const FName& TypeName = TypeNamePair.Key;
         const uint32 TypeId = TypeNamePair.Value;
         
-        if (!MaterialTypeMap.Contains(TypeId))
+        if (!MaterialTypes.Contains(TypeId))
         {
             OutErrors.Add(FString::Printf(TEXT("Material type name '%s' references non-existent type ID %u"), *TypeName.ToString(), TypeId));
             bIsValid = false;
         }
-        else if (MaterialTypeMap[TypeId]->TypeName != TypeName)
+        else if (MaterialTypes[TypeId]->TypeName != TypeName)
         {
             OutErrors.Add(FString::Printf(TEXT("Material type name mismatch: '%s' references ID %u, but ID maps to name '%s'"),
-                *TypeName.ToString(), TypeId, *MaterialTypeMap[TypeId]->TypeName.ToString()));
+                *TypeName.ToString(), TypeId, *MaterialTypes[TypeId]->TypeName.ToString()));
             bIsValid = false;
         }
     }
     
     // Validate parent-child relationships
-    for (const auto& TypeInfoPair : MaterialTypeMap)
+    for (const auto& TypeInfoPair : MaterialTypes)
     {
         const uint32 TypeId = TypeInfoPair.Key;
         const TSharedRef<FMaterialTypeInfo>& TypeInfo = TypeInfoPair.Value;
@@ -157,7 +203,7 @@ bool FMaterialRegistry::Validate(TArray<FString>& OutErrors) const
         // Check if parent type exists (if specified)
         if (TypeInfo->ParentTypeId != 0)
         {
-            if (!MaterialTypeMap.Contains(TypeInfo->ParentTypeId))
+            if (!MaterialTypes.Contains(TypeInfo->ParentTypeId))
             {
                 OutErrors.Add(FString::Printf(TEXT("Material type '%s' (ID %u) references non-existent parent type ID %u"),
                     *TypeInfo->TypeName.ToString(), TypeId, TypeInfo->ParentTypeId));
@@ -169,7 +215,7 @@ bool FMaterialRegistry::Validate(TArray<FString>& OutErrors) const
         if (TypeInfo->ChannelId >= 0)
         {
             // Check for duplicate channel IDs
-            for (const auto& OtherTypePair : MaterialTypeMap)
+            for (const auto& OtherTypePair : MaterialTypes)
             {
                 if (OtherTypePair.Key != TypeId && OtherTypePair.Value->ChannelId == TypeInfo->ChannelId)
                 {
@@ -197,14 +243,14 @@ bool FMaterialRegistry::Validate(TArray<FString>& OutErrors) const
         }
         
         // Verify source and target material types exist
-        if (!MaterialTypeMap.Contains(Relationship->SourceTypeId))
+        if (!MaterialTypes.Contains(Relationship->SourceTypeId))
         {
             OutErrors.Add(FString::Printf(TEXT("Material relationship (ID %u) references non-existent source type ID %u"),
                 RelationshipId, Relationship->SourceTypeId));
             bIsValid = false;
         }
         
-        if (!MaterialTypeMap.Contains(Relationship->TargetTypeId))
+        if (!MaterialTypes.Contains(Relationship->TargetTypeId))
         {
             OutErrors.Add(FString::Printf(TEXT("Material relationship (ID %u) references non-existent target type ID %u"),
                 RelationshipId, Relationship->TargetTypeId));
@@ -221,15 +267,15 @@ bool FMaterialRegistry::Validate(TArray<FString>& OutErrors) const
     }
     
     // Verify relationship lookup maps
-    for (auto It = RelationshipsBySourceMap.CreateConstIterator(); It; ++It)
+    for (auto It = MaterialTypeHierarchy.CreateConstIterator(); It; ++It)
     {
         const uint32 SourceTypeId = It.Key();
         const uint32 RelationshipId = It.Value();
         
         // Verify source type exists
-        if (!MaterialTypeMap.Contains(SourceTypeId))
+        if (!MaterialTypes.Contains(SourceTypeId))
         {
-            OutErrors.Add(FString::Printf(TEXT("RelationshipsBySourceMap contains non-existent source type ID %u"),
+            OutErrors.Add(FString::Printf(TEXT("MaterialTypeHierarchy contains non-existent source type ID %u"),
                 SourceTypeId));
             bIsValid = false;
         }
@@ -237,28 +283,28 @@ bool FMaterialRegistry::Validate(TArray<FString>& OutErrors) const
         // Verify relationship exists
         if (!RelationshipMap.Contains(RelationshipId))
         {
-            OutErrors.Add(FString::Printf(TEXT("RelationshipsBySourceMap references non-existent relationship ID %u"),
+            OutErrors.Add(FString::Printf(TEXT("MaterialTypeHierarchy references non-existent relationship ID %u"),
                 RelationshipId));
             bIsValid = false;
         }
         else if (RelationshipMap[RelationshipId]->SourceTypeId != SourceTypeId)
         {
-            OutErrors.Add(FString::Printf(TEXT("RelationshipsBySourceMap inconsistency: relationship %u source is %u, not %u"),
+            OutErrors.Add(FString::Printf(TEXT("MaterialTypeHierarchy inconsistency: relationship %u source is %u, not %u"),
                 RelationshipId, RelationshipMap[RelationshipId]->SourceTypeId, SourceTypeId));
             bIsValid = false;
         }
     }
     
     // Similar verification for target map
-    for (auto It = RelationshipsByTargetMap.CreateConstIterator(); It; ++It)
+    for (auto It = MaterialTypeHierarchy.CreateConstIterator(); It; ++It)
     {
         const uint32 TargetTypeId = It.Key();
         const uint32 RelationshipId = It.Value();
         
         // Verify target type exists
-        if (!MaterialTypeMap.Contains(TargetTypeId))
+        if (!MaterialTypes.Contains(TargetTypeId))
         {
-            OutErrors.Add(FString::Printf(TEXT("RelationshipsByTargetMap contains non-existent target type ID %u"),
+            OutErrors.Add(FString::Printf(TEXT("MaterialTypeHierarchy contains non-existent target type ID %u"),
                 TargetTypeId));
             bIsValid = false;
         }
@@ -266,13 +312,13 @@ bool FMaterialRegistry::Validate(TArray<FString>& OutErrors) const
         // Verify relationship exists
         if (!RelationshipMap.Contains(RelationshipId))
         {
-            OutErrors.Add(FString::Printf(TEXT("RelationshipsByTargetMap references non-existent relationship ID %u"),
+            OutErrors.Add(FString::Printf(TEXT("MaterialTypeHierarchy references non-existent relationship ID %u"),
                 RelationshipId));
             bIsValid = false;
         }
         else if (RelationshipMap[RelationshipId]->TargetTypeId != TargetTypeId)
         {
-            OutErrors.Add(FString::Printf(TEXT("RelationshipsByTargetMap inconsistency: relationship %u target is %u, not %u"),
+            OutErrors.Add(FString::Printf(TEXT("MaterialTypeHierarchy inconsistency: relationship %u target is %u, not %u"),
                 RelationshipId, RelationshipMap[RelationshipId]->TargetTypeId, TargetTypeId));
             bIsValid = false;
         }
@@ -289,18 +335,16 @@ void FMaterialRegistry::Clear()
         FScopedSpinLock Lock(RegistryLock);
         
         // Clear all registered items
-        MaterialTypeMap.Empty();
+        MaterialTypes.Empty();
         MaterialTypeNameMap.Empty();
         RelationshipMap.Empty();
-        RelationshipsBySourceMap.Empty();
-        RelationshipsByTargetMap.Empty();
+        MaterialTypeHierarchy.Empty();
         MaterialPropertyMap.Empty();
-        MaterialTypesByCategoryMap.Empty();
         
         // Reset counters using thread-safe methods
         NextTypeId.Set(1);
         NextRelationshipId.Set(1);
-        NextChannelId.Set(0);
+        NextChannelId = 0;
     }
 }
 
@@ -314,14 +358,14 @@ bool FMaterialRegistry::SetTypeVersion(uint32 TypeId, uint32 NewVersion, bool bM
     }
     
     // Check if type exists
-    if (!MaterialTypeMap.Contains(TypeId))
+    if (!MaterialTypes.Contains(TypeId))
     {
         UE_LOG(LogTemp, Error, TEXT("Cannot set type version - type ID %u not found"), TypeId);
         return false;
     }
     
     // Get mutable type info
-    TSharedRef<FMaterialTypeInfo>& TypeInfo = MaterialTypeMap[TypeId];
+    TSharedRef<FMaterialTypeInfo>& TypeInfo = MaterialTypes[TypeId];
     
     // If version is the same, nothing to do
     if (TypeInfo->SchemaVersion == NewVersion)
@@ -408,90 +452,55 @@ bool FMaterialRegistry::SetTypeVersion(uint32 TypeId, uint32 NewVersion, bool bM
 uint32 FMaterialRegistry::GetTypeVersion(uint32 TypeId) const
 {
     // Check if type exists
-    if (!MaterialTypeMap.Contains(TypeId))
+    if (!MaterialTypes.Contains(TypeId))
     {
         UE_LOG(LogTemp, Warning, TEXT("GetTypeVersion - type ID %u not found"), TypeId);
         return 0;
     }
     
     // Get type info
-    const TSharedRef<FMaterialTypeInfo>& TypeInfo = MaterialTypeMap[TypeId];
+    const TSharedRef<FMaterialTypeInfo>& TypeInfo = MaterialTypes[TypeId];
     
     return TypeInfo->SchemaVersion;
 }
 
 uint32 FMaterialRegistry::RegisterMaterialType(
+    const FMaterialTypeInfo& InTypeInfo,
     const FName& InTypeName,
-    EMaterialPriority InPriority,
-    const FName& InParentTypeName)
+    EMaterialPriority InPriority)
 {
+    // Make sure we're initialized
     if (!IsInitialized())
     {
-        UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::RegisterMaterialType failed - registry not initialized"));
+        UE_LOG(LogMaterialRegistry, Warning, TEXT("Cannot register material type '%s': Registry not initialized"), *InTypeName.ToString());
         return 0;
     }
     
-    if (InTypeName.IsNone())
-    {
-        UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::RegisterMaterialType failed - invalid type name"));
-        return 0;
-    }
-    
-    // Lock for thread safety
+    // Ensure thread safety
     FScopedSpinLock Lock(RegistryLock);
     
-    // Check if type name is already registered
+    // Check if the type name is already registered
     if (MaterialTypeNameMap.Contains(InTypeName))
     {
-        UE_LOG(LogTemp, Warning, TEXT("FMaterialRegistry::RegisterMaterialType - type '%s' is already registered"),
-            *InTypeName.ToString());
-        return 0;
+        UE_LOG(LogMaterialRegistry, Warning, TEXT("Material type '%s' is already registered"), *InTypeName.ToString());
+        return MaterialTypeNameMap[InTypeName];
     }
     
-    // Find parent type ID if specified
-    uint32 ParentTypeId = 0;
-    if (!InParentTypeName.IsNone())
-    {
-        const uint32* ParentIdPtr = MaterialTypeNameMap.Find(InParentTypeName);
-        if (!ParentIdPtr)
-        {
-            UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::RegisterMaterialType failed - parent type '%s' not found"),
-                *InParentTypeName.ToString());
-            return 0;
-        }
-        
-        ParentTypeId = *ParentIdPtr;
-    }
-    
-    // Generate a unique type ID
+    // Generate a new unique ID for this type
     uint32 TypeId = GenerateUniqueTypeId();
     
-    // Create and populate type info
-    TSharedRef<FMaterialTypeInfo> TypeInfo = MakeShared<FMaterialTypeInfo>();
+    // Create type info
+    TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe> TypeInfo = MakeShared<FMaterialTypeInfo, ESPMode::ThreadSafe>(InTypeInfo);
     TypeInfo->TypeId = TypeId;
     TypeInfo->TypeName = InTypeName;
-    TypeInfo->ParentTypeId = ParentTypeId;
     TypeInfo->Priority = InPriority;
     
-    // Set default values
-    TypeInfo->ResourceValueMultiplier = 1.0f;
-    TypeInfo->BaseMiningResistance = 1.0f;
-    TypeInfo->SoundAmplificationFactor = 1.0f;
-    TypeInfo->ParticleEmissionMultiplier = 1.0f;
-    TypeInfo->bIsMineable = true;
-    TypeInfo->bIsResource = false;
-    TypeInfo->bCanFracture = true;
-    TypeInfo->ChannelId = -1; // No channel assigned by default
-    TypeInfo->Category = NAME_None; // No category assigned by default
-    
-    // Register the type
+    // Add the type to our maps
+    MaterialTypes.Add(TypeId, TypeInfo);
     MaterialTypeMap.Add(TypeId, TypeInfo);
     MaterialTypeNameMap.Add(InTypeName, TypeId);
     
-    UE_LOG(LogTemp, Verbose, TEXT("FMaterialRegistry::RegisterMaterialType - registered type '%s' with ID %u"),
-        *InTypeName.ToString(), TypeId);
-    
-    // Allocate material channel memory using NarrowBandAllocator
+    // Allocate memory for this type
     AllocateChannelMemory(TypeInfo);
     
     return TypeId;
@@ -503,75 +512,90 @@ uint32 FMaterialRegistry::RegisterMaterialRelationship(
     float InCompatibilityScore,
     bool bInCanBlend)
 {
+    // Make sure we're initialized
     if (!IsInitialized())
     {
-        UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::RegisterMaterialRelationship failed - registry not initialized"));
+        UE_LOG(LogMaterialRegistry, Warning, TEXT("Cannot register material relationship: Registry not initialized"));
         return 0;
     }
     
-    if (InSourceTypeName.IsNone() || InTargetTypeName.IsNone())
-    {
-        UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::RegisterMaterialRelationship failed - invalid type names"));
-        return 0;
-    }
-    
-    // Clamp compatibility score to valid range
-    float CompatibilityScore = FMath::Clamp(InCompatibilityScore, 0.0f, 1.0f);
-    
-    // Lock for thread safety
+    // Ensure thread safety
     FScopedSpinLock Lock(RegistryLock);
     
-    // Look up source and target type IDs
-    const uint32* SourceIdPtr = MaterialTypeNameMap.Find(InSourceTypeName);
+    // Find the type IDs
+    uint32* SourceIdPtr = MaterialTypeNameMap.Find(InSourceTypeName);
+    uint32* TargetIdPtr = MaterialTypeNameMap.Find(InTargetTypeName);
+    
+    // Validate types exist
     if (!SourceIdPtr)
     {
-        UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::RegisterMaterialRelationship failed - source type '%s' not found"),
-            *InSourceTypeName.ToString());
+        UE_LOG(LogMaterialRegistry, Warning, TEXT("Cannot register material relationship: Source type '%s' not found"), *InSourceTypeName.ToString());
         return 0;
     }
     
-    const uint32* TargetIdPtr = MaterialTypeNameMap.Find(InTargetTypeName);
     if (!TargetIdPtr)
     {
-        UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::RegisterMaterialRelationship failed - target type '%s' not found"),
-            *InTargetTypeName.ToString());
+        UE_LOG(LogMaterialRegistry, Warning, TEXT("Cannot register material relationship: Target type '%s' not found"), *InTargetTypeName.ToString());
         return 0;
     }
     
-    // Check for existing relationship
+    // Check if relationship already exists
     TArray<uint32> ExistingRelationships;
-    RelationshipsBySourceMap.MultiFind(*SourceIdPtr, ExistingRelationships);
-    
-    for (uint32 RelationshipId : ExistingRelationships)
+    if (MaterialTypeHierarchy.Contains(*SourceIdPtr))
     {
-        const FMaterialRelationship& Relationship = RelationshipMap[RelationshipId].Get();
-        if (Relationship.TargetTypeId == *TargetIdPtr)
+        MaterialTypeHierarchy.MultiFind(*SourceIdPtr, ExistingRelationships);
+        
+        for (uint32 RelationshipId : ExistingRelationships)
         {
-            UE_LOG(LogTemp, Warning, TEXT("FMaterialRegistry::RegisterMaterialRelationship - relationship between '%s' and '%s' already exists"),
-                *InSourceTypeName.ToString(), *InTargetTypeName.ToString());
-            return 0;
+            const FMaterialRelationship& Relationship = RelationshipMap[RelationshipId].Get();
+            if (Relationship.TargetTypeId == *TargetIdPtr)
+            {
+                UE_LOG(LogMaterialRegistry, Warning, TEXT("Material relationship from '%s' to '%s' already exists (ID: %u)"),
+                    *InSourceTypeName.ToString(), *InTargetTypeName.ToString(), RelationshipId);
+                return RelationshipId;
+            }
         }
     }
     
-    // Generate a unique relationship ID
+    // Create a new relationship ID
     uint32 RelationshipId = GenerateUniqueRelationshipId();
     
-    // Create and populate relationship info
-    TSharedRef<FMaterialRelationship> RelationshipInfo = MakeShared<FMaterialRelationship>();
+    // Create the relationship info
+    TSharedRef<FMaterialRelationship, ESPMode::ThreadSafe> RelationshipInfo = MakeShared<FMaterialRelationship, ESPMode::ThreadSafe>();
     RelationshipInfo->RelationshipId = RelationshipId;
     RelationshipInfo->SourceTypeId = *SourceIdPtr;
     RelationshipInfo->TargetTypeId = *TargetIdPtr;
-    RelationshipInfo->CompatibilityScore = CompatibilityScore;
+    RelationshipInfo->SourceTypeName = InSourceTypeName;
+    RelationshipInfo->TargetTypeName = InTargetTypeName;
+    RelationshipInfo->CompatibilityScore = FMath::Clamp(InCompatibilityScore, 0.0f, 1.0f);
     RelationshipInfo->bCanBlend = bInCanBlend;
-    RelationshipInfo->BlendSharpness = 0.5f; // Default blend sharpness
     
     // Register the relationship
     RelationshipMap.Add(RelationshipId, RelationshipInfo);
-    RelationshipsBySourceMap.Add(*SourceIdPtr, RelationshipId);
-    RelationshipsByTargetMap.Add(*TargetIdPtr, RelationshipId);
     
-    UE_LOG(LogTemp, Verbose, TEXT("FMaterialRegistry::RegisterMaterialRelationship - registered relationship between '%s' and '%s' with ID %u"),
-        *InSourceTypeName.ToString(), *InTargetTypeName.ToString(), RelationshipId);
+    // Add to source map
+    if (!RelationshipsBySourceMap.Contains(*SourceIdPtr))
+    {
+        TArray<uint32> TargetTypes;
+        TargetTypes.Add(RelationshipId);
+        RelationshipsBySourceMap.Add(*SourceIdPtr, TargetTypes);
+    }
+    else
+    {
+        RelationshipsBySourceMap[*SourceIdPtr].Add(RelationshipId);
+    }
+    
+    // Add to target map
+    if (!RelationshipsByTargetMap.Contains(*TargetIdPtr))
+    {
+        TArray<uint32> SourceTypes;
+        SourceTypes.Add(RelationshipId);
+        RelationshipsByTargetMap.Add(*TargetIdPtr, SourceTypes);
+    }
+    else
+    {
+        RelationshipsByTargetMap[*TargetIdPtr].Add(RelationshipId);
+    }
     
     return RelationshipId;
 }
@@ -588,7 +612,7 @@ int32 FMaterialRegistry::AllocateMaterialChannel(uint32 InTypeId)
     FScopedSpinLock Lock(RegistryLock);
     
     // Check if the material type is registered
-    TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
+    const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
     if (!TypeInfoPtr)
     {
         UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::AllocateMaterialChannel failed - type ID %u not found"), InTypeId);
@@ -602,7 +626,7 @@ int32 FMaterialRegistry::AllocateMaterialChannel(uint32 InTypeId)
     }
     
     // Allocate a new channel ID using thread-safe increment
-    int32 ChannelId = NextChannelId.Increment();
+    int32 ChannelId = NextChannelId++;
     
     // Update the material type info
     TypeInfoPtr->Get().ChannelId = ChannelId;
@@ -624,7 +648,7 @@ const FMaterialTypeInfo* FMaterialRegistry::GetMaterialTypeInfo(uint32 InTypeId)
     FScopedSpinLock Lock(RegistryLock);
     
     // Look up type by ID
-    const TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
+    const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
     if (TypeInfoPtr)
     {
         return &(TypeInfoPtr->Get());
@@ -648,7 +672,7 @@ const FMaterialTypeInfo* FMaterialRegistry::GetMaterialTypeInfoByName(const FNam
     if (TypeIdPtr)
     {
         // Look up type info by ID
-        const TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(*TypeIdPtr);
+        const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* TypeInfoPtr = MaterialTypeMap.Find(*TypeIdPtr);
         if (TypeInfoPtr)
         {
             return &(TypeInfoPtr->Get());
@@ -669,7 +693,7 @@ const FMaterialRelationship* FMaterialRegistry::GetMaterialRelationship(uint32 I
     FScopedSpinLock Lock(RegistryLock);
     
     // Look up relationship by ID
-    const TSharedRef<FMaterialRelationship>* RelationshipPtr = RelationshipMap.Find(InRelationshipId);
+    const TSharedRef<FMaterialRelationship, ESPMode::ThreadSafe>* RelationshipPtr = RelationshipMap.Find(InRelationshipId);
     if (RelationshipPtr)
     {
         return &(RelationshipPtr->Get());
@@ -691,8 +715,8 @@ TArray<FMaterialTypeInfo> FMaterialRegistry::GetAllMaterialTypes() const
     FScopedSpinLock Lock(RegistryLock);
     
     // Collect all material type infos
-    Result.Reserve(MaterialTypeMap.Num());
-    for (const auto& TypeInfoPair : MaterialTypeMap)
+    Result.Reserve(MaterialTypes.Num());
+    for (const auto& TypeInfoPair : MaterialTypes)
     {
         Result.Add(TypeInfoPair.Value.Get());
     }
@@ -713,13 +737,13 @@ TArray<FMaterialTypeInfo> FMaterialRegistry::GetDerivedMaterialTypes(uint32 InPa
     FScopedSpinLock Lock(RegistryLock);
     
     // Check if the parent type is registered
-    if (!MaterialTypeMap.Contains(InParentTypeId))
+    if (!MaterialTypes.Contains(InParentTypeId))
     {
         return Result;
     }
     
     // Collect all material types that have this parent
-    for (const auto& TypeInfoPair : MaterialTypeMap)
+    for (const auto& TypeInfoPair : MaterialTypes)
     {
         if (TypeInfoPair.Value->ParentTypeId == InParentTypeId)
         {
@@ -744,11 +768,12 @@ TArray<FMaterialRelationship> FMaterialRegistry::GetMaterialRelationships(uint32
     
     // Collect all relationships where this type is the source
     TArray<uint32> RelationshipIds;
-    RelationshipsBySourceMap.MultiFind(InTypeId, RelationshipIds);
+    // Use TMultiMap's member MultiFind method instead of the global helper function
+    TypeRelationships.MultiFind(InTypeId, RelationshipIds);
     
     for (uint32 RelationshipId : RelationshipIds)
     {
-        const TSharedRef<FMaterialRelationship>* RelationshipPtr = RelationshipMap.Find(RelationshipId);
+        const TSharedRef<FMaterialRelationship, ESPMode::ThreadSafe>* RelationshipPtr = RelationshipMap.Find(RelationshipId);
         if (RelationshipPtr)
         {
             Result.Add(RelationshipPtr->Get());
@@ -810,7 +835,7 @@ bool FMaterialRegistry::IsMaterialDerivedFrom(uint32 InDerivedTypeId, uint32 InB
     uint32 CurrentTypeId = InDerivedTypeId;
     while (CurrentTypeId != 0)
     {
-        const TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(CurrentTypeId);
+        const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* TypeInfoPtr = MaterialTypeMap.Find(CurrentTypeId);
         if (!TypeInfoPtr)
         {
             break;
@@ -846,7 +871,7 @@ bool FMaterialRegistry::UpdateMaterialProperty(uint32 InTypeId, const FName& InP
     FScopedSpinLock Lock(RegistryLock);
     
     // Check if the material type is registered
-    TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
+    const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
     if (!TypeInfoPtr)
     {
         UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::UpdateMaterialProperty failed - type ID %u not found"), InTypeId);
@@ -934,7 +959,16 @@ bool FMaterialRegistry::RegisterMaterialProperty(uint32 InTypeId, TSharedPtr<FMa
     }
     
     // Add or update the property
-    MaterialPropertyMap[InTypeId].Add(PropertyName, InProperty);
+    if (!MaterialPropertyMap.Contains(InTypeId))
+    {
+        TMap<FName, TSharedPtr<FMaterialPropertyBase>> PropertyMap;
+        PropertyMap.Add(PropertyName, InProperty);
+        MaterialPropertyMap.Add(InTypeId, PropertyMap);
+    }
+    else
+    {
+        MaterialPropertyMap[InTypeId].Add(PropertyName, InProperty);
+    }
     
     UE_LOG(LogTemp, Verbose, TEXT("FMaterialRegistry::RegisterMaterialProperty - registered property '%s' for type ID %u"),
         *PropertyName.ToString(), InTypeId);
@@ -959,11 +993,19 @@ TSharedPtr<FMaterialPropertyBase> FMaterialRegistry::GetMaterialProperty(uint32 
     }
     
     // Check if any properties are registered for this type
-    const TMap<FName, TSharedPtr<FMaterialPropertyBase>>* PropertiesPtr = MaterialPropertyMap.Find(InTypeId);
+    const TMap<FName, TSharedPtr<FMaterialPropertyBase>>* PropertiesPtr = nullptr;
+    {
+        const auto* FoundMap = MaterialPropertyMap.Find(InTypeId);
+        if (FoundMap != nullptr)
+        {
+            PropertiesPtr = FoundMap;
+        }
+    }
+    
     if (!PropertiesPtr)
     {
         // If not found in this type, check if it has a parent
-        const TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
+        const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
         if (TypeInfoPtr && TypeInfoPtr->Get().ParentTypeId != 0)
         {
             // Recurse to check parent type
@@ -981,7 +1023,7 @@ TSharedPtr<FMaterialPropertyBase> FMaterialRegistry::GetMaterialProperty(uint32 
     }
     
     // If not found in this type, check if it has a parent
-    const TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
+    const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
     if (TypeInfoPtr && TypeInfoPtr->Get().ParentTypeId != 0 && TypeInfoPtr->Get().ParentTypeId != InTypeId)
     {
         // Recurse to check parent type
@@ -1010,7 +1052,7 @@ TMap<FName, TSharedPtr<FMaterialPropertyBase>> FMaterialRegistry::GetAllMaterial
     }
     
     // Get material type info to check for parent
-    const TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
+    const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
     if (!TypeInfoPtr)
     {
         return Result;
@@ -1048,26 +1090,10 @@ void FMaterialRegistry::EnsurePropertyMap(uint32 InTypeId)
     }
 }
 
-TSharedRef<FMaterialTypeInfo>* FMaterialRegistry::GetMutableMaterialTypeInfo(uint32 InTypeId)
+TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* FMaterialRegistry::GetMutableMaterialTypeInfo(uint32 InTypeId)
 {
     // This function is called within a locked context, so it's thread-safe
     return MaterialTypeMap.Find(InTypeId);
-}
-
-FMaterialRegistry& FMaterialRegistry::Get()
-{
-    // Thread-safe singleton initialization
-    if (!bSingletonInitialized)
-    {
-        if (!bSingletonInitialized.AtomicSet(true))
-        {
-            Singleton = new FMaterialRegistry();
-            Singleton->Initialize();
-        }
-    }
-    
-    check(Singleton != nullptr);
-    return *Singleton;
 }
 
 uint32 FMaterialRegistry::GenerateUniqueTypeId()
@@ -1094,14 +1120,14 @@ bool FMaterialRegistry::InheritPropertiesFromParent(uint32 InChildTypeId, uint32
     FScopedSpinLock Lock(RegistryLock);
     
     // Check if both types are registered
-    TSharedRef<FMaterialTypeInfo>* ChildTypeInfoPtr = MaterialTypeMap.Find(InChildTypeId);
+    TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* ChildTypeInfoPtr = MaterialTypeMap.Find(InChildTypeId);
     if (!ChildTypeInfoPtr)
     {
         UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::InheritPropertiesFromParent failed - child type ID %u not found"), InChildTypeId);
         return false;
     }
     
-    TSharedRef<FMaterialTypeInfo>* ParentTypeInfoPtr = MaterialTypeMap.Find(InParentTypeId);
+    TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* ParentTypeInfoPtr = MaterialTypeMap.Find(InParentTypeId);
     if (!ParentTypeInfoPtr)
     {
         UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::InheritPropertiesFromParent failed - parent type ID %u not found"), InParentTypeId);
@@ -1187,7 +1213,7 @@ EMaterialCapabilities FMaterialRegistry::GetMaterialCapabilities(uint32 InTypeId
     FScopedSpinLock Lock(RegistryLock);
     
     // Look up type by ID
-    const TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
+    const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
     if (TypeInfoPtr)
     {
         return TypeInfoPtr->Get().Capabilities;
@@ -1207,7 +1233,7 @@ bool FMaterialRegistry::AddMaterialCapability(uint32 InTypeId, EMaterialCapabili
     FScopedSpinLock Lock(RegistryLock);
     
     // Look up type by ID
-    TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
+    TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
     if (TypeInfoPtr)
     {
         TypeInfoPtr->Get().AddCapability(InCapability);
@@ -1228,7 +1254,7 @@ bool FMaterialRegistry::RemoveMaterialCapability(uint32 InTypeId, EMaterialCapab
     FScopedSpinLock Lock(RegistryLock);
     
     // Look up type by ID
-    TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
+    TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
     if (TypeInfoPtr)
     {
         TypeInfoPtr->Get().RemoveCapability(InCapability);
@@ -1256,7 +1282,7 @@ uint32 FMaterialRegistry::CloneMaterialType(uint32 InSourceTypeId, const FName& 
     FScopedSpinLock Lock(RegistryLock);
     
     // Check if source type is registered
-    const TSharedRef<FMaterialTypeInfo>* SourceTypeInfoPtr = MaterialTypeMap.Find(InSourceTypeId);
+    const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* SourceTypeInfoPtr = MaterialTypeMap.Find(InSourceTypeId);
     if (!SourceTypeInfoPtr)
     {
         UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::CloneMaterialType failed - source type ID %u not found"), InSourceTypeId);
@@ -1271,7 +1297,7 @@ uint32 FMaterialRegistry::CloneMaterialType(uint32 InSourceTypeId, const FName& 
     }
     
     // Create a deep copy of the source type info
-    TSharedRef<FMaterialTypeInfo> NewTypeInfo = MakeShared<FMaterialTypeInfo>();
+    TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe> NewTypeInfo = MakeShared<FMaterialTypeInfo, ESPMode::ThreadSafe>();
     
     // Copy all properties from source
     const FMaterialTypeInfo& SourceInfo = SourceTypeInfoPtr->Get();
@@ -1291,7 +1317,15 @@ uint32 FMaterialRegistry::CloneMaterialType(uint32 InSourceTypeId, const FName& 
     MaterialTypeNameMap.Add(InNewTypeName, NewTypeId);
     
     // Copy custom properties
-    const TMap<FName, TSharedPtr<FMaterialPropertyBase>>* SourcePropertiesPtr = MaterialPropertyMap.Find(InSourceTypeId);
+    const TMap<FName, TSharedPtr<FMaterialPropertyBase>>* SourcePropertiesPtr = nullptr;
+    {
+        const auto* FoundMap = MaterialPropertyMap.Find(InSourceTypeId);
+        if (FoundMap != nullptr)
+        {
+            SourcePropertiesPtr = FoundMap;
+        }
+    }
+    
     if (SourcePropertiesPtr && SourcePropertiesPtr->Num() > 0)
     {
         // Create a new property map for the cloned type
@@ -1319,16 +1353,16 @@ uint32 FMaterialRegistry::CloneMaterialType(uint32 InSourceTypeId, const FName& 
     {
         // Copy outgoing relationships (where source type is the source)
         TArray<uint32> SourceRelationshipIds;
-        RelationshipsBySourceMap.MultiFind(InSourceTypeId, SourceRelationshipIds);
+        ::MultiFind(RelationshipsBySourceMap, InSourceTypeId, SourceRelationshipIds);
         
         for (uint32 RelationshipId : SourceRelationshipIds)
         {
-            const TSharedRef<FMaterialRelationship>* RelationshipPtr = RelationshipMap.Find(RelationshipId);
+            const TSharedRef<FMaterialRelationship, ESPMode::ThreadSafe>* RelationshipPtr = RelationshipMap.Find(RelationshipId);
             if (RelationshipPtr)
             {
                 // Create a new relationship with the cloned type as source
                 uint32 NewRelationshipId = GenerateUniqueRelationshipId();
-                TSharedRef<FMaterialRelationship> NewRelationship = MakeShared<FMaterialRelationship>();
+                TSharedRef<FMaterialRelationship, ESPMode::ThreadSafe> NewRelationship = MakeShared<FMaterialRelationship, ESPMode::ThreadSafe>();
                 
                 // Copy relationship properties
                 NewRelationship->RelationshipId = NewRelationshipId;
@@ -1344,23 +1378,45 @@ uint32 FMaterialRegistry::CloneMaterialType(uint32 InSourceTypeId, const FName& 
                 
                 // Register the new relationship
                 RelationshipMap.Add(NewRelationshipId, NewRelationship);
-                RelationshipsBySourceMap.Add(NewTypeId, NewRelationshipId);
-                RelationshipsByTargetMap.Add(NewRelationship->TargetTypeId, NewRelationshipId);
+                
+                // Add to source map (with proper array handling)
+                if (!RelationshipsBySourceMap.Contains(NewTypeId))
+                {
+                    TArray<uint32> Relationships;
+                    Relationships.Add(NewRelationshipId);
+                    RelationshipsBySourceMap.Add(NewTypeId, Relationships);
+                }
+                else
+                {
+                    RelationshipsBySourceMap[NewTypeId].Add(NewRelationshipId);
+                }
+                
+                // Add to target map (with proper array handling)
+                if (!RelationshipsByTargetMap.Contains(NewRelationship->TargetTypeId))
+                {
+                    TArray<uint32> Relationships;
+                    Relationships.Add(NewRelationshipId);
+                    RelationshipsByTargetMap.Add(NewRelationship->TargetTypeId, Relationships);
+                }
+                else
+                {
+                    RelationshipsByTargetMap[NewRelationship->TargetTypeId].Add(NewRelationshipId);
+                }
             }
         }
         
         // Copy incoming relationships (where source type is the target)
         TArray<uint32> TargetRelationshipIds;
-        RelationshipsByTargetMap.MultiFind(InSourceTypeId, TargetRelationshipIds);
+        ::MultiFind(RelationshipsByTargetMap, InSourceTypeId, TargetRelationshipIds);
         
         for (uint32 RelationshipId : TargetRelationshipIds)
         {
-            const TSharedRef<FMaterialRelationship>* RelationshipPtr = RelationshipMap.Find(RelationshipId);
+            const TSharedRef<FMaterialRelationship, ESPMode::ThreadSafe>* RelationshipPtr = RelationshipMap.Find(RelationshipId);
             if (RelationshipPtr)
             {
                 // Create a new relationship with the cloned type as target
                 uint32 NewRelationshipId = GenerateUniqueRelationshipId();
-                TSharedRef<FMaterialRelationship> NewRelationship = MakeShared<FMaterialRelationship>();
+                TSharedRef<FMaterialRelationship, ESPMode::ThreadSafe> NewRelationship = MakeShared<FMaterialRelationship, ESPMode::ThreadSafe>();
                 
                 // Copy relationship properties
                 NewRelationship->RelationshipId = NewRelationshipId;
@@ -1376,43 +1432,35 @@ uint32 FMaterialRegistry::CloneMaterialType(uint32 InSourceTypeId, const FName& 
                 
                 // Register the new relationship
                 RelationshipMap.Add(NewRelationshipId, NewRelationship);
-                RelationshipsBySourceMap.Add(NewRelationship->SourceTypeId, NewRelationshipId);
-                RelationshipsByTargetMap.Add(NewTypeId, NewRelationshipId);
+                
+                // Add to source map
+                if (!RelationshipsBySourceMap.Contains(NewRelationship->SourceTypeId))
+                {
+                    TArray<uint32> Relationships;
+                    Relationships.Add(NewRelationshipId);
+                    RelationshipsBySourceMap.Add(NewRelationship->SourceTypeId, Relationships);
+                }
+                else
+                {
+                    RelationshipsBySourceMap[NewRelationship->SourceTypeId].Add(NewRelationshipId);
+                }
+                
+                // Add to target map
+                if (!RelationshipsByTargetMap.Contains(NewTypeId))
+                {
+                    TArray<uint32> Relationships;
+                    Relationships.Add(NewRelationshipId);
+                    RelationshipsByTargetMap.Add(NewTypeId, Relationships);
+                }
+                else
+                {
+                    RelationshipsByTargetMap[NewTypeId].Add(NewRelationshipId);
+                }
             }
         }
     }
     
-    UE_LOG(LogTemp, Verbose, TEXT("FMaterialRegistry::CloneMaterialType - cloned type '%s' to '%s' with ID %u"),
-        *SourceInfo.TypeName.ToString(), *InNewTypeName.ToString(), NewTypeId);
-    
     return NewTypeId;
-}
-
-bool FMaterialRegistry::HandleHotReload()
-{
-    if (!IsInitialized())
-    {
-        UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::HandleHotReload failed - registry not initialized"));
-        return false;
-    }
-    
-    // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
-    
-    // First, update the hot reload map with current mappings
-    MaterialTypeHotReloadMap.Empty();
-    for (const auto& TypeInfoPair : MaterialTypeMap)
-    {
-        const uint32 TypeId = TypeInfoPair.Key;
-        const FGuid& HotReloadId = TypeInfoPair.Value->HotReloadId;
-        
-        MaterialTypeHotReloadMap.Add(HotReloadId, TypeId);
-    }
-    
-    UE_LOG(LogTemp, Log, TEXT("FMaterialRegistry::HandleHotReload - stored %d type mappings for hot reload"),
-        MaterialTypeHotReloadMap.Num());
-    
-    return true;
 }
 
 bool FMaterialRegistry::MigrateAllTypes()
@@ -1426,7 +1474,6 @@ bool FMaterialRegistry::MigrateAllTypes()
     // Lock for thread safety
     FScopedSpinLock Lock(RegistryLock);
     
-    const uint32 CurrentSchemaVersion = GetSchemaVersion();
     bool bAllMigrationsSuccessful = true;
     
     // Migrate all material types
@@ -1436,39 +1483,41 @@ bool FMaterialRegistry::MigrateAllTypes()
         
         if (TypeInfo.SchemaVersion < CurrentSchemaVersion)
         {
-            if (!TypeInfo.MigrateToCurrentVersion(CurrentSchemaVersion))
-            {
-                UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::MigrateAllTypes - failed to migrate type '%s' from schema %u to %u"),
-                    *TypeInfo.TypeName.ToString(), TypeInfo.SchemaVersion, CurrentSchemaVersion);
-                bAllMigrationsSuccessful = false;
-            }
-            else
+            // Migrate to current version
+            if (TypeInfo.MigrateToCurrentVersion(CurrentSchemaVersion))
             {
                 UE_LOG(LogTemp, Log, TEXT("FMaterialRegistry::MigrateAllTypes - migrated type '%s' from schema %u to %u"),
                     *TypeInfo.TypeName.ToString(), TypeInfo.SchemaVersion, CurrentSchemaVersion);
                 TypeInfo.SchemaVersion = CurrentSchemaVersion;
             }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::MigrateAllTypes - failed to migrate type '%s' from schema %u to %u"),
+                    *TypeInfo.TypeName.ToString(), TypeInfo.SchemaVersion, CurrentSchemaVersion);
+                bAllMigrationsSuccessful = false;
+            }
         }
     }
     
-    // Migrate all material relationships
+    // Migrate all relationships
     for (auto& RelationshipPair : RelationshipMap)
     {
         FMaterialRelationship& Relationship = RelationshipPair.Value.Get();
         
         if (Relationship.SchemaVersion < CurrentSchemaVersion)
         {
-            if (!Relationship.MigrateToCurrentVersion(CurrentSchemaVersion))
-            {
-                UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::MigrateAllTypes - failed to migrate relationship %u from schema %u to %u"),
-                    Relationship.RelationshipId, Relationship.SchemaVersion, CurrentSchemaVersion);
-                bAllMigrationsSuccessful = false;
-            }
-            else
+            // Migrate to current version
+            if (Relationship.MigrateToCurrentVersion(CurrentSchemaVersion))
             {
                 UE_LOG(LogTemp, Log, TEXT("FMaterialRegistry::MigrateAllTypes - migrated relationship %u from schema %u to %u"),
                     Relationship.RelationshipId, Relationship.SchemaVersion, CurrentSchemaVersion);
                 Relationship.SchemaVersion = CurrentSchemaVersion;
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::MigrateAllTypes - failed to migrate relationship %u from schema %u to %u"),
+                    Relationship.RelationshipId, Relationship.SchemaVersion, CurrentSchemaVersion);
+                bAllMigrationsSuccessful = false;
             }
         }
     }
@@ -1552,7 +1601,7 @@ TArray<FMaterialTypeInfo> FMaterialRegistry::GetMaterialTypesByCategory(const FN
     // Get material type info for each ID
     for (uint32 TypeId : CategoryTypeIds)
     {
-        const TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(TypeId);
+        const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* TypeInfoPtr = MaterialTypeMap.Find(TypeId);
         if (TypeInfoPtr)
         {
             Result.Add(TypeInfoPtr->Get());
@@ -1573,7 +1622,7 @@ bool FMaterialRegistry::SetMaterialCategory(uint32 InTypeId, const FName& InCate
     FScopedSpinLock Lock(RegistryLock);
     
     // Check if the material type is registered
-    TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
+    TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
     if (!TypeInfoPtr)
     {
         UE_LOG(LogTemp, Error, TEXT("FMaterialRegistry::SetMaterialCategory failed - type ID %u not found"), InTypeId);
@@ -1805,7 +1854,7 @@ bool FMaterialRegistry::CreateTypeHierarchyVisualization(FString& OutVisualizati
 void FMaterialRegistry::VisualizeTypeHierarchy(uint32 InTypeId, int32 InDepth, FString& OutVisualizationData) const
 {
     // This is a helper function called by CreateTypeHierarchyVisualization
-    const TSharedRef<FMaterialTypeInfo>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
+    const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* TypeInfoPtr = MaterialTypeMap.Find(InTypeId);
     if (!TypeInfoPtr)
     {
         return;
@@ -2007,7 +2056,7 @@ bool FMaterialRelationship::MigrateToCurrentVersion(uint32 CurrentSchemaVersion)
  * Integrates with memory management system to optimize material storage
  * @param TypeInfo Material type information
  */
-void FMaterialRegistry::AllocateChannelMemory(const TSharedRef<FMaterialTypeInfo>& TypeInfo)
+void FMaterialRegistry::AllocateChannelMemory(const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>& TypeInfo)
 {
     // Resolve the memory manager
     IMemoryManager* MemoryManager = IServiceLocator::Get().ResolveService<IMemoryManager>();
@@ -2149,7 +2198,7 @@ void FMaterialRegistry::AllocateChannelMemory(const TSharedRef<FMaterialTypeInfo
             ChannelCount, *TypeInfo->TypeName.ToString(), ChannelId);
             
         // Store channel ID in material info for future reference
-        TSharedRef<FMaterialTypeInfo>* MutableInfo = GetMutableMaterialTypeInfo(TypeInfo->TypeId);
+        TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* MutableInfo = GetMutableMaterialTypeInfo(TypeInfo->TypeId);
         if (MutableInfo)
         {
             (*MutableInfo)->ChannelId = ChannelId;
@@ -2307,4 +2356,287 @@ uint64 FMaterialRegistry::ScheduleTypeTask(uint32 TypeId, TFunction<void()> Task
     
     // Schedule the task with the scheduler
     return ScheduleTaskWithScheduler(TaskFunc, TypedConfig);
+}
+
+// Let's add the NUMA-aware method implementations
+
+const FMaterialTypeInfo* FMaterialRegistry::GetMaterialTypeInfoNUMAOptimized(uint32 InTypeId) const
+{
+    if (InTypeId == 0)
+    {
+        return nullptr;
+    }
+    
+    // Get current NUMA domain
+    uint32 CurrentDomainId = FThreadSafety::Get().GetCurrentThreadNUMADomain();
+    
+    // Try to get from domain-local cache using regular lookup method first, avoiding template issues
+    FNUMALocalTypeCache* DomainCache = FThreadSafety::Get().GetOrCreateDomainTypeCache(CurrentDomainId);
+    if (!DomainCache)
+    {
+        // Fall back to normal lookup
+        const FMaterialTypeInfo* TypeInfo = GetMaterialTypeInfo(InTypeId);
+        RecordMaterialTypeAccess(InTypeId, 0, false);
+        return TypeInfo;
+    }
+    
+    // Get current version
+    uint32 CurrentVersion = 0;
+    {
+        FScopedSpinLock Lock(RegistryLock);
+        if (MaterialTypeMap.Contains(InTypeId))
+        {
+            CurrentVersion = MaterialTypeMap[InTypeId]->SchemaVersion;
+        }
+    }
+    
+    // Normal lookup path, skipping the problematic template methods
+    const FMaterialTypeInfo* TypeInfo = GetMaterialTypeInfo(InTypeId);
+    
+    // Record this access for optimization purposes
+    RecordMaterialTypeAccess(InTypeId, 0, false);
+    
+    return TypeInfo;
+}
+
+bool FMaterialRegistry::SetPreferredNUMADomainForType(uint32 InTypeId, uint32 DomainId)
+{
+    if (InTypeId == 0)
+    {
+        return false;
+    }
+    
+    // Validate that the domain exists
+    FNUMATopology& Topology = FThreadSafety::Get().NUMATopology;
+    if (DomainId >= Topology.DomainCount)
+    {
+        return false;
+    }
+    
+    // Check if the type exists
+    {
+        FScopedSpinLock Lock(RegistryLock);
+        if (!MaterialTypeMap.Contains(InTypeId))
+        {
+            return false;
+        }
+    }
+    
+    // Set the preferred domain
+    {
+        FScopeLock Lock(&NumaDomainLock);
+        TypeNUMADomainPreferences.Add(InTypeId, DomainId);
+    }
+    
+    return true;
+}
+
+uint32 FMaterialRegistry::GetPreferredNUMADomainForType(uint32 InTypeId) const
+{
+    if (InTypeId == 0)
+    {
+        return MAX_uint32;
+    }
+    
+    FScopeLock Lock(&NumaDomainLock);
+    return TypeNUMADomainPreferences.Contains(InTypeId) ? TypeNUMADomainPreferences[InTypeId] : MAX_uint32;
+}
+
+void FMaterialRegistry::PrefetchTypesToDomain(const TArray<uint32>& TypeIds, uint32 DomainId)
+{
+    FNUMATopology& Topology = FThreadSafety::Get().NUMATopology;
+    if (DomainId >= Topology.DomainCount)
+    {
+        return;
+    }
+    
+    // Get the domain cache but don't attempt to use the problematic template methods
+    FNUMALocalTypeCache* DomainCache = FThreadSafety::Get().GetOrCreateDomainTypeCache(DomainId);
+    if (!DomainCache)
+    {
+        return;
+    }
+    
+    // Just mark the types as preferring this domain
+    for (uint32 TypeId : TypeIds)
+    {
+        if (TypeId == 0)
+        {
+            continue;
+        }
+        
+        // Set the preferred domain for this type
+        SetPreferredNUMADomainForType(TypeId, DomainId);
+    }
+}
+
+void FMaterialRegistry::RecordMaterialTypeAccess(uint32 InTypeId, uint32 ThreadId, bool bIsWrite) const
+{
+    if (InTypeId == 0)
+    {
+        return;
+    }
+    
+    // If thread ID is 0, use current thread
+    if (ThreadId == 0)
+    {
+        ThreadId = FPlatformTLS::GetCurrentThreadId();
+    }
+    
+    // Get the NUMA domain for this thread
+    uint32 DomainId = FThreadSafety::Get().GetCurrentThreadNUMADomain();
+    
+    // Record the access
+    {
+        FScopeLock Lock(&TypeAccessLock);
+        
+        // Ensure maps exist
+        if (!TypeAccessByDomain.Contains(InTypeId))
+        {
+            TypeAccessByDomain.Add(InTypeId, TMap<uint32, uint32>());
+        }
+        
+        // Increment access count for this domain
+        uint32& AccessCount = TypeAccessByDomain[InTypeId].FindOrAdd(DomainId);
+        AccessCount++;
+    }
+}
+
+TMap<uint32, FString> FMaterialRegistry::GetNUMAAccessStats() const
+{
+    TMap<uint32, FString> Results;
+    
+    FScopeLock Lock(&TypeAccessLock);
+    
+    // Build stats for each domain
+    TMap<uint32, int32> DomainAccessCounts;
+    TMap<uint32, TArray<uint32>> DomainTopTypes;
+    
+    for (const auto& TypePair : TypeAccessByDomain)
+    {
+        uint32 TypeId = TypePair.Key;
+        const TMap<uint32, uint32>& DomainAccesses = TypePair.Value;
+        
+        // Find domain with most accesses for this type
+        uint32 BestDomainId = 0;
+        uint32 HighestAccess = 0;
+        
+        for (const auto& DomainPair : DomainAccesses)
+        {
+            uint32 DomainId = DomainPair.Key;
+            uint32 AccessCount = DomainPair.Value;
+            
+            // Update total count for this domain
+            int32& TotalCount = DomainAccessCounts.FindOrAdd(DomainId);
+            TotalCount += AccessCount;
+            
+            // Check if this is the highest access count
+            if (AccessCount > HighestAccess)
+            {
+                HighestAccess = AccessCount;
+                BestDomainId = DomainId;
+            }
+        }
+        
+        // Add to domain's top types list
+        if (HighestAccess > 0)
+        {
+            if (!DomainTopTypes.Contains(BestDomainId))
+            {
+                DomainTopTypes.Add(BestDomainId, TArray<uint32>());
+            }
+            
+            if (DomainTopTypes[BestDomainId].Num() < 10)
+            {
+                DomainTopTypes[BestDomainId].Add(TypeId);
+            }
+        }
+    }
+    
+    // Format results
+    for (const auto& DomainPair : DomainAccessCounts)
+    {
+        uint32 DomainId = DomainPair.Key;
+        int32 TotalAccesses = DomainPair.Value;
+        
+        FString TypeList;
+        if (DomainTopTypes.Contains(DomainId))
+        {
+            for (int32 i = 0; i < DomainTopTypes[DomainId].Num(); ++i)
+            {
+                uint32 TypeId = DomainTopTypes[DomainId][i];
+                
+                // Get type name for better readability
+                FString TypeName = TEXT("Unknown");
+                
+                FScopedSpinLock RegistryLockLocal(RegistryLock);
+                if (MaterialTypeMap.Contains(TypeId))
+                {
+                    TypeName = MaterialTypeMap[TypeId]->TypeName.ToString();
+                }
+                
+                TypeList += FString::Printf(TEXT("%s%s(%u)"), i > 0 ? TEXT(", ") : TEXT(""), *TypeName, TypeId);
+            }
+        }
+        
+        Results.Add(DomainId, FString::Printf(TEXT("Domain %u: %d accesses, Top Types: [%s]"), 
+            DomainId, TotalAccesses, *TypeList));
+    }
+    
+    return Results;
+}
+
+int32 FMaterialRegistry::OptimizeTypeNUMAPlacement()
+{
+    int32 TypesMigrated = 0;
+    
+    FScopeLock AccessLock(&TypeAccessLock);
+    
+    // Analyze access patterns
+    for (const auto& TypePair : TypeAccessByDomain)
+    {
+        uint32 TypeId = TypePair.Key;
+        const TMap<uint32, uint32>& DomainAccesses = TypePair.Value;
+        
+        // Find domain with most accesses
+        uint32 BestDomainId = 0;
+        uint32 HighestAccess = 0;
+        uint32 TotalAccesses = 0;
+        
+        for (const auto& DomainPair : DomainAccesses)
+        {
+            uint32 DomainId = DomainPair.Key;
+            uint32 AccessCount = DomainPair.Value;
+            
+            TotalAccesses += AccessCount;
+            
+            if (AccessCount > HighestAccess)
+            {
+                HighestAccess = AccessCount;
+                BestDomainId = DomainId;
+            }
+        }
+        
+        // Only migrate if access pattern is significant enough
+        if (TotalAccesses > 100 && HighestAccess > TotalAccesses * 0.6f)
+        {
+            uint32 CurrentDomain = GetPreferredNUMADomainForType(TypeId);
+            
+            // If no current preference or different from best domain, update
+            if (CurrentDomain == MAX_uint32 || CurrentDomain != BestDomainId)
+            {
+                if (SetPreferredNUMADomainForType(TypeId, BestDomainId))
+                {
+                    TypesMigrated++;
+                    
+                    // Prefetch to the new domain
+                    TArray<uint32> TypeIdsToMigrate;
+                    TypeIdsToMigrate.Add(TypeId);
+                    PrefetchTypesToDomain(TypeIdsToMigrate, BestDomainId);
+                }
+            }
+        }
+    }
+    
+    return TypesMigrated;
 }

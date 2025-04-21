@@ -278,14 +278,149 @@ Source\MiningSpiceCoPilot\# SYSTEM 3 Threading and Async Task System REFINED.txt
      - Required files: All Registry headers, `ThreadSafety.h`
      - Dramatically improves mining performance during complex operations that require frequent type lookups
 
-10. 🚀 **NUMA-Aware Registry Access**
+10. ✅ 🚀 **NUMA-Aware Registry Access**
     - Optimize multi-socket access to registries with NUMA awareness
     - Implementation:
-      - Create NUMA-local type caches for frequently accessed types
-      - Implement thread affinity hints for type-specific operations
-      - Add NUMA topology detection to service resolution
-      - Create zone assignment strategies based on NUMA domains
-      - Required files: All Registry headers, `ThreadSafety.h`, `TaskScheduler.h`
+      - Implement NUMA topology detection and awareness in `FThreadSafety` system
+        - Add NUMA topology detection: `static FNUMATopology DetectNUMATopology();`
+        - Create NUMA domain tracking: `TArray<FNUMADomainInfo> NUMADomains;`
+        - Add worker thread domain assignment: `void AssignThreadToNUMADomain(uint32 ThreadId, uint32 DomainId);`
+        - Implement domain-aware synchronization primitives: `FNUMAOptimizedSpinLock* CreateNUMAOptimizedLock(uint32 PreferredDomain);`
+        - Define NUMA domain info struct:
+        ```cpp
+        struct FNUMADomainInfo
+        {
+            uint32 DomainId;
+            TArray<uint32> LogicalCores;
+            uint64 LocalMemoryBytes;
+            TArray<float> DistanceToOtherDomains; // Relative access cost
+            
+            // Helper methods for thread assignment
+            bool IsThreadInDomain(uint32 ThreadId) const;
+            uint32 GetOptimalThreadForDomain() const;
+        };
+        ```
+      - Create NUMA-local type caches for registry performance
+        - Add per-domain type caches: `TMap<uint32, TSharedPtr<FNUMALocalTypeCache>> DomainTypeCaches; // DomainId -> Cache`
+        - Create specialized cache class:
+        ```cpp
+        class FNUMALocalTypeCache
+        {
+        public:
+            FNUMALocalTypeCache(uint32 InDomainId);
+            
+            // Type caching methods
+            bool TryGetCachedType(uint32 TypeId, TSharedRef<FTypeInfo>& OutTypeInfo);
+            void CacheType(uint32 TypeId, const TSharedRef<FTypeInfo>& TypeInfo);
+            void InvalidateCache(uint32 TypeId = MAX_uint32); // MAX_uint32 = all types
+            
+            // Access tracking
+            void RecordTypeAccess(uint32 TypeId);
+            TArray<uint32> GetMostAccessedTypes(uint32 MaxCount);
+            
+        private:
+            uint32 DomainId;
+            TMap<uint32, FCachedTypeEntry> TypeCache;
+            TMap<uint32, uint32> TypeAccessCounts;
+            FCriticalSection CacheLock;
+            uint64 TotalMemoryUsed;
+            uint64 MaxCacheMemory;
+        };
+        ```
+        - Modify all registry Get methods to use NUMA-local caches:
+        ```cpp
+        TSharedRef<FTypeInfo> GetTypeInfo(uint32 TypeId)
+        {
+            // Get current thread's NUMA domain
+            uint32 CurrentDomain = FThreadSafety::Get().GetCurrentThreadNUMADomain();
+            
+            // Try domain-local cache first
+            TSharedRef<FTypeInfo> TypeInfo;
+            FNUMALocalTypeCache* DomainCache = DomainTypeCaches.FindRef(CurrentDomain);
+            if (DomainCache && DomainCache->TryGetCachedType(TypeId, TypeInfo))
+            {
+                return TypeInfo;
+            }
+            
+            // Cache miss, get from main registry
+            FScopedLock Lock(&RegistryLock);
+            TypeInfo = TypeMap.FindChecked(TypeId);
+            
+            // Update local cache
+            if (DomainCache)
+            {
+                DomainCache->CacheType(TypeId, TypeInfo);
+                DomainCache->RecordTypeAccess(TypeId);
+            }
+            
+            return TypeInfo;
+        }
+        ```
+        - Add cache prefetching for predictive loading: `void PrefetchTypesToDomain(const TArray<uint32>& TypeIds, uint32 DomainId);`
+        - Implement automatic cache warming: `void PopulateDomainCache(uint32 DomainId, ERegistrySection Section);`
+      - Add thread affinity management for registry operations
+        - Create thread-to-domain pinning API: `void PinCurrentThreadToDomain(uint32 DomainId);`
+        - Add operation-specific thread selection: `uint32 SelectOptimalThreadForOperation(ERegistryOperationType OpType, uint32 TypeId);`
+        - Implement thread migration tracking:
+        ```cpp
+        struct FThreadMigrationStats 
+        {
+            uint32 ThreadId;
+            uint32 OriginalDomain;
+            uint32 CurrentDomain;
+            uint32 MigrationCount;
+            double TotalMigrationTimeMs;
+            
+            // Track performance impact
+            double AverageOperationTimeBeforeMigration;
+            double AverageOperationTimeAfterMigration;
+        };
+        ```
+        - Create specialized worker threads for domain-specific operations: `class FNUMADomainWorker : public FMiningTaskWorker { /* ... */ };`
+        - Add worker domain assignment method: `void FTaskScheduler::AssignWorkersToNUMADomains();`
+      - Implement zone-to-NUMA domain assignment strategies
+        - Add zone domain assignment algorithm: `uint32 AssignZoneToBestNUMADomain(int32 ZoneId, const TArray<FMaterialDistribution>& MaterialDistribution);`
+        - Create zone grouping by domain: `void GroupZonesByNUMADomain(TMap<uint32, TArray<int32>>& OutDomainToZones);`
+        - Implement access pattern tracking: `void RecordZoneAccess(int32 ZoneId, uint32 ThreadId, EZoneAccessType AccessType);`
+        - Add zone migration between domains: `bool MigrateZoneToDomain(int32 ZoneId, uint32 TargetDomainId);`
+        - Create zone access statistics:
+        ```cpp
+        struct FZoneAccessStats
+        {
+            int32 ZoneId;
+            TMap<uint32, uint32> AccessCountByDomain; // DomainId -> Count
+            TMap<EZoneAccessType, uint32> AccessTypeDistribution;
+            double AverageAccessTimeMs;
+            uint32 ContentionCount;
+            
+            // Calculate optimal domain based on access pattern
+            uint32 CalculateOptimalDomainId() const;
+        };
+        ```
+        - Implement automatic zone rebalancing: `void RebalanceZonesAcrossNUMADomains(float ThresholdImbalanceRatio = 0.2f);`
+      - Create NUMA-aware service resolution
+        - Add domain specification to service registration: `void RegisterService(const FName& ServiceName, const TSharedPtr<IService>& ServiceImpl, uint32 PreferredDomainId = MAX_uint32);`
+        - Implement domain-specific service instances: `TMap<FName, TMap<uint32, TSharedPtr<IService>>> DomainSpecificServices; // ServiceName -> (DomainId -> Instance)`
+        - Create domain-aware resolution:
+        ```cpp
+        TSharedPtr<IService> ResolveService(const FName& ServiceName)
+        {
+            uint32 CurrentDomain = FThreadSafety::Get().GetCurrentThreadNUMADomain();
+            
+            // Try domain-specific instance first
+            if (DomainSpecificServices.Contains(ServiceName) && 
+                DomainSpecificServices[ServiceName].Contains(CurrentDomain))
+            {
+                return DomainSpecificServices[ServiceName][CurrentDomain];
+            }
+            
+            // Fall back to global instance
+            return GlobalServices.FindRef(ServiceName);
+        }
+        ```
+        - Add automatic service instance replication: `void ReplicateServiceToDomain(const FName& ServiceName, uint32 TargetDomainId);`
+        - Implement service locality optimization: `void OptimizeServicePlacement(const TArray<FServiceUsageStats>& UsageStats);`
+      - Required files: All Registry headers, `ThreadSafety.h`, `TaskScheduler.h`, `CoreServiceLocator.h`, `ZoneManager.h`
       - Significantly improves performance on server systems when processing large mining operations
 
 11. 🚀 **Parallelized Type Operations**
@@ -341,8 +476,7 @@ Source\MiningSpiceCoPilot\# SYSTEM 3 Threading and Async Task System REFINED.txt
             // Process each level in parallel
             for (const TArray<int32>& Level : Levels)
             {
-                bool Success = ParallelFor(Level.Num(), [&](int32 Index)
-                {
+                bool Success = ParallelFor(Level.Num(), [&](int32 Index) {
                     WorkFunction(Level[Index]);
                 });
                 

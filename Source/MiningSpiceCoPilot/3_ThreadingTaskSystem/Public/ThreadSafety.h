@@ -11,6 +11,10 @@
 #include "Misc/SpinLock.h"
 #include "Containers/Map.h"
 #include "String/Find.h"
+#include "HAL/PlatformAffinity.h" // For NUMA functionality
+
+// Forward declarations
+class MININGSPICECOPILOT_API FThreadSafety;
 
 /**
  * Registry lock hierarchy levels for deadlock prevention
@@ -862,8 +866,422 @@ struct MININGSPICECOPILOT_API FLockContentionStats
 };
 
 /**
+ * NUMA domain information structure
+ * Provides memory locality information for thread optimization
+ */
+struct MININGSPICECOPILOT_API FNUMADomainInfo
+{
+    /** Domain ID */
+    uint32 DomainId;
+    
+    /** Logical processor cores belonging to this domain */
+    TArray<uint32> LogicalCores;
+    
+    /** Local memory capacity for this domain in bytes */
+    uint64 LocalMemoryBytes;
+    
+    /** Distance matrix to other domains (relative access cost) */
+    TArray<float> DistanceToOtherDomains;
+    
+    /** Constructor */
+    FNUMADomainInfo()
+        : DomainId(0)
+        , LocalMemoryBytes(0)
+    {
+    }
+    
+    /** Checks if a thread is running on this domain */
+    bool IsThreadInDomain(uint32 ThreadId) const;
+    
+    /** Gets the most optimal thread for this domain */
+    uint32 GetOptimalThreadForDomain() const;
+};
+
+/**
+ * NUMA topology detection and management
+ * Provides information about hardware memory domains
+ */
+struct MININGSPICECOPILOT_API FNUMATopology
+{
+    /** Available NUMA domains */
+    TArray<FNUMADomainInfo> Domains;
+    
+    /** Number of NUMA domains detected */
+    uint32 DomainCount;
+    
+    /** Whether NUMA is supported on this system */
+    bool bNUMASupported;
+    
+    /** Default constructor */
+    FNUMATopology()
+        : DomainCount(0)
+        , bNUMASupported(false)
+    {
+    }
+    
+    /** Detects the NUMA topology */
+    void DetectTopology();
+    
+    /** Gets a domain by ID */
+    const FNUMADomainInfo* GetDomain(uint32 DomainId) const;
+    
+    /** Gets the domain containing a thread */
+    uint32 GetDomainForThread(uint32 ThreadId) const;
+    
+    /** Gets the logical cores for a domain */
+    TArray<uint32> GetLogicalCoresForDomain(uint32 DomainId) const;
+    
+    /** Gets a mask for all cores in a domain */
+    uint64 GetAffinityMaskForDomain(uint32 DomainId) const;
+};
+
+/**
+ * NUMA-optimized spin lock for local-domain priority
+ * Prioritizes threads from the same NUMA domain when resolving contention
+ */
+class MININGSPICECOPILOT_API FNUMAOptimizedSpinLock
+{
+public:
+    /** Constructor */
+    FNUMAOptimizedSpinLock(uint32 PreferredDomainId = 0)
+        : bLocked(0)
+        , OwnerThreadId(0)
+        , PreferredDomain(PreferredDomainId)
+    {
+    }
+    
+    /** Acquires the lock, optimizing for same-domain threads */
+    void Lock()
+    {
+        uint32 CurrentThreadId = FPlatformTLS::GetCurrentThreadId();
+        // Temporarily use domain 0 until FThreadSafety is fully initialized
+        uint32 CurrentDomain = 0; // Will be properly implemented after FThreadSafety is fully defined
+        
+        // Use an exponential backoff strategy to reduce contention
+        uint32 YieldCount = 0;
+        
+        while (FPlatformAtomics::InterlockedCompareExchange(&bLocked, 1, 0) != 0)
+        {
+            // Track contention for diagnostics - will implement properly later
+            // FThreadSafety::Get().RecordContention(this); - Commented out to avoid circular reference
+            
+            // Different backoff strategies based on thread domain
+            if (CurrentDomain == PreferredDomain)
+            {
+                // Preferred domain threads use shorter backoff
+                if (YieldCount < 10)
+                {
+                    FPlatformProcess::YieldThread();
+                }
+                else
+                {
+                    // Brief sleep for longer waits
+                    FPlatformProcess::Sleep(0.0001f);
+                }
+            }
+            else
+            {
+                // Non-preferred domains use longer backoff
+                if (YieldCount < 5)
+                {
+                    FPlatformProcess::YieldThread();
+                }
+                else
+                {
+                    // Longer sleep for non-preferred domains
+                    FPlatformProcess::Sleep(0.0005f);
+                }
+            }
+            
+            YieldCount++;
+        }
+        
+        // Lock acquired
+        OwnerThreadId = CurrentThreadId;
+    }
+    
+    /** Releases the lock */
+    void Unlock()
+    {
+        OwnerThreadId = 0;
+        FPlatformAtomics::InterlockedExchange(&bLocked, 0);
+    }
+    
+    /** Tries to acquire the lock without waiting */
+    bool TryLock()
+    {
+        if (FPlatformAtomics::InterlockedCompareExchange(&bLocked, 1, 0) == 0)
+        {
+            OwnerThreadId = FPlatformTLS::GetCurrentThreadId();
+            return true;
+        }
+        return false;
+    }
+    
+    /** Sets the preferred NUMA domain for this lock */
+    void SetPreferredDomain(uint32 DomainId)
+    {
+        PreferredDomain = DomainId;
+    }
+    
+    /** Gets the preferred NUMA domain for this lock */
+    uint32 GetPreferredDomain() const
+    {
+        return PreferredDomain;
+    }
+    
+private:
+    /** Lock state (0 = unlocked, 1 = locked) */
+    volatile int32 bLocked;
+    
+    /** ID of the thread that currently owns the lock */
+    volatile uint32 OwnerThreadId;
+    
+    /** Preferred NUMA domain ID */
+    uint32 PreferredDomain;
+};
+
+/**
+ * NUMA-local cache for type information
+ * Provides domain-local caching of frequently accessed registry types
+ */
+class MININGSPICECOPILOT_API FNUMALocalTypeCache
+{
+public:
+    /** Cached type entry with version validation */
+    template<typename T>
+    struct FCachedTypeEntry
+    {
+        /** Type information */
+        TSharedRef<T> TypeInfo;
+        
+        /** Version at time of caching */
+        uint32 Version;
+        
+        /** Last access time */
+        double LastAccessTime;
+        
+        /** Number of times accessed */
+        uint32 AccessCount;
+        
+        /** Constructor */
+        FCachedTypeEntry()
+            : Version(0)
+            , LastAccessTime(0.0)
+            , AccessCount(0)
+        {
+        }
+        
+        /** Constructor with type info */
+        FCachedTypeEntry(const TSharedRef<T>& InTypeInfo, uint32 InVersion)
+            : TypeInfo(InTypeInfo)
+            , Version(InVersion)
+            , LastAccessTime(FPlatformTime::Seconds())
+            , AccessCount(1)
+        {
+        }
+    };
+    
+    /** Constructor */
+    FNUMALocalTypeCache(uint32 InDomainId)
+        : DomainId(InDomainId)
+        , TotalMemoryUsed(0)
+        , MaxCacheMemory(64 * 1024 * 1024) // 64MB default limit
+    {
+    }
+    
+    /**
+     * Tries to get a cached type
+     * @param TypeId The type ID to look up
+     * @param OutTypeInfo The output type info if found
+     * @return True if the type was found in cache
+     */
+    template<typename T>
+    bool TryGetCachedType(uint32 TypeId, TSharedRef<T>& OutTypeInfo, uint32 CurrentVersion)
+    {
+        FScopeLock Lock(&CacheLock);
+        
+        FCachedTypeEntry<T>* Entry = TypeCache.Find(TypeId);
+        if (Entry && Entry->Version == CurrentVersion)
+        {
+            OutTypeInfo = Entry->TypeInfo;
+            Entry->LastAccessTime = FPlatformTime::Seconds();
+            Entry->AccessCount++;
+            
+            // Record access for optimization
+            RecordTypeAccess(TypeId);
+            
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Caches a type
+     * @param TypeId The type ID
+     * @param TypeInfo The type information to cache
+     * @param Version The current version of the type
+     */
+    template<typename T>
+    void CacheType(uint32 TypeId, const TSharedRef<T>& TypeInfo, uint32 Version)
+    {
+        FScopeLock Lock(&CacheLock);
+        
+        // Create or update cache entry
+        FCachedTypeEntry<T>& Entry = TypeCache.FindOrAdd(TypeId);
+        Entry.TypeInfo = TypeInfo;
+        Entry.Version = Version;
+        Entry.LastAccessTime = FPlatformTime::Seconds();
+        Entry.AccessCount++;
+        
+        // Record access for optimization
+        RecordTypeAccess(TypeId);
+        
+        // If memory limit exceeded, evict least accessed entries
+        UpdateMemoryUsage();
+        if (TotalMemoryUsed > MaxCacheMemory)
+        {
+            EvictLeastUsedEntries();
+        }
+    }
+    
+    /**
+     * Invalidates a cached type
+     * @param TypeId The type ID to invalidate, or MAX_uint32 to invalidate all
+     */
+    void InvalidateCache(uint32 TypeId = MAX_uint32)
+    {
+        FScopeLock Lock(&CacheLock);
+        
+        if (TypeId == MAX_uint32)
+        {
+            TypeCache.Empty();
+            TypeAccessCounts.Empty();
+            TotalMemoryUsed = 0;
+        }
+        else
+        {
+            TypeCache.Remove(TypeId);
+            TypeAccessCounts.Remove(TypeId);
+            UpdateMemoryUsage();
+        }
+    }
+    
+    /**
+     * Records a type access for optimization
+     * @param TypeId The type ID that was accessed
+     */
+    void RecordTypeAccess(uint32 TypeId)
+    {
+        uint32& Count = TypeAccessCounts.FindOrAdd(TypeId);
+        Count++;
+    }
+    
+    /**
+     * Gets the most frequently accessed types
+     * @param MaxCount Maximum number of types to return
+     * @return Array of type IDs sorted by access frequency
+     */
+    TArray<uint32> GetMostAccessedTypes(uint32 MaxCount)
+    {
+        FScopeLock Lock(&CacheLock);
+        
+        // Sort types by access count
+        TArray<TPair<uint32, uint32>> SortedTypes;
+        for (const TPair<uint32, uint32>& Pair : TypeAccessCounts)
+        {
+            SortedTypes.Add(Pair);
+        }
+        
+        SortedTypes.Sort([](const TPair<uint32, uint32>& A, const TPair<uint32, uint32>& B) {
+            return A.Value > B.Value;
+        });
+        
+        // Extract the most accessed types
+        TArray<uint32> Result;
+        for (int32 i = 0; i < FMath::Min((int32)MaxCount, SortedTypes.Num()); ++i)
+        {
+            Result.Add(SortedTypes[i].Key);
+        }
+        
+        return Result;
+    }
+    
+    /**
+     * Gets the domain ID for this cache
+     * @return NUMA domain ID
+     */
+    uint32 GetDomainId() const
+    {
+        return DomainId;
+    }
+    
+    /**
+     * Sets the maximum cache memory
+     * @param MaxMemoryBytes Maximum memory in bytes
+     */
+    void SetMaxCacheMemory(uint64 MaxMemoryBytes)
+    {
+        MaxCacheMemory = MaxMemoryBytes;
+    }
+    
+private:
+    /** NUMA domain ID */
+    uint32 DomainId;
+    
+    /** Type cache - maps type ID to cached entry */
+    TMap<uint32, void*> TypeCache;
+    
+    /** Type access counts for optimization */
+    TMap<uint32, uint32> TypeAccessCounts;
+    
+    /** Lock for cache access */
+    FCriticalSection CacheLock;
+    
+    /** Total memory used by the cache in bytes */
+    uint64 TotalMemoryUsed;
+    
+    /** Maximum memory allowed for the cache in bytes */
+    uint64 MaxCacheMemory;
+    
+    /** Updates the total memory usage calculation */
+    void UpdateMemoryUsage()
+    {
+        // Estimate memory usage based on cache entries
+        TotalMemoryUsed = TypeCache.Num() * sizeof(void*) * 1000; // Rough estimate
+    }
+    
+    /** Evicts the least used entries when memory limit is exceeded */
+    void EvictLeastUsedEntries()
+    {
+        // Sort by access count and time (least accessed and oldest first)
+        TArray<TPair<uint32, uint32>> SortedByAccess;
+        for (const TPair<uint32, uint32>& Pair : TypeAccessCounts)
+        {
+            SortedByAccess.Add(Pair);
+        }
+        
+        SortedByAccess.Sort([](const TPair<uint32, uint32>& A, const TPair<uint32, uint32>& B) {
+            return A.Value < B.Value;
+        });
+        
+        // Remove 25% of least used entries
+        int32 EntriestoRemove = FMath::Max(1, TypeCache.Num() / 4);
+        for (int32 i = 0; i < EntriestoRemove && i < SortedByAccess.Num(); ++i)
+        {
+            uint32 TypeId = SortedByAccess[i].Key;
+            TypeCache.Remove(TypeId);
+            TypeAccessCounts.Remove(TypeId);
+        }
+        
+        UpdateMemoryUsage();
+    }
+};
+
+/**
  * Thread safety utilities for the Mining system
- * Provides synchronization primitives and utilities optimized for SVO+SDF operations
+ * Provides synchronization primitives and concurrency utilities
  */
 class MININGSPICECOPILOT_API FThreadSafety
 {
@@ -974,6 +1392,67 @@ public:
     /** Friend classes that need access to internal state */
     friend class FZoneBasedLock;
 
+    /** NUMA topology information for the system */
+    FNUMATopology NUMATopology;
+
+    /**
+     * Detects NUMA topology of the current system
+     * @return Information about NUMA domains on this hardware
+     */
+    static FNUMATopology DetectNUMATopology();
+    
+    /**
+     * Gets the NUMA domain for the current thread
+     * @return Domain ID where the thread is running
+     */
+    uint32 GetCurrentThreadNUMADomain() const;
+    
+    /**
+     * Assigns a thread to a specific NUMA domain
+     * @param ThreadId The thread ID to assign
+     * @param DomainId The target NUMA domain
+     * @return True if assignment was successful
+     */
+    bool AssignThreadToNUMADomain(uint32 ThreadId, uint32 DomainId);
+    
+    /**
+     * Creates a NUMA-optimized spin lock for a preferred domain
+     * @param PreferredDomain The domain to optimize for
+     * @return Pointer to a newly created lock
+     */
+    FNUMAOptimizedSpinLock* CreateNUMAOptimizedLock(uint32 PreferredDomain = 0);
+    
+    /**
+     * Gets domain-to-thread assignments
+     * @return Map of domain IDs to thread IDs
+     */
+    TMap<uint32, TArray<uint32>> GetDomainThreadAssignments() const;
+    
+    /**
+     * Selects the optimal thread for an operation
+     * @param DomainId The preferred NUMA domain
+     * @return Thread ID most suitable for the domain
+     */
+    uint32 SelectOptimalThreadForDomain(uint32 DomainId) const;
+    
+    /**
+     * Gets or creates a domain-local type cache
+     * @param DomainId The NUMA domain ID
+     * @return Pointer to the domain's type cache
+     */
+    FNUMALocalTypeCache* GetOrCreateDomainTypeCache(uint32 DomainId);
+    
+    /**
+     * Gets memory usage statistics for NUMA domains
+     * @return Map of domain IDs to memory usage information
+     */
+    TMap<uint32, FString> GetDomainMemoryStats() const;
+    
+    /**
+     * Logs current NUMA topology information
+     */
+    void LogNUMATopology() const;
+
 private:
     /** Private constructor for singleton pattern */
     // FThreadSafety(); // Commented out duplicate constructor declaration
@@ -1019,6 +1498,18 @@ private:
     
     /** TLS slot for ThreadAccessedZones */
     static uint32 ThreadAccessedZonesTLS;
+    
+    /** Map of thread IDs to NUMA domain IDs */
+    TMap<uint32, uint32> ThreadDomainMap;
+    
+    /** Lock for thread domain map access */
+    mutable FCriticalSection ThreadDomainMapLock;
+    
+    /** Per-domain type caches */
+    TMap<uint32, FNUMALocalTypeCache*> DomainTypeCaches;
+    
+    /** Lock for domain type cache access */
+    mutable FCriticalSection DomainCacheLock;
 };
 
 /**

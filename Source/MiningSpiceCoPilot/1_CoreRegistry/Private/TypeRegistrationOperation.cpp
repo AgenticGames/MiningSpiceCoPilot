@@ -391,6 +391,7 @@ bool FTypeRegistrationOperation::ExecuteMaterialTypeBatchRegistration()
         
         // Try to register the type
         uint32 TypeId = Registry.RegisterMaterialType(
+            TypeInfo,
             TypeInfo.TypeName,
             TypeInfo.Priority);
             

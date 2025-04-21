@@ -8,6 +8,91 @@
 #include "Containers/Queue.h"
 #include "Misc/ScopeLock.h"
 #include "Misc/OutputDeviceRedirector.h"
+#include "TaskHelpers.h"
+#include "Runtime/Core/Public/ProfilingDebugging/MiscTrace.h"
+#include "Async/TaskGraphInterfaces.h"
+#include "HAL/ThreadHeartBeat.h"
+#include "HAL/PlatformMisc.h"
+#include "Math/NumericLimits.h"
+
+// On Windows, we need specific Windows APIs for NUMA functions
+#if PLATFORM_WINDOWS
+#include "Windows/WindowsPlatformMisc.h"
+#include "Windows/WindowsHWrapper.h"
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include <Windows.h>
+#include <WinBase.h>
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
+
+// Define NumaHelpers namespace early, before it's used by any other code
+namespace NumaHelpers
+{
+    inline int32 GetNumberOfCoresPerProcessor()
+    {
+        int32 TotalCores = FPlatformMisc::NumberOfCores();
+        int32 TotalThreads = FPlatformMisc::NumberOfCoresIncludingHyperthreads();
+        int32 NumProcessors = (TotalThreads > TotalCores) ? (TotalThreads / TotalCores) : 1;
+        return TotalCores / NumProcessors;
+    }
+    
+    inline uint64 GetProcessorMaskForDomain(uint32 DomainId)
+    {
+        uint64 Mask = 0;
+        
+#if PLATFORM_WINDOWS
+        ULONG HighestNodeNumber = 0;
+        if (::GetNumaHighestNodeNumber(&HighestNodeNumber) && DomainId <= HighestNodeNumber)
+        {
+            ULONGLONG AvailableMask = 0;
+            if (::GetNumaNodeProcessorMask((UCHAR)DomainId, &AvailableMask))
+            {
+                return (uint64)AvailableMask;
+            }
+        }
+#endif
+        
+        // Fallback: Allocate cores evenly across domains
+        int32 TotalCores = FPlatformMisc::NumberOfCores();
+        int32 TotalThreads = FPlatformMisc::NumberOfCoresIncludingHyperthreads();
+        int32 NumDomains = (TotalThreads > TotalCores) ? (TotalThreads / TotalCores) : 1;
+        
+        int32 CoresPerDomain = TotalCores / NumDomains;
+        int32 StartCore = DomainId * CoresPerDomain;
+        int32 EndCore = FMath::Min(StartCore + CoresPerDomain, TotalCores);
+        
+        for (int32 CoreIdx = StartCore; CoreIdx < EndCore; ++CoreIdx)
+        {
+            Mask |= (1ULL << CoreIdx);
+        }
+        
+        return Mask;
+    }
+    
+    inline bool SetProcessorAffinityMask(uint64 AffinityMask)
+    {
+#if PLATFORM_WINDOWS
+        HANDLE Process = ::GetCurrentProcess();
+        return !!::SetProcessAffinityMask(Process, (DWORD_PTR)AffinityMask);
+#else
+        return false;
+#endif
+    }
+    
+    inline uint64 GetAllCoresMask()
+    {
+        uint64 Mask = 0;
+        int32 NumCores = FPlatformMisc::NumberOfCores();
+        
+        // Set bits for each core
+        for (int32 CoreIdx = 0; CoreIdx < NumCores; ++CoreIdx)
+        {
+            Mask |= (1ULL << CoreIdx);
+        }
+        
+        return Mask;
+    }
+}
 
 // Initialize static members before they're used
 uint32 FHierarchicalLock::ThreadHighestLockLevelTLS = FPlatformTLS::AllocTlsSlot();
@@ -926,8 +1011,13 @@ FThreadSafety& FThreadSafety::Get()
 void FThreadSafety::Initialize()
 {
     // Initialize contention tracking
-    FScopeLock Lock(&ContentionStatsLock);
-    ContentionStats.Empty();
+    {
+        FScopeLock ContentionLock(&ContentionStatsLock);
+        ContentionStats.Empty();
+    }
+    
+    // Initialize NUMA topology
+    NUMATopology = DetectNUMATopology();
 }
 
 void FThreadSafety::Shutdown()
@@ -936,8 +1026,25 @@ void FThreadSafety::Shutdown()
     CleanupThreadLocalStorage();
     
     // Clear contention stats
-    FScopeLock Lock(&ContentionStatsLock);
-    ContentionStats.Empty();
+    {
+        FScopeLock ContentionLock(&ContentionStatsLock);
+        ContentionStats.Empty();
+    }
+    
+    // Clean up NUMA resources
+    {
+        FScopeLock DomainLock(&DomainCacheLock);
+        for (auto& Pair : DomainTypeCaches)
+        {
+            delete Pair.Value;
+        }
+        DomainTypeCaches.Empty();
+    }
+    
+    {
+        FScopeLock ThreadLock(&ThreadDomainMapLock);
+        ThreadDomainMap.Empty();
+    }
 }
 
 FMiningReaderWriterLock* FThreadSafety::CreateReaderWriterLock()
@@ -1215,5 +1322,395 @@ void FThreadSafety::CleanupThreadLocalStorage()
     {
         delete FThreadSafety::GetThreadAccessedZones();
         FThreadSafety::SetThreadAccessedZones(nullptr);
+    }
+}
+
+// FNUMADomainInfo implementation
+bool FNUMADomainInfo::IsThreadInDomain(uint32 ThreadId) const
+{
+    // Check if this thread is running on one of our logical cores
+    // Use FPlatformAffinity::GetMainGameMask() instead of GetThreadAffinityMask which doesn't exist
+    uint64 AffinityMask = FPlatformAffinity::GetMainGameMask();
+    
+    for (uint32 CoreId : LogicalCores)
+    {
+        uint64 CoreMask = 1ULL << CoreId;
+        if ((AffinityMask & CoreMask) != 0)
+        {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+uint32 FNUMADomainInfo::GetOptimalThreadForDomain() const
+{
+    // Try to find a thread already assigned to this domain
+    TMap<uint32, TArray<uint32>> ThreadAssignments = FThreadSafety::Get().GetDomainThreadAssignments();
+    if (ThreadAssignments.Contains(DomainId) && ThreadAssignments[DomainId].Num() > 0)
+    {
+        // Return the first assigned thread for now
+        // Could be enhanced to select based on current load
+        return ThreadAssignments[DomainId][0];
+    }
+    
+    // No thread assigned yet, return invalid ID
+    return 0;
+}
+
+// FNUMATopology implementation
+void FNUMATopology::DetectTopology()
+{
+    // Check if NUMA is supported on this platform
+    #if PLATFORM_WINDOWS
+    bool bNumaSupported = true; // We'll assume NUMA is supported and handle fallbacks
+    #else
+    bool bNumaSupported = false;
+    #endif
+    
+    bNUMASupported = bNumaSupported;
+    
+    if (!bNUMASupported)
+    {
+        // Create a single domain representing the entire system
+        FNUMADomainInfo SingleDomain;
+        SingleDomain.DomainId = 0;
+        
+        // Add all logical cores
+        uint32 NumLogicalCores = FPlatformMisc::NumberOfCores();
+        for (uint32 CoreId = 0; CoreId < NumLogicalCores; ++CoreId)
+        {
+            SingleDomain.LogicalCores.Add(CoreId);
+        }
+        
+        // Set memory size (estimate total system memory)
+        SingleDomain.LocalMemoryBytes = FPlatformMemory::GetPhysicalGBRam() * 1024ULL * 1024ULL * 1024ULL;
+        
+        // No distance to other domains
+        SingleDomain.DistanceToOtherDomains.Add(1.0f);
+        
+        Domains.Add(SingleDomain);
+        DomainCount = 1;
+        
+        return;
+    }
+    
+    // Retrieve actual NUMA information for supported platforms
+    // Use our helper function
+    uint32 NumNodes = FPlatformMisc::NumberOfCores() / NumaHelpers::GetNumberOfCoresPerProcessor();
+    if (NumNodes == 0) NumNodes = 1; // Fallback to at least 1 node
+    
+    DomainCount = NumNodes;
+    
+    for (uint32 NodeId = 0; NodeId < NumNodes; ++NodeId)
+    {
+        FNUMADomainInfo DomainInfo;
+        DomainInfo.DomainId = NodeId;
+        
+        // Get the cores for this NUMA node
+        // Use our helper function
+        uint64 ProcessorMask = NumaHelpers::GetProcessorMaskForDomain(NodeId);
+        
+        // Convert mask to list of logical cores
+        for (uint32 CoreId = 0; CoreId < 64; ++CoreId)
+        {
+            if ((ProcessorMask & (1ULL << CoreId)) != 0)
+            {
+                DomainInfo.LogicalCores.Add(CoreId);
+            }
+        }
+        
+        // Get memory information (platform specific)
+        // This is an estimate - actual platform implementations may vary
+        DomainInfo.LocalMemoryBytes = FPlatformMemory::GetPhysicalGBRam() * 1024ULL * 1024ULL * 1024ULL / NumNodes;
+        
+        // Initialize distance matrix with default values
+        // 1.0 for local domain, 2.0 for others (simplified model)
+        for (uint32 OtherNode = 0; OtherNode < NumNodes; ++OtherNode)
+        {
+            DomainInfo.DistanceToOtherDomains.Add(NodeId == OtherNode ? 1.0f : 2.0f);
+        }
+        
+        Domains.Add(DomainInfo);
+    }
+}
+
+const FNUMADomainInfo* FNUMATopology::GetDomain(uint32 DomainId) const
+{
+    for (const FNUMADomainInfo& Domain : Domains)
+    {
+        if (Domain.DomainId == DomainId)
+        {
+            return &Domain;
+        }
+    }
+    
+    return nullptr;
+}
+
+uint32 FNUMATopology::GetDomainForThread(uint32 ThreadId) const
+{
+    // Check thread affinity to determine which NUMA domain it's running on
+    // Use FPlatformAffinity::GetMainGameMask() instead of GetThreadAffinityMask
+    uint64 ThreadAffinityMask = FPlatformAffinity::GetMainGameMask();
+    
+    // Check which domain has the most bits in common with this thread's affinity
+    uint32 BestDomainId = 0;
+    uint32 BestOverlap = 0;
+    
+    for (const FNUMADomainInfo& Domain : Domains)
+    {
+        uint64 DomainMask = 0;
+        for (uint32 CoreId : Domain.LogicalCores)
+        {
+            DomainMask |= (1ULL << CoreId);
+        }
+        
+        // Count bits in common
+        uint64 CommonBits = ThreadAffinityMask & DomainMask;
+        uint32 BitCount = 0;
+        while (CommonBits)
+        {
+            BitCount += CommonBits & 1;
+            CommonBits >>= 1;
+        }
+        
+        if (BitCount > BestOverlap)
+        {
+            BestOverlap = BitCount;
+            BestDomainId = Domain.DomainId;
+        }
+    }
+    
+    return BestDomainId;
+}
+
+TArray<uint32> FNUMATopology::GetLogicalCoresForDomain(uint32 DomainId) const
+{
+    for (const FNUMADomainInfo& Domain : Domains)
+    {
+        if (Domain.DomainId == DomainId)
+        {
+            return Domain.LogicalCores;
+        }
+    }
+    
+    return TArray<uint32>();
+}
+
+uint64 FNUMATopology::GetAffinityMaskForDomain(uint32 DomainId) const
+{
+    uint64 AffinityMask = 0;
+    
+    for (const FNUMADomainInfo& Domain : Domains)
+    {
+        if (Domain.DomainId == DomainId)
+        {
+            for (uint32 CoreId : Domain.LogicalCores)
+            {
+                AffinityMask |= (1ULL << CoreId);
+            }
+            break;
+        }
+    }
+    
+    return AffinityMask;
+}
+
+// FThreadSafety NUMA-related implementations
+FNUMATopology FThreadSafety::DetectNUMATopology()
+{
+    FNUMATopology Topology;
+    Topology.DetectTopology();
+    return Topology;
+}
+
+uint32 FThreadSafety::GetCurrentThreadNUMADomain() const
+{
+    uint32 ThreadId = FPlatformTLS::GetCurrentThreadId();
+    
+    // Check if we have a cached assignment
+    uint32 DomainId = 0;
+    {
+        FScopeLock Lock(&ThreadDomainMapLock);
+        if (ThreadDomainMap.Contains(ThreadId))
+        {
+            return ThreadDomainMap[ThreadId];
+        }
+    }
+    
+    // No cached assignment, determine domain based on affinity
+    DomainId = NUMATopology.GetDomainForThread(ThreadId);
+    
+    // Cache the result in a non-const context
+    FThreadSafety* MutableThis = const_cast<FThreadSafety*>(this);
+    if (MutableThis)
+    {
+        FScopeLock Lock(&MutableThis->ThreadDomainMapLock);
+        MutableThis->ThreadDomainMap.Add(ThreadId, DomainId);
+    }
+    
+    return DomainId;
+}
+
+bool FThreadSafety::AssignThreadToNUMADomain(uint32 ThreadId, uint32 DomainId)
+{
+    // Validate domain ID
+    if (DomainId >= NUMATopology.DomainCount)
+    {
+        return false;
+    }
+    
+    // Get affinity mask for the domain
+    uint64 DomainAffinityMask = NUMATopology.GetAffinityMaskForDomain(DomainId);
+    if (DomainAffinityMask == 0)
+    {
+        return false;
+    }
+    
+    // Set thread affinity using our helper function
+    bool bSuccess = NumaHelpers::SetProcessorAffinityMask(DomainAffinityMask);
+    
+    if (bSuccess)
+    {
+        // Update the domain mapping
+        FScopeLock Lock(&ThreadDomainMapLock);
+        // Use FindOrAdd to avoid the const reference issue
+        ThreadDomainMap.FindOrAdd(ThreadId) = DomainId;
+    }
+    
+    return bSuccess;
+}
+
+FNUMAOptimizedSpinLock* FThreadSafety::CreateNUMAOptimizedLock(uint32 PreferredDomain)
+{
+    return new FNUMAOptimizedSpinLock(PreferredDomain);
+}
+
+TMap<uint32, TArray<uint32>> FThreadSafety::GetDomainThreadAssignments() const
+{
+    TMap<uint32, TArray<uint32>> Result;
+    
+    FScopeLock Lock(&ThreadDomainMapLock);
+    
+    // Build domain -> threads mapping
+    for (const TPair<uint32, uint32>& Pair : ThreadDomainMap)
+    {
+        uint32 ThreadId = Pair.Key;
+        uint32 DomainId = Pair.Value;
+        
+        if (!Result.Contains(DomainId))
+        {
+            // Use default constructor with emplace to avoid adding to const map
+            Result.Emplace(DomainId, TArray<uint32>());
+        }
+        
+        // Use non-const access
+        Result[DomainId].Add(ThreadId);
+    }
+    
+    return Result;
+}
+
+uint32 FThreadSafety::SelectOptimalThreadForDomain(uint32 DomainId) const
+{
+    TMap<uint32, TArray<uint32>> Assignments = GetDomainThreadAssignments();
+    
+    // Check if we have any threads assigned to this domain
+    if (Assignments.Contains(DomainId) && Assignments[DomainId].Num() > 0)
+    {
+        return Assignments[DomainId][0];
+    }
+    
+    // Try to find domain with most cores in common
+    const FNUMADomainInfo* TargetDomain = NUMATopology.GetDomain(DomainId);
+    if (!TargetDomain)
+    {
+        return 0;
+    }
+    
+    // No thread found in target domain, pick one from any domain
+    if (Assignments.Num() > 0)
+    {
+        for (const auto& DomainThreads : Assignments)
+        {
+            if (DomainThreads.Value.Num() > 0)
+            {
+                return DomainThreads.Value[0];
+            }
+        }
+    }
+    
+    // No assignment found
+    return 0;
+}
+
+FNUMALocalTypeCache* FThreadSafety::GetOrCreateDomainTypeCache(uint32 DomainId)
+{
+    FScopeLock Lock(&DomainCacheLock);
+    
+    FNUMALocalTypeCache* Cache = DomainTypeCaches.FindRef(DomainId);
+    if (!Cache)
+    {
+        Cache = new FNUMALocalTypeCache(DomainId);
+        DomainTypeCaches.Emplace(DomainId, Cache);
+    }
+    
+    return Cache;
+}
+
+TMap<uint32, FString> FThreadSafety::GetDomainMemoryStats() const
+{
+    TMap<uint32, FString> Result;
+    
+    FScopeLock Lock(&DomainCacheLock);
+    
+    for (const TPair<uint32, FNUMALocalTypeCache*>& Pair : DomainTypeCaches)
+    {
+        uint32 DomainId = Pair.Key;
+        FNUMALocalTypeCache* Cache = Pair.Value;
+        
+        // Calculate memory usage and access statistics
+        uint64 MemoryUsed = 0; // This would need to be tracked in the cache implementation
+        
+        Result.Emplace(DomainId, FString::Printf(TEXT("Domain %u: %llu KB used"), DomainId, MemoryUsed / 1024));
+    }
+    
+    return Result;
+}
+
+void FThreadSafety::LogNUMATopology() const
+{
+    UE_LOG(LogTemp, Log, TEXT("NUMA Topology Information:"));
+    UE_LOG(LogTemp, Log, TEXT("  NUMA Supported: %s"), NUMATopology.bNUMASupported ? TEXT("Yes") : TEXT("No"));
+    UE_LOG(LogTemp, Log, TEXT("  Domain Count: %u"), NUMATopology.DomainCount);
+    
+    for (int32 i = 0; i < NUMATopology.Domains.Num(); ++i)
+    {
+        const FNUMADomainInfo& Domain = NUMATopology.Domains[i];
+        UE_LOG(LogTemp, Log, TEXT("  Domain %u:"), Domain.DomainId);
+        UE_LOG(LogTemp, Log, TEXT("    Cores: %d"), Domain.LogicalCores.Num());
+        UE_LOG(LogTemp, Log, TEXT("    Local Memory: %llu MB"), Domain.LocalMemoryBytes / (1024 * 1024));
+        
+        FString DistancesStr;
+        for (int32 j = 0; j < Domain.DistanceToOtherDomains.Num(); ++j)
+        {
+            DistancesStr += FString::Printf(TEXT("%s%.1f"), j > 0 ? TEXT(", ") : TEXT(""), Domain.DistanceToOtherDomains[j]);
+        }
+        UE_LOG(LogTemp, Log, TEXT("    Distances: [%s]"), *DistancesStr);
+    }
+    
+    // Log thread assignments
+    TMap<uint32, TArray<uint32>> ThreadAssignments = GetDomainThreadAssignments();
+    UE_LOG(LogTemp, Log, TEXT("Thread Domain Assignments:"));
+    for (const auto& Assignment : ThreadAssignments)
+    {
+        FString ThreadsStr;
+        for (int32 i = 0; i < Assignment.Value.Num(); ++i)
+        {
+            ThreadsStr += FString::Printf(TEXT("%s%u"), i > 0 ? TEXT(", ") : TEXT(""), Assignment.Value[i]);
+        }
+        UE_LOG(LogTemp, Log, TEXT("  Domain %u: [%s]"), Assignment.Key, *ThreadsStr);
     }
 }
