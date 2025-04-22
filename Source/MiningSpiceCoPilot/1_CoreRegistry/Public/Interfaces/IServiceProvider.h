@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
+#include "../CommonServiceTypes.h"
 #include "IServiceProvider.generated.h"
 
 /**
@@ -65,4 +66,63 @@ public:
      * @return Provider name
      */
     virtual FName GetProviderName() const = 0;
+    
+    /**
+     * Gets dependencies for services provided by this provider
+     * @return Array of service dependencies
+     */
+    virtual TArray<FServiceDependency> GetServiceDependencies() const = 0;
+    
+    /**
+     * Handles a specific lifecycle phase for services
+     * @param Phase Current lifecycle phase
+     * @return True if the phase was handled successfully
+     */
+    virtual bool HandleLifecyclePhase(EServiceLifecyclePhase Phase) = 0;
+    
+    /**
+     * Gets the scope of services provided by this provider
+     * @return Service scope
+     */
+    virtual EServiceScope GetServiceScope() const = 0;
+    
+    /**
+     * Gets the health status for services provided by this provider
+     * @return Health information for the services
+     */
+    virtual FServiceHealth GetServiceHealth() const = 0;
+    
+    /**
+     * Attempts to recover services in a failed state
+     * @return True if recovery was successful
+     */
+    virtual bool RecoverServices() = 0;
+    
+    /**
+     * Gets the configuration for services provided by this provider
+     * @return Service configuration
+     */
+    virtual FServiceConfig GetServiceConfig() const = 0;
+    
+    /**
+     * Updates the configuration for services provided by this provider
+     * @param InConfig New service configuration
+     * @return True if configuration was successfully applied
+     */
+    virtual bool UpdateServiceConfig(const FServiceConfig& InConfig) = 0;
+    
+    /**
+     * Validates that all service dependencies are available
+     * @param InServiceLocator Service locator to validate dependencies against
+     * @param OutMissingDependencies Output array of missing required dependencies
+     * @return True if all required dependencies are available
+     */
+    virtual bool ValidateServiceDependencies(class IServiceLocator* InServiceLocator, TArray<FServiceDependency>& OutMissingDependencies) = 0;
+    
+    /**
+     * Gets services that depend on services provided by this provider
+     * @param InServiceLocator Service locator to check dependencies against
+     * @return Array of dependent service interface types
+     */
+    virtual TArray<TSubclassOf<UInterface>> GetDependentServices(class IServiceLocator* InServiceLocator) = 0;
 };

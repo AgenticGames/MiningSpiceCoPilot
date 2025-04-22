@@ -9,7 +9,7 @@
  * Task dependency relationship types
  */
 UENUM(BlueprintType)
-enum class EDependencyType : uint8
+enum class ETaskDependencyType : uint8
 {
     /** Required dependency - task must complete before dependent can start */
     Required UMETA(DisplayName = "Required"),
@@ -54,7 +54,7 @@ struct MININGSPICECOPILOT_API FTaskDependencyNode
     double ExecutionTimeMs;
     
     /** Dependencies of this task */
-    TArray<TPair<uint64, EDependencyType>> Dependencies;
+    TArray<TPair<uint64, ETaskDependencyType>> Dependencies;
     
     /** Constructor */
     FTaskDependencyNode()

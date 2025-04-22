@@ -237,8 +237,8 @@ void FTaskDependencyVisualizer::BuildDependencyGraph(const TArray<uint64>& TaskI
                 TaskDepth.Add(Dependency.TaskId, CurrentDepth + 1);
                 
                 // Add dependency type to the node
-                EDependencyType Type = Dependency.bRequired ? EDependencyType::Required : EDependencyType::Optional;
-                Node.Dependencies.Add(TPair<uint64, EDependencyType>(Dependency.TaskId, Type));
+                ETaskDependencyType Type = Dependency.bRequired ? ETaskDependencyType::Required : ETaskDependencyType::Optional;
+                Node.Dependencies.Add(TPair<uint64, ETaskDependencyType>(Dependency.TaskId, Type));
             }
         }
     }
@@ -299,13 +299,13 @@ FString FTaskDependencyVisualizer::GenerateDOTVisualization(const TArray<FTaskDe
     for (const TPair<uint64, uint64>& Edge : Edges)
     {
         // Find the dependency type
-        EDependencyType DependencyType = EDependencyType::Required;
+        ETaskDependencyType DependencyType = ETaskDependencyType::Required;
         
         for (const FTaskDependencyNode& Node : Nodes)
         {
             if (Node.TaskId == Edge.Value)
             {
-                for (const TPair<uint64, EDependencyType>& Dependency : Node.Dependencies)
+                for (const TPair<uint64, ETaskDependencyType>& Dependency : Node.Dependencies)
                 {
                     if (Dependency.Key == Edge.Key)
                     {
@@ -323,22 +323,22 @@ FString FTaskDependencyVisualizer::GenerateDOTVisualization(const TArray<FTaskDe
         
         switch (DependencyType)
         {
-            case EDependencyType::Required:
+            case ETaskDependencyType::Required:
                 Style = TEXT("solid");
                 Color = TEXT("black");
                 break;
             
-            case EDependencyType::Optional:
+            case ETaskDependencyType::Optional:
                 Style = TEXT("dashed");
                 Color = TEXT("gray");
                 break;
             
-            case EDependencyType::Parallel:
+            case ETaskDependencyType::Parallel:
                 Style = TEXT("dotted");
                 Color = TEXT("blue");
                 break;
             
-            case EDependencyType::Sequential:
+            case ETaskDependencyType::Sequential:
                 Style = TEXT("solid");
                 Color = TEXT("green");
                 break;
@@ -384,12 +384,12 @@ FString FTaskDependencyVisualizer::GenerateJSONVisualization(const TArray<FTaskD
         
         for (int32 j = 0; j < Node.Dependencies.Num(); ++j)
         {
-            const TPair<uint64, EDependencyType>& Dependency = Node.Dependencies[j];
+            const TPair<uint64, ETaskDependencyType>& Dependency = Node.Dependencies[j];
             
             Result += TEXT("        {\n");
             Result += FString::Printf(TEXT("          \"id\": %llu,\n"), Dependency.Key);
             Result += FString::Printf(TEXT("          \"type\": \"%s\"\n"),
-                *StaticEnum<EDependencyType>()->GetNameStringByValue(static_cast<int64>(Dependency.Value)));
+                *StaticEnum<ETaskDependencyType>()->GetNameStringByValue(static_cast<int64>(Dependency.Value)));
             
             if (j < Node.Dependencies.Num() - 1)
             {

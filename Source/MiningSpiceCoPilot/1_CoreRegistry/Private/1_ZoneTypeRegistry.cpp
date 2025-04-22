@@ -11,9 +11,6 @@
 #include "../../3_ThreadingTaskSystem/Public/AsyncTaskManager.h"
 #include "Logging/LogMining.h"
 
-// Define ZoneTypeRegistrationOperationType
-static const FString ZoneTypeRegistrationOperationType = TEXT("ZoneTypeRegistration");
-
 // Initialize static members
 FZoneTypeRegistry* FZoneTypeRegistry::Singleton = nullptr;
 FThreadSafeBool FZoneTypeRegistry::bSingletonInitialized(false);

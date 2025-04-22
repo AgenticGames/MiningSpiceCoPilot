@@ -10,11 +10,11 @@
 #include "../../3_ThreadingTaskSystem/Public/AsyncTaskManager.h"
 
 // Define operation type strings
-static const FString ZoneTypeRegistrationOperationType = TEXT("ZoneTypeRegistration");
-static const FString MaterialTypeRegistrationOperationType = TEXT("MaterialTypeRegistration");
-static const FString SDFFieldTypeRegistrationOperationType = TEXT("SDFFieldTypeRegistration");
-static const FString SDFOperationsRegistrationOperationType = TEXT("SDFOperationsRegistration");
-static const FString SVONodeTypeRegistrationOperationType = TEXT("SVONodeTypeRegistration");
+const FString ZoneTypeRegistrationOperationType = TEXT("ZoneTypeRegistration");
+const FString MaterialTypeRegistrationOperationType = TEXT("MaterialTypeRegistration");
+const FString SDFFieldTypeRegistrationOperationType = TEXT("SDFFieldTypeRegistration");
+const FString SDFOperationsRegistrationOperationType = TEXT("SDFOperationsRegistration");
+const FString SVONodeTypeRegistrationOperationType = TEXT("SVONodeTypeRegistration");
 
 // ====================================================================================================
 // FTypeRegistrationOperation Implementation

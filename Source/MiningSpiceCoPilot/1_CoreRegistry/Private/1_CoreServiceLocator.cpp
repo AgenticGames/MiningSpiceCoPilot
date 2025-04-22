@@ -689,3 +689,368 @@ bool FCoreServiceLocator::RegisterFastPath(const UClass* InInterfaceType, void* 
     
     return true;
 }
+
+// Implementation for RegisterServiceWithVersion
+bool FCoreServiceLocator::RegisterServiceWithVersion(void* InService, const UClass* InInterfaceType, const FServiceVersion& InVersion, int32 InZoneID, int32 InRegionID)
+{
+    if (!IsInitialized() || !InService)
+    {
+        return false;
+    }
+    
+    // Get service name from type or generate a unique name
+    FName ServiceName = InInterfaceType ? InInterfaceType->GetFName() : FName(*FGuid::NewGuid().ToString());
+    
+    // Register the service using standard method
+    bool bSuccess = RegisterService(InService, InInterfaceType, InZoneID, InRegionID);
+    
+    if (bSuccess)
+    {
+        // Store the version information
+        FScopedWriteLock Lock(ServiceMapRWLock);
+        ServiceVersionsInfo.Add(ServiceName, InVersion);
+        
+        // Set scope information
+        if (InZoneID != INDEX_NONE && InRegionID != INDEX_NONE)
+        {
+            ServiceScopes.Add(ServiceName, EServiceScope::Zone);
+        }
+        else if (InRegionID != INDEX_NONE)
+        {
+            ServiceScopes.Add(ServiceName, EServiceScope::Region);
+        }
+        else
+        {
+            ServiceScopes.Add(ServiceName, EServiceScope::Global);
+        }
+        
+        // Initialize health status
+        FString ContextKey = GetServiceContextKey(InZoneID, InRegionID);
+        if (!ServiceHealthStatus.Contains(ServiceName))
+        {
+            ServiceHealthStatus.Add(ServiceName, TMap<FString, EServiceHealthStatus>());
+        }
+        ServiceHealthStatus[ServiceName].Add(ContextKey, EServiceHealthStatus::Healthy);
+    }
+    
+    return bSuccess;
+}
+
+// Implementation for ResolveServiceWithVersion
+void* FCoreServiceLocator::ResolveServiceWithVersion(const UClass* InInterfaceType, FServiceVersion& OutVersion, const FServiceVersion* InMinVersion, int32 InZoneID, int32 InRegionID)
+{
+    if (!IsInitialized() || !InInterfaceType)
+    {
+        return nullptr;
+    }
+    
+    // Get service name from type
+    FName ServiceName = InInterfaceType->GetFName();
+    
+    // First check if the service exists with the required version
+    FScopedReadLock Lock(ServiceMapRWLock);
+    
+    if (!ServiceVersionsInfo.Contains(ServiceName))
+    {
+        // No version information available
+        return nullptr;
+    }
+    
+    const FServiceVersion& Version = ServiceVersionsInfo[ServiceName];
+    OutVersion = Version;
+    
+    // Check if version meets minimum requirements
+    if (InMinVersion && !Version.IsCompatibleWith(*InMinVersion))
+    {
+        // Version incompatible
+        return nullptr;
+    }
+    
+    // Version is compatible, resolve the service
+    return ResolveService(InInterfaceType, InZoneID, InRegionID);
+}
+
+// Implementation for DeclareDependency
+bool FCoreServiceLocator::DeclareDependency(const UClass* InDependentType, const UClass* InDependencyType, EServiceDependencyType InDependencyKind)
+{
+    if (!IsInitialized() || !InDependentType || !InDependencyType)
+    {
+        return false;
+    }
+    
+    FScopedWriteLock Lock(ServiceMapRWLock);
+    
+    // Get service names
+    FName DependentName = InDependentType->GetFName();
+    FName DependencyName = InDependencyType->GetFName();
+    
+    // Add the dependency relationship
+    if (!ServiceDependencies.Contains(DependentName))
+    {
+        ServiceDependencies.Add(DependentName, TArray<TPair<FName, EServiceDependencyType>>());
+    }
+    
+    // Check if dependency already exists
+    bool bDependencyExists = false;
+    for (const auto& Pair : ServiceDependencies[DependentName])
+    {
+        if (Pair.Key == DependencyName)
+        {
+            bDependencyExists = true;
+            break;
+        }
+    }
+    
+    if (!bDependencyExists)
+    {
+        // Add the new dependency
+        ServiceDependencies[DependentName].Add(TPair<FName, EServiceDependencyType>(DependencyName, InDependencyKind));
+    }
+    
+    return true;
+}
+
+// Implementation for ValidateDependencies
+bool FCoreServiceLocator::ValidateDependencies(TArray<TPair<UClass*, UClass*>>& OutMissingDependencies)
+{
+    if (!IsInitialized())
+    {
+        return false;
+    }
+    
+    bool bAllDependenciesSatisfied = true;
+    FScopedReadLock Lock(ServiceMapRWLock);
+    
+    // Iterate through all services with dependencies
+    for (const auto& ServicePair : ServiceDependencies)
+    {
+        FName DependentName = ServicePair.Key;
+        
+        // Check if the dependent service exists
+        if (!ServiceMap.Contains(DependentName))
+        {
+            continue; // Skip, as the dependent service doesn't exist
+        }
+        
+        // Check each dependency
+        for (const auto& DependencyPair : ServicePair.Value)
+        {
+            FName DependencyName = DependencyPair.Key;
+            EServiceDependencyType DependencyKind = DependencyPair.Value;
+            
+            // Skip optional dependencies
+            if (DependencyKind != EServiceDependencyType::Required)
+            {
+                continue;
+            }
+            
+            // Check if the dependency exists
+            if (!ServiceMap.Contains(DependencyName) || ServiceMap[DependencyName].Num() == 0)
+            {
+                // Missing required dependency
+                bAllDependenciesSatisfied = false;
+                
+                // Find UClass objects for the dependency pair
+                UClass* DependentClass = FindObject<UClass>(nullptr, *DependentName.ToString());
+                UClass* DependencyClass = FindObject<UClass>(nullptr, *DependencyName.ToString());
+                
+                if (DependentClass && DependencyClass)
+                {
+                    OutMissingDependencies.Add(TPair<UClass*, UClass*>(DependentClass, DependencyClass));
+                }
+            }
+        }
+    }
+    
+    return bAllDependenciesSatisfied;
+}
+
+// Implementation for GetServiceHealth
+EServiceHealthStatus FCoreServiceLocator::GetServiceHealth(const UClass* InInterfaceType, int32 InZoneID, int32 InRegionID)
+{
+    if (!IsInitialized() || !InInterfaceType)
+    {
+        return EServiceHealthStatus::Unknown;
+    }
+    
+    FScopedReadLock Lock(ServiceMapRWLock);
+    
+    // Get service name from type
+    FName ServiceName = InInterfaceType->GetFName();
+    
+    // Check if health status is tracked for this service
+    if (!ServiceHealthStatus.Contains(ServiceName))
+    {
+        return EServiceHealthStatus::Unknown;
+    }
+    
+    // Get the context key
+    FString ContextKey = GetServiceContextKey(InZoneID, InRegionID);
+    
+    // Check if health status is tracked for this context
+    if (!ServiceHealthStatus[ServiceName].Contains(ContextKey))
+    {
+        // Try global context
+        FString GlobalContextKey = GetServiceContextKey(INDEX_NONE, INDEX_NONE);
+        if (ServiceHealthStatus[ServiceName].Contains(GlobalContextKey))
+        {
+            return ServiceHealthStatus[ServiceName][GlobalContextKey];
+        }
+        return EServiceHealthStatus::Unknown;
+    }
+    
+    return ServiceHealthStatus[ServiceName][ContextKey];
+}
+
+// Implementation for RecoverService
+bool FCoreServiceLocator::RecoverService(const UClass* InInterfaceType, int32 InZoneID, int32 InRegionID)
+{
+    if (!IsInitialized() || !InInterfaceType)
+    {
+        return false;
+    }
+    
+    FScopedWriteLock Lock(ServiceMapRWLock);
+    
+    // Get service name from type
+    FName ServiceName = InInterfaceType->GetFName();
+    
+    // Check if service exists
+    if (!ServiceMap.Contains(ServiceName))
+    {
+        return false;
+    }
+    
+    // Get the context key
+    FString ContextKey = GetServiceContextKey(InZoneID, InRegionID);
+    
+    // Check if service exists in this context
+    if (!ServiceMap[ServiceName].Contains(ContextKey) || ServiceMap[ServiceName][ContextKey].Num() == 0)
+    {
+        return false;
+    }
+    
+    // Get the service instance
+    void* ServiceInstance = ServiceMap[ServiceName][ContextKey][0].ServiceInstance;
+    if (!ServiceInstance)
+    {
+        return false;
+    }
+    
+    // Update health status
+    if (!ServiceHealthStatus.Contains(ServiceName))
+    {
+        ServiceHealthStatus.Add(ServiceName, TMap<FString, EServiceHealthStatus>());
+    }
+    ServiceHealthStatus[ServiceName].Add(ContextKey, EServiceHealthStatus::Healthy);
+    
+    // For now, just mark the service as healthy - actual recovery would depend on the specific service
+    return true;
+}
+
+// Implementation for GetServiceScope
+EServiceScope FCoreServiceLocator::GetServiceScope(const UClass* InInterfaceType, int32 InZoneID, int32 InRegionID)
+{
+    if (!IsInitialized() || !InInterfaceType)
+    {
+        return EServiceScope::Global; // Default to global scope
+    }
+    
+    FScopedReadLock Lock(ServiceMapRWLock);
+    
+    // Get service name from type
+    FName ServiceName = InInterfaceType->GetFName();
+    
+    // Check if scope is explicitly defined
+    if (ServiceScopes.Contains(ServiceName))
+    {
+        return ServiceScopes[ServiceName];
+    }
+    
+    // Infer scope from context IDs
+    if (InZoneID != INDEX_NONE && InRegionID != INDEX_NONE)
+    {
+        return EServiceScope::Zone;
+    }
+    else if (InRegionID != INDEX_NONE)
+    {
+        return EServiceScope::Region;
+    }
+    
+    return EServiceScope::Global;
+}
+
+// Implementation for GetDependentServices
+TArray<UClass*> FCoreServiceLocator::GetDependentServices(const UClass* InInterfaceType)
+{
+    TArray<UClass*> DependentServices;
+    
+    if (!IsInitialized() || !InInterfaceType)
+    {
+        return DependentServices;
+    }
+    
+    FScopedReadLock Lock(ServiceMapRWLock);
+    
+    // Get service name from type
+    FName ServiceName = InInterfaceType->GetFName();
+    
+    // Find all services that depend on this one
+    for (const auto& ServicePair : ServiceDependencies)
+    {
+        FName DependentName = ServicePair.Key;
+        
+        // Check if this service depends on the specified service
+        for (const auto& DependencyPair : ServicePair.Value)
+        {
+            if (DependencyPair.Key == ServiceName)
+            {
+                // This service depends on the specified service
+                UClass* DependentClass = FindObject<UClass>(nullptr, *DependentName.ToString());
+                if (DependentClass)
+                {
+                    DependentServices.Add(DependentClass);
+                }
+                break;
+            }
+        }
+    }
+    
+    return DependentServices;
+}
+
+// Implementation for GetServiceDependencies
+TArray<UClass*> FCoreServiceLocator::GetServiceDependencies(const UClass* InInterfaceType)
+{
+    TArray<UClass*> Dependencies;
+    
+    if (!IsInitialized() || !InInterfaceType)
+    {
+        return Dependencies;
+    }
+    
+    FScopedReadLock Lock(ServiceMapRWLock);
+    
+    // Get service name from type
+    FName ServiceName = InInterfaceType->GetFName();
+    
+    // Check if this service has any dependencies
+    if (!ServiceDependencies.Contains(ServiceName))
+    {
+        return Dependencies;
+    }
+    
+    // Convert dependency names to UClass objects
+    for (const auto& DependencyPair : ServiceDependencies[ServiceName])
+    {
+        FName DependencyName = DependencyPair.Key;
+        UClass* DependencyClass = FindObject<UClass>(nullptr, *DependencyName.ToString());
+        
+        if (DependencyClass)
+        {
+            Dependencies.Add(DependencyClass);
+        }
+    }
+    
+    return Dependencies;
+}

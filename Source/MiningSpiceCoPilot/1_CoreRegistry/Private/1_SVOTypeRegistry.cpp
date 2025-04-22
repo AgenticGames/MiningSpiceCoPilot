@@ -13,8 +13,7 @@
 #include "HAL/ThreadSafeCounter.h" // For atomic operations
 #include "../../3_ThreadingTaskSystem/Public/TaskHelpers.h"
 #include "../../3_ThreadingTaskSystem/Public/ParallelExecutor.h"
-
-DEFINE_LOG_CATEGORY_STATIC(LogSVOTypeRegistry, Log, All);
+#include "Logging/LogMining.h"
 
 // Initialize static members
 FSVOTypeRegistry* FSVOTypeRegistry::Singleton = nullptr;
@@ -24,13 +23,13 @@ FSVOTypeRegistry::FSVOTypeRegistry()
     : NextTypeId(1) // Reserve 0 as invalid/unregistered type ID
     , bIsInitialized(false)
     , SchemaVersion(1) // Initial schema version
-    , PoolContentionCount(0)
     , bSIMDCapabilitiesDetected(false)
-    , OptimisticLockFailures(0)
     , bSupportsSSE2(false)
     , bSupportsAVX(false)
     , bSupportsAVX2(false)
     , bSupportsAVX512(false)
+    , PoolContentionCount(0)
+    , OptimisticLockFailures(0)
 {
     // Constructor is intentionally minimal
 }

@@ -51,6 +51,13 @@ struct FTypeRegistrationProgress
     }
 };
 
+// Common string constants for operation types
+extern const FString ZoneTypeRegistrationOperationType;
+extern const FString MaterialTypeRegistrationOperationType;
+extern const FString SDFFieldTypeRegistrationOperationType;
+extern const FString SDFOperationsRegistrationOperationType;
+extern const FString SVONodeTypeRegistrationOperationType;
+
 /**
  * Async operation implementation for type registration
  * Handles loading and registering types from assets or batch data

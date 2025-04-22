@@ -13,6 +13,7 @@
 #include "HAL/CriticalSection.h"
 #include "HAL/ThreadSafeCounter.h" // For atomic operations
 #include "ThreadSafety.h"
+#include "CommonServiceTypes.h"
 
 /**
  * Structure for cached service entry with version information
@@ -59,6 +60,17 @@ public:
     virtual void* ResolveService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override;
     virtual bool UnregisterService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override;
     virtual bool HasService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) const override;
+    
+    // New methods from enhanced interface
+    virtual bool RegisterServiceWithVersion(void* InService, const UClass* InInterfaceType, const FServiceVersion& InVersion, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override;
+    virtual void* ResolveServiceWithVersion(const UClass* InInterfaceType, FServiceVersion& OutVersion, const FServiceVersion* InMinVersion = nullptr, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override;
+    virtual bool DeclareDependency(const UClass* InDependentType, const UClass* InDependencyType, EServiceDependencyType InDependencyKind = EServiceDependencyType::Required) override;
+    virtual bool ValidateDependencies(TArray<TPair<UClass*, UClass*>>& OutMissingDependencies) override;
+    virtual EServiceHealthStatus GetServiceHealth(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override;
+    virtual bool RecoverService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override;
+    virtual EServiceScope GetServiceScope(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override;
+    virtual TArray<UClass*> GetDependentServices(const UClass* InInterfaceType) override;
+    virtual TArray<UClass*> GetServiceDependencies(const UClass* InInterfaceType) override;
     //~ End IServiceLocator Interface
     
     /**
@@ -411,4 +423,16 @@ private:
     {
         FThreadLocalServiceCache::Get().Cache.Empty();
     }
+    
+    /** Map of service versions */
+    TMap<FName, FServiceVersion> ServiceVersionsInfo;
+    
+    /** Map of service dependencies */
+    TMap<FName, TArray<TPair<FName, EServiceDependencyType>>> ServiceDependencies;
+    
+    /** Map of service health status */
+    TMap<FName, TMap<FString, EServiceHealthStatus>> ServiceHealthStatus;
+    
+    /** Map of service scopes */
+    TMap<FName, EServiceScope> ServiceScopes;
 };
