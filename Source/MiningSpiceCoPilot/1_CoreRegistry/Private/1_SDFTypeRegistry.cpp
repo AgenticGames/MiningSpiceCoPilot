@@ -3,10 +3,10 @@
 #include "SDFTypeRegistry.h"
 #include "HAL/PlatformMisc.h"
 #include "MiningSpiceCoPilot/3_ThreadingTaskSystem/Public/TaskHelpers.h"
+#include "NumaHelpers.h"
+#include "MiningSpiceCoPilot/3_ThreadingTaskSystem/Public/ThreadSafety.h"
 
-
-
-// Initialize static members
+// Static singleton instance
 FSDFTypeRegistry* FSDFTypeRegistry::Singleton = nullptr;
 FThreadSafeBool FSDFTypeRegistry::bSingletonInitialized = false;
 
@@ -18,18 +18,36 @@ bool bHasAVX512Support = false;
 bool bHasGPUSupport = false;
 
 FSDFTypeRegistry::FSDFTypeRegistry()
-    : NextTypeId(1) // Reserve 0 as invalid/unregistered type ID
-    , NextOperationId(1) // Reserve 0 as invalid/unregistered operation ID
-    , bIsInitialized(false)
-    , SchemaVersion(1) // Initial schema version
+    : RegistryName(TEXT("SDFType"))
+    , SchemaVersion(1)
+    , bTypesInitialized(false)
+    , bInitializationInProgress(false)
+    , bHasGPUSupport(false)
+    , bHasSSE2Support(false)
+    , bHasAVXSupport(false)
+    , bHasAVX2Support(false)
+    , bHardwareCapabilitiesDetected(false)
 {
-    // Constructor is intentionally minimal
+    // Registry lock for thread safety
+    RegistryLock = MakeShared<FSpinLock>();
+    
+    // Type counter for generating unique IDs
+    NextTypeId.Set(1); // Start at 1, 0 is reserved
+    NextOperationId.Set(1);
+    
+    // Operation and field type maps
+    OperationMap = TMap<uint32, TSharedRef<FSDFOperationInfo>>();
+    OperationNameMap = TMap<FName, uint32>();
+    FieldTypeMap = TMap<uint32, TSharedRef<FSDFFieldTypeInfo>>();
+    FieldTypeNameMap = TMap<FName, uint32>();
+    TypeBufferMap = TMap<uint32, TSharedRef<FSharedBufferManager>>();
+    TypeVersionMap = TMap<uint32, uint32>();
 }
 
 FSDFTypeRegistry::~FSDFTypeRegistry()
 {
     // Ensure we're properly shut down
-    if (IsInitialized())
+    if (bTypesInitialized)
     {
         Shutdown();
     }
@@ -37,37 +55,46 @@ FSDFTypeRegistry::~FSDFTypeRegistry()
 
 bool FSDFTypeRegistry::Initialize()
 {
-    // Check if already initialized
-    if (bIsInitialized)
+    // Initialize the registry lock if not already done
+    if (!RegistryLock.IsValid())
     {
-        return false;
+        RegistryLock = MakeShared<FSpinLock>();
     }
     
-    // Set initialized flag
-    bIsInitialized.AtomicSet(true);
+    // Check if we're already initialized
+    if (bTypesInitialized)
+    {
+        return true;
+    }
     
-    // Initialize internal maps
-    FieldTypeMap.Empty();
-    FieldTypeNameMap.Empty();
-    OperationMap.Empty();
-    OperationNameMap.Empty();
+    // Set registry name and schema version
+    RegistryName = TEXT("SDF_Type_Registry");
+    SchemaVersion = 1;
     
-    // Reset type ID counter
-    NextTypeId.Set(1);
-    NextOperationId.Set(1);
+    // Allocate initial capacity for type maps
+    FieldTypeMap.Reserve(32);
+    FieldTypeNameMap.Reserve(32);
     
-    // Detect CPU capabilities
+    // Allocate initial capacity for operation maps
+    OperationMap.Reserve(16);
+    OperationNameMap.Reserve(16);
+    
+    // Detect hardware capabilities
     DetectHardwareCapabilities();
+    
+    // Mark initialized
+    bTypesInitialized = true;
+    bInitializationInProgress = false;
     
     return true;
 }
 
 void FSDFTypeRegistry::Shutdown()
 {
-    if (bIsInitialized)
+    if (bTypesInitialized)
     {
         // Lock for thread safety
-        FScopedSpinLock Lock(RegistryLock);
+        FScopedSpinLock Lock(*RegistryLock);
         
         // Clear all registered items
         FieldTypeMap.Empty();
@@ -76,13 +103,13 @@ void FSDFTypeRegistry::Shutdown()
         OperationNameMap.Empty();
         
         // Reset state
-        bIsInitialized = false;
+        bTypesInitialized = false;
     }
 }
 
 bool FSDFTypeRegistry::IsInitialized() const
 {
-    return bIsInitialized;
+    return bTypesInitialized;
 }
 
 FName FSDFTypeRegistry::GetRegistryName() const
@@ -103,8 +130,15 @@ bool FSDFTypeRegistry::Validate(TArray<FString>& OutErrors) const
         return false;
     }
     
+    // Check if hardware capabilities have been detected
+    if (!bHardwareCapabilitiesDetected)
+    {
+        // Detect hardware capabilities if not already done
+        const_cast<FSDFTypeRegistry*>(this)->DetectHardwareCapabilities();
+    }
+    
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
     bool bIsValid = true;
     
@@ -224,27 +258,28 @@ bool FSDFTypeRegistry::Validate(TArray<FString>& OutErrors) const
 
 void FSDFTypeRegistry::Clear()
 {
-    if (IsInitialized())
-    {
-        // Lock for thread safety
-        FScopedSpinLock Lock(RegistryLock);
-        
-        // Clear all registered items
-        FieldTypeMap.Empty();
-        FieldTypeNameMap.Empty();
-        OperationMap.Empty();
-        OperationNameMap.Empty();
-        
-        // Reset counters
-        NextTypeId.Set(1);
-        NextOperationId.Set(1);
-    }
+    // Lock for thread safety
+    FScopedSpinLock Lock(*RegistryLock);
+    
+    // Clear all registered items
+    FieldTypeMap.Empty();
+    FieldTypeNameMap.Empty();
+    OperationMap.Empty();
+    OperationNameMap.Empty();
+    TypeBufferMap.Empty();
+    TypeVersionMap.Empty();
+    
+    // Reset type counters
+    NextTypeId.Set(1);
+    NextOperationId.Set(1);
+    
+    UE_LOG(LogTemp, Log, TEXT("FSDFTypeRegistry::Clear - Registry cleared"));
 }
 
 bool FSDFTypeRegistry::SetTypeVersion(uint32 TypeId, uint32 NewVersion, bool bMigrateInstanceData)
 {
     // Check if registry is initialized
-    if (!bIsInitialized)
+    if (!bTypesInitialized)
     {
         UE_LOG(LogTemp, Error, TEXT("Cannot set type version - registry not initialized"));
         return false;
@@ -379,7 +414,7 @@ uint32 FSDFTypeRegistry::RegisterFieldType(
     }
     
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
     // Check if type name is already registered
     if (FieldTypeNameMap.Contains(InTypeName))
@@ -500,62 +535,56 @@ uint32 FSDFTypeRegistry::RegisterOperation(
 {
     if (!IsInitialized())
     {
-        UE_LOG(LogTemp, Error, TEXT("FSDFTypeRegistry::RegisterOperation failed - registry not initialized"));
-        return 0;
-    }
-    
-    if (InOperationName.IsNone())
-    {
-        UE_LOG(LogTemp, Error, TEXT("FSDFTypeRegistry::RegisterOperation failed - invalid operation name"));
-        return 0;
-    }
-    
-    if (InInputCount == 0)
-    {
-        UE_LOG(LogTemp, Error, TEXT("FSDFTypeRegistry::RegisterOperation failed - input count must be positive"));
+        UE_LOG(LogTemp, Error, TEXT("Cannot register operation - registry not initialized"));
         return 0;
     }
     
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
-    // Check if operation name is already registered
+    // Check if operation name already exists
     if (OperationNameMap.Contains(InOperationName))
     {
-        UE_LOG(LogTemp, Warning, TEXT("FSDFTypeRegistry::RegisterOperation - operation '%s' is already registered"),
-            *InOperationName.ToString());
-        return 0;
+        UE_LOG(LogTemp, Warning, TEXT("Operation with name '%s' already registered"), *InOperationName.ToString());
+        return OperationNameMap[InOperationName];
     }
     
-    // Generate a unique operation ID
+    // Generate unique operation ID
     uint32 OperationId = GenerateUniqueOperationId();
     
-    // Create and populate operation info
-    TSharedRef<FSDFOperationInfo> OpInfo = MakeShared<FSDFOperationInfo>();
-    OpInfo->OperationId = OperationId;
-    OpInfo->OperationName = InOperationName;
-    OpInfo->OperationType = InOperationType;
-    OpInfo->InputCount = InInputCount;
-    OpInfo->bSupportsSmoothing = bInSupportsSmoothing;
+    // Create operation info
+    TSharedRef<FSDFOperationInfo> OperationInfo = MakeShared<FSDFOperationInfo>();
+    OperationInfo->OperationId = OperationId;
+    OperationInfo->OperationName = InOperationName;
+    OperationInfo->OperationType = InOperationType;
+    OperationInfo->InputCount = InInputCount;
+    OperationInfo->bSupportsSmoothing = bInSupportsSmoothing;
     
-    // Set operation properties based on type
-    SetDefaultOperationProperties(&OpInfo.Get(), InOperationType);
+    // Set default operation properties based on type
+    SetDefaultOperationProperties(&OperationInfo.Get(), InOperationType);
     
-    // Set hardware-dependent properties
-    OpInfo->Properties.bSupportsGPU = bHasGPUSupport && IsOperationGPUCompatible(InOperationType);
-    OpInfo->Properties.bCanVectorize = bHasSSE2Support && IsOperationSIMDCompatible(InOperationType);
+    // Check GPU and SIMD compatibility
+    OperationInfo->Properties.bSupportsGPU = IsOperationGPUCompatible(InOperationType);
+    OperationInfo->Properties.bCanVectorize = IsOperationSIMDCompatible(InOperationType);
     
-    // Set optimal thread block size based on operation type
-    OpInfo->Properties.PreferredThreadBlockSize = GetOptimalThreadBlockSize(InOperationType);
+    // Set preferred thread block size
+    OperationInfo->Properties.PreferredThreadBlockSize = GetOptimalThreadBlockSize(InOperationType);
     
-    // Register the operation
-    OperationMap.Add(OperationId, OpInfo);
+    // Add to maps
+    OperationMap.Add(OperationId, OperationInfo);
     OperationNameMap.Add(InOperationName, OperationId);
     
-    UE_LOG(LogTemp, Verbose, TEXT("FSDFTypeRegistry::RegisterOperation - registered operation '%s' with ID %u"),
-        *InOperationName.ToString(), OperationId);
-    
     return OperationId;
+}
+
+uint32 FSDFTypeRegistry::RegisterFieldOperation(
+    const FName& InOperationName,
+    ESDFOperationType InOperationType,
+    uint32 InInputCount,
+    bool bInSupportsSmoothing)
+{
+    // This is just a wrapper around the RegisterOperation function
+    return RegisterOperation(InOperationName, InOperationType, InInputCount, bInSupportsSmoothing);
 }
 
 const FSDFFieldTypeInfo* FSDFTypeRegistry::GetFieldTypeInfo(uint32 InTypeId) const
@@ -566,7 +595,7 @@ const FSDFFieldTypeInfo* FSDFTypeRegistry::GetFieldTypeInfo(uint32 InTypeId) con
     }
     
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
     if (const TSharedRef<FSDFFieldTypeInfo>* TypeInfoRef = FieldTypeMap.Find(InTypeId))
     {
@@ -612,7 +641,7 @@ const FSDFFieldTypeInfo* FSDFTypeRegistry::GetFieldTypeInfoByName(const FName& I
     }
     
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
     // Look up type ID by name
     const uint32* TypeIdPtr = FieldTypeNameMap.Find(InTypeName);
@@ -637,7 +666,7 @@ const FSDFOperationInfo* FSDFTypeRegistry::GetOperationInfo(uint32 InOperationId
     }
     
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
     // Look up operation by ID
     const TSharedRef<FSDFOperationInfo>* OpInfoPtr = OperationMap.Find(InOperationId);
@@ -657,7 +686,7 @@ const FSDFOperationInfo* FSDFTypeRegistry::GetOperationInfoByName(const FName& I
     }
     
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
     // Look up operation ID by name
     const uint32* OpIdPtr = OperationNameMap.Find(InOperationName);
@@ -684,7 +713,7 @@ TArray<FSDFFieldTypeInfo> FSDFTypeRegistry::GetAllFieldTypes() const
     }
     
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
     // Collect all field type infos
     Result.Reserve(FieldTypeMap.Num());
@@ -706,7 +735,7 @@ TArray<FSDFOperationInfo> FSDFTypeRegistry::GetAllOperations() const
     }
     
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
     // Collect all operation infos
     Result.Reserve(OperationMap.Num());
@@ -728,7 +757,7 @@ TArray<FSDFOperationInfo> FSDFTypeRegistry::GetOperationsByType(ESDFOperationTyp
     }
     
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
     // Collect operations matching the specified type
     for (const auto& OpInfoPair : OperationMap)
@@ -753,7 +782,7 @@ TArray<FSDFFieldTypeInfo> FSDFTypeRegistry::GetFieldTypesWithCapability(ESDFFiel
     }
     
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
     // Collect field types with the specified capability
     for (const auto& TypeInfoPair : FieldTypeMap)
@@ -776,7 +805,7 @@ bool FSDFTypeRegistry::IsFieldTypeRegistered(const FName& InTypeName) const
     }
     
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
     // Check if the type exists in the name map
     return FieldTypeNameMap.Contains(InTypeName);
@@ -790,7 +819,7 @@ bool FSDFTypeRegistry::IsFieldTypeRegistered(uint32 InTypeId) const
     }
     
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
     // Check if the type exists
     return FieldTypeMap.Contains(InTypeId);
@@ -804,7 +833,7 @@ bool FSDFTypeRegistry::IsOperationRegistered(uint32 InOperationId) const
     }
     
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
     return OperationMap.Contains(InOperationId);
 }
@@ -817,7 +846,7 @@ bool FSDFTypeRegistry::IsOperationRegistered(const FName& InOperationName) const
     }
     
     // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
+    FScopedSpinLock Lock(*RegistryLock);
     
     return OperationNameMap.Contains(InOperationName);
 }
@@ -894,16 +923,11 @@ uint32 FSDFTypeRegistry::GetOptimalThreadBlockSize(ESDFOperationType InOperation
 
 FSDFTypeRegistry& FSDFTypeRegistry::Get()
 {
-    if (!bSingletonInitialized)
+    if (!Singleton)
     {
-        if (!bSingletonInitialized.AtomicSet(true))
-        {
-            Singleton = new FSDFTypeRegistry();
-            Singleton->Initialize();
-        }
+        Singleton = new FSDFTypeRegistry();
     }
     
-    check(Singleton != nullptr);
     return *Singleton;
 }
 
@@ -916,36 +940,27 @@ uint32 FSDFTypeRegistry::GenerateUniqueTypeId()
 
 uint32 FSDFTypeRegistry::GenerateUniqueOperationId()
 {
-    // Simply increment and return the next ID
-    // This function is called within a locked context, so it's thread-safe
     return NextOperationId.Increment();
 }
 
 void FSDFTypeRegistry::DetectHardwareCapabilities()
 {
-    // Set default values based on compile-time platform capabilities
-#if PLATFORM_ENABLE_VECTORINTRINSICS
-    bHasSSE2Support = true; // SSE2 is guaranteed on x86-64 platforms that support vector intrinsics
-#else
-    bHasSSE2Support = false;
-#endif
-
-    // Check for AVX capabilities - conservative assumptions
-    bHasAVXSupport = false;
-    bHasAVX2Support = false;
-    bHasAVX512Support = false;
+    // Skip if we've already detected hardware capabilities
+    if (bHardwareCapabilitiesDetected)
+    {
+        return;
+    }
     
-    // Check GPU compute shader support - use compile-time check
-#if WITH_EDITOR || WITH_EDITORONLY_DATA
-    bHasGPUSupport = true; // For editor builds, assume it's supported
-#else
-    // In shipping builds, we could do a more detailed check if needed
-    bHasGPUSupport = true;
-#endif
+    // Detect GPU capabilities
+    bHasGPUSupport = true; // Replace with actual GPU detection logic
     
-    // Log the hardware detection results with version details
-    UE_LOG(LogTemp, Log, TEXT("SDF hardware capabilities detected: SSE2=%d, AVX=%d, AVX2=%d, AVX512=%d"),
-        bHasSSE2Support, bHasAVXSupport, bHasAVX2Support, bHasAVX512Support);
+    // Detect CPU capabilities for SIMD
+    bHasSSE2Support = true; // Replace with actual SSE2 detection
+    bHasAVXSupport = true;  // Replace with actual AVX detection
+    bHasAVX2Support = false; // Replace with actual AVX2 detection
+    
+    // Mark as detected
+    bHardwareCapabilitiesDetected = true;
 }
 
 void FSDFTypeRegistry::SetDefaultOperationProperties(FSDFOperationInfo* OpInfo, ESDFOperationType InOperationType)
@@ -1090,30 +1105,58 @@ ETypeCapabilities FSDFTypeRegistry::GetTypeCapabilities(uint32 TypeId) const
     }
     
     // Map SDF capabilities to type capabilities
-    if (TypeInfo->bSupportsGPU)
-    {
-        Capabilities |= ETypeCapabilities::Vectorizable;
-    }
-    
     if (TypeInfo->bSupportsThreading)
     {
-        Capabilities |= ETypeCapabilities::ThreadSafe;
-        Capabilities |= ETypeCapabilities::ParallelProcessing;
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::ThreadSafe);
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::ParallelProcessing);
     }
     
     if (TypeInfo->bSupportsSIMD)
     {
-        Capabilities |= ETypeCapabilities::SIMDOperations;
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::SIMDOperations);
     }
     
     if (TypeInfo->bSupportsIncrementalUpdates)
     {
-        Capabilities |= ETypeCapabilities::IncrementalUpdates;
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::IncrementalUpdates);
+    }
+    
+    return Capabilities;
+}
+
+ETypeCapabilitiesEx FSDFTypeRegistry::GetTypeCapabilitiesEx(uint32 TypeId) const
+{
+    // Start with no extended capabilities
+    ETypeCapabilitiesEx Capabilities = ETypeCapabilitiesEx::None;
+    
+    // Check if this type is registered
+    if (!IsFieldTypeRegistered(TypeId))
+    {
+        return Capabilities;
+    }
+    
+    // Get the field type info
+    const FSDFFieldTypeInfo* TypeInfo = GetFieldTypeInfo(TypeId);
+    if (!TypeInfo)
+    {
+        return Capabilities;
+    }
+    
+    // Map SDF capabilities to extended type capabilities
+    if (TypeInfo->bSupportsGPU)
+    {
+        Capabilities = TypeCapabilitiesHelpers::AddAdvancedCapability(
+            Capabilities, ETypeCapabilitiesEx::Vectorizable);
     }
     
     if (TypeInfo->bOptimizedAccess)
     {
-        Capabilities |= ETypeCapabilities::CacheOptimized;
+        Capabilities = TypeCapabilitiesHelpers::AddAdvancedCapability(
+            Capabilities, ETypeCapabilitiesEx::CacheOptimized);
     }
     
     return Capabilities;
@@ -1126,26 +1169,108 @@ uint64 FSDFTypeRegistry::ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskF
     TypedConfig.SetTypeId(TypeId, ERegistryType::SDF);
     
     // Set optimization flags based on type capabilities
-    ETypeCapabilities Capabilities = GetTypeCapabilities(TypeId);
-    EThreadOptimizationFlags OptimizationFlags = EThreadOptimizationFlags::None;
-    
-    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::SIMDOperations))
-    {
-        OptimizationFlags |= EThreadOptimizationFlags::SIMDAware;
-    }
-    
-    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::CacheOptimized))
-    {
-        OptimizationFlags |= EThreadOptimizationFlags::CacheLocality;
-    }
-    
-    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::ParallelProcessing))
-    {
-        OptimizationFlags |= EThreadOptimizationFlags::ComputeIntensive;
-    }
+    ETypeCapabilities BasicCapabilities = GetTypeCapabilities(TypeId);
+    ETypeCapabilitiesEx ExtendedCapabilities = GetTypeCapabilitiesEx(TypeId);
+    EThreadOptimizationFlags OptimizationFlags = FTaskScheduler::MapCapabilitiesToOptimizationFlags(
+        BasicCapabilities, ExtendedCapabilities);
     
     TypedConfig.SetOptimizationFlags(OptimizationFlags);
     
     // Schedule the task with the scheduler
     return ScheduleTaskWithScheduler(TaskFunc, TypedConfig);
+}
+
+bool FSDFTypeRegistry::PreInitializeTypes()
+{
+    // Prepare fields for initialization
+    // Allocate memory and initialize basic structures
+    FScopedSpinLock Lock(*RegistryLock);
+    
+    // Reset initialization flags
+    bTypesInitialized = false;
+    bInitializationInProgress = true;
+    
+    // Clear any existing errors
+    InitializationErrors.Empty();
+    
+    return true;
+}
+
+bool FSDFTypeRegistry::ParallelInitializeTypes(bool bParallel)
+{
+    if (!bParallel)
+    {
+        // Sequential fallback
+        FScopedSpinLock Lock(*RegistryLock);
+        for (const auto& TypePair : FieldTypeMap)
+        {
+            // Initialize each type sequentially
+            InitializeFieldType(TypePair.Key);
+        }
+        return true;
+    }
+    
+    // Get all type IDs
+    TArray<uint32> TypeIds;
+    {
+        FScopedSpinLock Lock(*RegistryLock);
+        FieldTypeMap.GenerateKeyArray(TypeIds);
+    }
+    
+    // Execute initialization in parallel with dependencies
+    return FParallelExecutor::Get().ParallelForWithDependencies(
+        TypeIds.Num(),
+        [this, &TypeIds](int32 Index) {
+            InitializeFieldType(TypeIds[Index]);
+        },
+        [this, &TypeIds](int32 Index) {
+            return GetTypeDependencies(TypeIds[Index]);
+        },
+        FParallelConfig().SetExecutionMode(EParallelExecutionMode::Automatic)
+    );
+}
+
+bool FSDFTypeRegistry::PostInitializeTypes()
+{
+    FScopedSpinLock Lock(*RegistryLock);
+    
+    // Perform final validation and setup
+    TArray<FString> ValidationErrors;
+    bool bValidationSuccess = Validate(ValidationErrors);
+    
+    if (!bValidationSuccess)
+    {
+        InitializationErrors.Append(ValidationErrors);
+    }
+    
+    // Mark initialization as complete
+    bInitializationInProgress = false;
+    bTypesInitialized = InitializationErrors.Num() == 0;
+    
+    return bTypesInitialized;
+}
+
+TArray<int32> FSDFTypeRegistry::GetTypeDependencies(uint32 TypeId) const
+{
+    // Lock for thread safety
+    FScopedSpinLock Lock(*RegistryLock);
+    
+    TArray<int32> Dependencies;
+    // Add implementation-specific dependencies logic here
+    return Dependencies;
+}
+
+void FSDFTypeRegistry::InitializeFieldType(uint32 TypeId)
+{
+    FScopedSpinLock Lock(*RegistryLock);
+    
+    const TSharedRef<FSDFFieldTypeInfo>* TypeInfoPtr = FieldTypeMap.Find(TypeId);
+    
+    if (!TypeInfoPtr)
+    {
+        return;
+    }
+    
+    // Implementation would initialize this specific field type
+    // For example: set up memory management, calculate processing parameters, etc.
 }

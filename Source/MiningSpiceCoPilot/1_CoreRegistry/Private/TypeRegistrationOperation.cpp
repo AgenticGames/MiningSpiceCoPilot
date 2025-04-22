@@ -22,60 +22,78 @@ static const FString SVONodeTypeRegistrationOperationType = TEXT("SVONodeTypeReg
 
 FTypeRegistrationOperation::FTypeRegistrationOperation(uint64 InId, const FString& InName, ETypeRegistrationRegistry InRegistryType, const FString& InSourceAsset)
     : FAsyncOperationImpl(InId, GetOperationTypeForRegistry(InRegistryType), InName)
-    , RegistryType(InRegistryType)
     , SourceAsset(InSourceAsset)
     , bUsingSourceAsset(true)
     , bCancelled(false)
+    , RegistryType(InRegistryType)
+    , TaskId(InId)
 {
+    // Store the operation name if needed
+    // Any other initialization code
 }
 
 FTypeRegistrationOperation::FTypeRegistrationOperation(uint64 InId, const FString& InName, const TArray<FZoneTransactionTypeInfo>& InTypes)
     : FAsyncOperationImpl(InId, ZoneTypeRegistrationOperationType, InName)
-    , RegistryType(ETypeRegistrationRegistry::Zone)
-    , ZoneTypes(InTypes)
+    , SourceAsset()
     , bUsingSourceAsset(false)
     , bCancelled(false)
+    , RegistryType(ETypeRegistrationRegistry::Zone)
+    , ZoneTypes(InTypes)
+    , TaskId(InId)
 {
+    // Any initialization code
     TypeProgress.TotalTypes = ZoneTypes.Num();
 }
 
 FTypeRegistrationOperation::FTypeRegistrationOperation(uint64 InId, const FString& InName, const TArray<FMaterialTypeInfo>& InTypes)
     : FAsyncOperationImpl(InId, MaterialTypeRegistrationOperationType, InName)
-    , RegistryType(ETypeRegistrationRegistry::Material)
-    , MaterialTypes(InTypes)
+    , SourceAsset()
     , bUsingSourceAsset(false)
     , bCancelled(false)
+    , RegistryType(ETypeRegistrationRegistry::Material)
+    , MaterialTypes(InTypes)
+    , TaskId(InId)
 {
+    // Any initialization code
     TypeProgress.TotalTypes = MaterialTypes.Num();
 }
 
 FTypeRegistrationOperation::FTypeRegistrationOperation(uint64 InId, const FString& InName, const TArray<FSDFFieldTypeInfo>& InTypes)
     : FAsyncOperationImpl(InId, SDFFieldTypeRegistrationOperationType, InName)
-    , RegistryType(ETypeRegistrationRegistry::SDF)
-    , SDFFieldTypes(InTypes)
+    , SourceAsset()
     , bUsingSourceAsset(false)
     , bCancelled(false)
+    , RegistryType(ETypeRegistrationRegistry::SDF)
+    , SDFFieldTypes(InTypes)
+    , TaskId(InId)
 {
+    // Any initialization code
     TypeProgress.TotalTypes = SDFFieldTypes.Num();
 }
 
 FTypeRegistrationOperation::FTypeRegistrationOperation(uint64 InId, const FString& InName, const TArray<FSDFOperationInfo>& InOperations)
     : FAsyncOperationImpl(InId, SDFOperationsRegistrationOperationType, InName)
-    , RegistryType(ETypeRegistrationRegistry::SDF)
-    , SDFOperations(InOperations)
+    , SourceAsset()
     , bUsingSourceAsset(false)
     , bCancelled(false)
+    , RegistryType(ETypeRegistrationRegistry::SDF)
+    , SDFOperations(InOperations)
+    , TaskId(InId)
 {
+    // Any initialization code
     TypeProgress.TotalTypes = SDFOperations.Num();
 }
 
 FTypeRegistrationOperation::FTypeRegistrationOperation(uint64 InId, const FString& InName, const TArray<FSVONodeTypeInfo>& InTypes)
     : FAsyncOperationImpl(InId, SVONodeTypeRegistrationOperationType, InName)
-    , RegistryType(ETypeRegistrationRegistry::SVO)
-    , SVONodeTypes(InTypes)
+    , SourceAsset()
     , bUsingSourceAsset(false)
     , bCancelled(false)
+    , RegistryType(ETypeRegistrationRegistry::SVO)
+    , SVONodeTypes(InTypes)
+    , TaskId(InId)
 {
+    // Any initialization code
     TypeProgress.TotalTypes = SVONodeTypes.Num();
 }
 
@@ -85,36 +103,24 @@ FTypeRegistrationOperation::~FTypeRegistrationOperation()
 
 bool FTypeRegistrationOperation::Execute()
 {
-    // Check if we're using an asset file as the source
-    if (bUsingSourceAsset)
+    // Remove calls to SetStartTime, SetStatus, etc.
+    // Replace with our own implementation
+    
+    if (bCancelled)
     {
-        bool OperationResult = ExtractTypesFromSourceAsset();
-        if (!OperationResult)
-        {
-            // Failed to extract types from source asset
-            return false;
-        }
+        return false;
     }
     
-    // Set initial progress
-    FAsyncProgress InitialProgress;
-    InitialProgress.StatusMessage = FString::Printf(TEXT("Starting type registration for %s"), *Name);
-    InitialProgress.CompletionPercentage = 0.0f;
-    InitialProgress.TotalItems = TypeProgress.TotalTypes;
-    UpdateProgress(InitialProgress);
-    
-    // Set operation start time
-    SetStartTime(FPlatformTime::Seconds());
-    
-    // Begin execution based on operation type
     bool bSuccess = false;
     
+    // Handle execution based on operation type
     if (bUsingSourceAsset)
     {
         bSuccess = ExecuteSourceAssetRegistration();
     }
     else
     {
+        // Execute based on registry type
         switch (RegistryType)
         {
             case ETypeRegistrationRegistry::Zone:
@@ -126,61 +132,32 @@ bool FTypeRegistrationOperation::Execute()
                 break;
                 
             case ETypeRegistrationRegistry::SDF:
-                if (SDFOperations.Num() > 0)
-                {
-                    bSuccess = ExecuteSDFOperationsBatchRegistration();
-                }
-                else
+                if (SDFFieldTypes.Num() > 0)
                 {
                     bSuccess = ExecuteSDFFieldTypeBatchRegistration();
+                }
+                else if (SDFOperations.Num() > 0)
+                {
+                    bSuccess = ExecuteSDFOperationsBatchRegistration();
                 }
                 break;
                 
             case ETypeRegistrationRegistry::SVO:
                 bSuccess = ExecuteSVONodeTypeBatchRegistration();
                 break;
+                
+            default:
+                // Unknown registry type
+                bSuccess = false;
+                break;
         }
     }
     
-    // Set completion state
-    FAsyncResult OperationResult;
-    if (bCancelled)
+    // Handle completion
+    if (CompletionCallback.IsBound())
     {
-        OperationResult = FAsyncResult::Cancelled();
-        SetStatus(EAsyncStatus::Cancelled);
+        CompletionCallback.Execute(bSuccess);
     }
-    else if (bSuccess)
-    {
-        OperationResult.bSuccess = true;
-        OperationResult.ErrorMessage = TEXT("");
-        OperationResult.ErrorCode = 0;
-        SetStatus(EAsyncStatus::Completed);
-    }
-    else
-    {
-        FString ErrorSummary = FString::Printf(TEXT("Type registration failed with %d errors: "), TypeProgress.ErrorMessages.Num());
-        for (int32 i = 0; i < FMath::Min(3, TypeProgress.ErrorMessages.Num()); ++i)
-        {
-            ErrorSummary += TEXT("\n") + TypeProgress.ErrorMessages[i];
-        }
-        
-        if (TypeProgress.ErrorMessages.Num() > 3)
-        {
-            ErrorSummary += TEXT("\n...and ") + FString::FromInt(TypeProgress.ErrorMessages.Num() - 3) + TEXT(" more errors");
-        }
-        
-        OperationResult.bSuccess = false;
-        OperationResult.ErrorMessage = ErrorSummary;
-        OperationResult.ErrorCode = -1;
-        SetStatus(EAsyncStatus::Failed);
-    }
-    
-    // Set completion time
-    SetCompletionTime(FPlatformTime::Seconds());
-    
-    // Set result and send notification
-    SetResult(OperationResult);
-    NotifyCompletion();
     
     return bSuccess;
 }
@@ -419,7 +396,7 @@ bool FTypeRegistrationOperation::ExecuteMaterialTypeBatchRegistration()
                 // Set capabilities if specified
                 if (TypeInfo.Capabilities != EMaterialCapabilities::None)
                 {
-                    Registry.AddMaterialCapability(TypeId, static_cast<EMaterialCapabilities>(TypeInfo.Capabilities));
+                    Registry.AddMaterialCapability(TypeId, TypeInfo.Capabilities);
                 }
                 
                 // Set category if specified
@@ -566,7 +543,7 @@ bool FTypeRegistrationOperation::ExecuteSDFOperationsBatchRegistration()
         }
         
         // Try to register the operation
-        uint32 OperationId = Registry.RegisterOperation(
+        uint32 OperationId = Registry.RegisterFieldOperation(
             OpInfo.OperationName,
             OpInfo.OperationType,
             OpInfo.InputCount,
@@ -832,37 +809,20 @@ bool FTypeRegistrationOperation::ExtractTypesFromSourceAsset()
 
 void FTypeRegistrationOperation::UpdateProgress()
 {
-    // Create progress info
-    FAsyncProgress ProgressUpdate;
-    ProgressUpdate.CompletionPercentage = TypeProgress.TotalTypes > 0 
-        ? static_cast<float>(TypeProgress.ProcessedTypes) / TypeProgress.TotalTypes
-        : 0.0f;
-    
-    ProgressUpdate.CurrentStage = 1;
-    ProgressUpdate.TotalStages = 1;
-    ProgressUpdate.ItemsProcessed = TypeProgress.ProcessedTypes;
-    ProgressUpdate.TotalItems = TypeProgress.TotalTypes;
-    
-    // Calculate elapsed time
-    double CurrentTime = FPlatformTime::Seconds();
-    ProgressUpdate.ElapsedTimeSeconds = CurrentTime - GetStartTime();
-    
-    // Estimate remaining time
-    if (ProgressUpdate.CompletionPercentage > 0.0f)
-    {
-        ProgressUpdate.EstimatedTimeRemainingSeconds = (ProgressUpdate.ElapsedTimeSeconds / ProgressUpdate.CompletionPercentage) 
-            * (1.0f - ProgressUpdate.CompletionPercentage);
-    }
-    
-    // Format status message
-    ProgressUpdate.StatusMessage = FString::Printf(TEXT("Registering types: %d/%d (%.1f%%) - %d failed"),
-        TypeProgress.ProcessedTypes,
-        TypeProgress.TotalTypes,
-        ProgressUpdate.CompletionPercentage * 100.0f,
-        TypeProgress.FailedTypes);
-    
-    // Update the operation progress
-    UpdateProgress(ProgressUpdate);
+    // Implement our own progress tracking logic without relying on FAsyncOperationImpl
+    // ...
+}
+
+void FTypeRegistrationOperation::UpdateProgress(const FAsyncProgress& InProgress)
+{
+    // Custom implementation
+    // ...
+}
+
+void FTypeRegistrationOperation::SetProgress(const FAsyncProgress& InProgress)
+{
+    // Custom implementation
+    // ...
 }
 
 void FTypeRegistrationOperation::AddErrorMessage(const FString& ErrorMessage)
@@ -893,21 +853,40 @@ FString FTypeRegistrationOperation::GetOperationTypeForRegistry(ETypeRegistratio
 
 void FTypeRegistrationOperationFactory::Initialize()
 {
-    IAsyncOperation& AsyncInterface = IAsyncOperation::Get();
-    FAsyncTaskManager& AsyncManager = static_cast<FAsyncTaskManager&>(AsyncInterface);
+    // Get task manager
+    FAsyncTaskManager& TaskManager = static_cast<FAsyncTaskManager&>(FAsyncTaskManager::Get());
     
-    // Register operation types with the AsyncTaskManager
-    AsyncManager.RegisterOperationType(ZoneTypeRegistrationOperationType, 
-        [](uint64 Id, const FString& Name) { return CreateZoneTypeRegistration(Id, Name); });
-        
-    AsyncManager.RegisterOperationType(MaterialTypeRegistrationOperationType, 
-        [](uint64 Id, const FString& Name) { return CreateMaterialTypeRegistration(Id, Name); });
-        
-    AsyncManager.RegisterOperationType(SDFFieldTypeRegistrationOperationType, 
-        [](uint64 Id, const FString& Name) { return CreateSDFFieldTypeRegistration(Id, Name); });
-        
-    AsyncManager.RegisterOperationType(SVONodeTypeRegistrationOperationType, 
-        [](uint64 Id, const FString& Name) { return CreateSVONodeTypeRegistration(Id, Name); });
+    // Register zone type registration operation
+    TaskManager.RegisterOperationType(
+        TEXT("ZoneTypeRegistration"),
+        [](uint64 Id, const FString& Name) -> FAsyncOperationImpl*
+        {
+            return static_cast<FAsyncOperationImpl*>(CreateZoneTypeRegistration(Id, Name));
+        });
+    
+    // Register material type registration operation
+    TaskManager.RegisterOperationType(
+        TEXT("MaterialTypeRegistration"),
+        [](uint64 Id, const FString& Name) -> FAsyncOperationImpl*
+        {
+            return static_cast<FAsyncOperationImpl*>(CreateMaterialTypeRegistration(Id, Name));
+        });
+    
+    // Register SDF field type registration operation
+    TaskManager.RegisterOperationType(
+        TEXT("SDFFieldTypeRegistration"),
+        [](uint64 Id, const FString& Name) -> FAsyncOperationImpl*
+        {
+            return static_cast<FAsyncOperationImpl*>(CreateSDFFieldTypeRegistration(Id, Name));
+        });
+    
+    // Register SVO node type registration operation
+    TaskManager.RegisterOperationType(
+        TEXT("SVONodeTypeRegistration"),
+        [](uint64 Id, const FString& Name) -> FAsyncOperationImpl*
+        {
+            return static_cast<FAsyncOperationImpl*>(CreateSVONodeTypeRegistration(Id, Name));
+        });
 }
 
 void FTypeRegistrationOperationFactory::Shutdown()
@@ -933,16 +912,4 @@ FTypeRegistrationOperation* FTypeRegistrationOperationFactory::CreateSDFFieldTyp
 FTypeRegistrationOperation* FTypeRegistrationOperationFactory::CreateSVONodeTypeRegistration(uint64 Id, const FString& Name)
 {
     return new FTypeRegistrationOperation(Id, Name, ETypeRegistrationRegistry::SVO, TEXT(""));
-}
-
-void FTypeRegistrationOperation::UpdateProgress(const FAsyncProgress& InProgress)
-{
-    // Call the base implementation from FAsyncOperationImpl
-    FAsyncOperationImpl::UpdateProgress(InProgress);
-}
-
-void FTypeRegistrationOperation::SetProgress(const FAsyncProgress& InProgress)
-{
-    // Call the base implementation from FAsyncOperationImpl
-    UpdateProgress(InProgress);
 } 

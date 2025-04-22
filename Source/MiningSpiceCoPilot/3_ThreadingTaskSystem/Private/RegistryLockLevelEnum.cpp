@@ -1,3 +1,4 @@
+#include "RegistryLockLevelEnum.h"
 #include "CoreMinimal.h"
 #include "ThreadSafety.h"
 #include "UObject/UObjectGlobals.h"

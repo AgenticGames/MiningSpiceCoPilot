@@ -14,9 +14,11 @@
 #include "ThreadSafety.h"
 #include "../../3_ThreadingTaskSystem/Public/TaskScheduler.h"
 #include "../../3_ThreadingTaskSystem/Public/AsyncTaskTypes.h"
+#include "../../3_ThreadingTaskSystem/Public/ParallelExecutor.h"
 
 // Forward declarations
 class FTransactionManager;
+class FTypeRegistrationOperation;
 struct FTransactionStats;
 
 /**
@@ -70,6 +72,39 @@ enum class ETransactionPriority : uint8
     High = 192,
     
     /** Critical priority transactions */
+    Critical = 255
+};
+
+/**
+ * Zone conflict detection level for transaction operations
+ */
+enum class EZoneConflictDetectionLevel : uint8
+{
+    /** Optimistic conflict detection for low-contention scenarios */
+    Optimistic,
+    
+    /** Pessimistic conflict detection for high-contention scenarios */
+    Pessimistic,
+    
+    /** No conflict detection (use with caution) */
+    None
+};
+
+/**
+ * Zone operation priority levels
+ */
+enum class EZoneOperationPriority : uint8
+{
+    /** Low priority zone operations */
+    Low = 0,
+    
+    /** Normal priority zone operations */
+    Normal = 128,
+    
+    /** High priority zone operations */
+    High = 192,
+    
+    /** Critical priority zone operations */
     Critical = 255
 };
 
@@ -153,6 +188,9 @@ struct MININGSPICECOPILOT_API FZoneTransactionTypeInfo
     /** Transaction priority for scheduling */
     ETransactionPriority Priority;
     
+    /** Whether this transaction type supports threading */
+    bool bSupportsThreading;
+    
     /** Default constructor */
     FZoneTransactionTypeInfo()
         : TypeId(0)
@@ -178,6 +216,7 @@ struct MININGSPICECOPILOT_API FZoneTransactionTypeInfo
         , bSupportsPartialExecution(false)
         , bCanMergeResults(false)
         , Priority(ETransactionPriority::Normal)
+        , bSupportsThreading(false)
     {
     }
 };
@@ -204,6 +243,39 @@ struct MININGSPICECOPILOT_API FZoneGridConfig
 };
 
 /**
+ * Structure containing information about a zone type
+ */
+struct MININGSPICECOPILOT_API FZoneTypeInfo
+{
+    /** Unique ID for this zone type */
+    uint32 TypeId;
+    
+    /** Name of this zone type */
+    FName TypeName;
+    
+    /** Schema version for this zone type */
+    uint32 SchemaVersion;
+    
+    /** Whether this zone type supports threading */
+    bool bSupportsThreading;
+    
+    /** Parent zone type ID (if any) */
+    uint32 ParentZoneTypeId;
+    
+    /** List of supported material types */
+    TArray<uint32> SupportedMaterialTypes;
+    
+    /** Default constructor */
+    FZoneTypeInfo()
+        : TypeId(0)
+        , SchemaVersion(1)
+        , bSupportsThreading(false)
+        , ParentZoneTypeId(0)
+    {
+    }
+};
+
+/**
  * Zone hierarchy information for nested zones
  */
 struct MININGSPICECOPILOT_API FZoneHierarchyInfo
@@ -225,6 +297,45 @@ struct MININGSPICECOPILOT_API FZoneHierarchyInfo
  * Delegate for transaction completion events 
  */
 DECLARE_DELEGATE_TwoParams(FTransactionCompletionDelegate, uint32 /*TypeId*/, const FTransactionStats& /*Stats*/);
+
+/**
+ * Structure containing metadata for a zone operation type
+ */
+struct MININGSPICECOPILOT_API FZoneOperationTypeInfo
+{
+    /** Unique ID for this operation type */
+    uint32 TypeId;
+    
+    /** Name of this operation type */
+    FName TypeName;
+    
+    /** Associated transaction type ID */
+    uint32 TransactionTypeId;
+    
+    /** Priority level for this operation */
+    EZoneOperationPriority Priority;
+    
+    /** Whether this operation can be batched */
+    bool bSupportsBatching;
+    
+    /** Whether this operation can be executed in parallel */
+    bool bSupportsParallelExecution;
+    
+    /** Default constructor */
+    FZoneOperationTypeInfo()
+        : TypeId(0)
+        , TransactionTypeId(0)
+        , Priority(EZoneOperationPriority::Normal)
+        , bSupportsBatching(false)
+        , bSupportsParallelExecution(false)
+    {
+    }
+};
+
+/**
+ * Type registration completion delegate
+ */
+DECLARE_DELEGATE_OneParam(FTypeRegistrationCompletionDelegate, bool /*bSuccess*/);
 
 /**
  * Registry for zone transaction types in the mining system
@@ -251,7 +362,19 @@ public:
     virtual uint32 GetTypeVersion(uint32 TypeId) const override;
     virtual ERegistryType GetRegistryType() const override;
     virtual ETypeCapabilities GetTypeCapabilities(uint32 TypeId) const override;
+    
+    /**
+     * Gets the extended capabilities of a specific transaction type
+     * @param TypeId The ID of the transaction type to query
+     * @return The extended capabilities of the transaction type
+     */
+    virtual ETypeCapabilitiesEx GetTypeCapabilitiesEx(uint32 TypeId) const override;
+    
     virtual uint64 ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskFunc, const FTaskConfig& Config) override;
+    virtual bool PreInitializeTypes() override;
+    virtual bool ParallelInitializeTypes(bool bParallel = true) override;
+    virtual bool PostInitializeTypes() override;
+    virtual TArray<int32> GetTypeDependencies(uint32 TypeId) const override;
     //~ End IRegistry Interface
     
     /**
@@ -377,9 +500,15 @@ public:
     void OnTransactionCompleted(uint32 TypeId, const FTransactionStats& Stats);
     
     /**
+     * Gets all registered zone types
+     * @return Array of all zone type infos
+     */
+    TArray<FZoneTypeInfo> GetAllZoneTypes() const;
+    
+    /**
      * Checks if a transaction type is registered
      * @param InTypeId Unique ID of the transaction type
-     * @return True if the type is registered
+     * @return True if the transaction type is registered
      */
     bool IsTransactionTypeRegistered(uint32 InTypeId) const;
     
@@ -389,6 +518,13 @@ public:
      * @return True if the type is registered
      */
     bool IsTransactionTypeRegistered(const FName& InTypeName) const;
+    
+    /**
+     * Checks if a zone type is registered
+     * @param InTypeId Unique ID of the zone type
+     * @return True if the type is registered
+     */
+    bool IsZoneTypeRegistered(uint32 InTypeId) const;
     
     /** Gets the singleton instance of the zone type registry */
     static FZoneTypeRegistry& Get();
@@ -432,52 +568,137 @@ public:
      */
     bool CancelAsyncTypeRegistration(uint64 OperationId, bool bWaitForCancellation = false);
 
+    /**
+     * Registers a new transaction type with the registry
+     * @param InTypeName Name of the transaction type
+     * @param InConflictDetectionLevel Level of conflict detection required
+     * @param InFastPathThreshold Threshold for using the fast path
+     * @param bInSupportsPreemption Whether this transaction supports preemption
+     * @return Unique ID for the registered type, or 0 if registration failed
+     */
+    uint32 RegisterTransactionType(
+        const FName& InTypeName, 
+        EZoneConflictDetectionLevel InConflictDetectionLevel, 
+        float InFastPathThreshold = 0.75f, 
+        bool bInSupportsPreemption = false);
+    
+    /**
+     * Registers multiple transaction types in a batch using parallel processing
+     * @param TypeInfos Array of transaction type information to register
+     * @param OutTypeIds Array to receive the assigned type IDs
+     * @param OutErrors Array to receive any errors that occurred during registration
+     * @param Config Configuration for parallel execution
+     * @return True if all types were registered successfully
+     */
+    bool RegisterTransactionTypesBatch(
+        const TArray<FZoneTransactionTypeInfo>& TypeInfos,
+        TArray<uint32>& OutTypeIds,
+        TArray<FString>& OutErrors,
+        struct FParallelConfig Config = FParallelConfig());
+    
+    /**
+     * Pre-validates a batch of transaction types before registration
+     * @param TypeInfos Array of transaction type information to validate
+     * @param OutErrors Array to receive validation errors
+     * @param bParallel Whether to validate in parallel
+     * @return True if all types passed validation
+     */
+    bool PrevalidateTransactionTypes(
+        const TArray<FZoneTransactionTypeInfo>& TypeInfos,
+        TArray<FString>& OutErrors,
+        bool bParallel = true);
+    
+    /**
+     * Validates the consistency of all registered transaction types
+     * @param OutErrors Array to receive any validation errors
+     * @param bParallel Whether to validate in parallel
+     * @return True if all types are consistent
+     */
+    bool ValidateTypeConsistency(
+        TArray<FString>& OutErrors,
+        bool bParallel = true);
+    
+    /**
+     * Registers a new zone operation with the registry
+     * @param InTypeName Name of the zone operation type
+     * @param InTransactionTypeId ID of the transaction type this operation belongs to
+     * @param InPriority Priority of this operation type
+     * @return Unique ID for the registered type, or 0 if registration failed
+     */
+    uint32 RegisterZoneOperationType(
+        const FName& InTypeName,
+        uint32 InTransactionTypeId,
+        EZoneOperationPriority InPriority = EZoneOperationPriority::Normal);
+    
+    /**
+     * Registers multiple zone operation types in a batch using parallel processing
+     * @param TypeInfos Array of zone operation type information to register
+     * @param OutTypeIds Array to receive the assigned type IDs
+     * @param OutErrors Array to receive any errors that occurred during registration
+     * @param Config Configuration for parallel execution
+     * @return True if all types were registered successfully
+     */
+    bool RegisterZoneOperationTypesBatch(
+        const TArray<FZoneOperationTypeInfo>& TypeInfos,
+        TArray<uint32>& OutTypeIds,
+        TArray<FString>& OutErrors,
+        struct FParallelConfig Config = FParallelConfig());
+
 private:
     /** Generates a unique type ID for new transaction type registrations */
     uint32 GenerateUniqueTypeId();
     
-    /** Map of registered transaction types by ID */
-    TMap<uint32, TSharedRef<FZoneTransactionTypeInfo>> TransactionTypeMap;
+    /** Initializes a transaction type */
+    void InitializeTransactionType(uint32 TypeId);
     
-    /** Map of transaction type names to IDs for quick lookup */
-    TMap<FName, uint32> TransactionTypeNameMap;
+    /** Lock for the registry */
+    mutable FSpinLock RegistryLock;
     
-    /** Map of zone grid configurations by name */
-    TMap<FName, TSharedRef<FZoneGridConfig>> ZoneGridConfigMap;
+    /** Lock for pending operations */
+    mutable FSpinLock PendingOperationsLock;
     
-    /** Name of the default zone grid configuration */
-    FName DefaultConfigName;
-    
-    /** Map of zone hierarchies by parent ID */
-    TMap<int32, TArray<int32>> ZoneHierarchy;
-    
-    /** Reverse map of child to parent zones */
-    TMap<int32, int32> ChildToParentMap;
-    
-    /** Registry name */
-    FName RegistryName;
-    
-    /** Schema version for this registry */
-    uint32 SchemaVersion;
+    /** Map of pending type registration operations */
+    TMap<uint64, TSharedPtr<FTypeRegistrationOperation>> PendingOperations;
     
     /** Next available type ID */
     FThreadSafeCounter NextTypeId;
+
+    /** Map of transaction types by ID */
+    TMap<uint32, TSharedRef<FZoneTransactionTypeInfo>> TransactionTypeMap;
     
-    /** Version counter for type registrations */
-    FThreadSafeCounter TypeVersion;
+    /** Map of transaction type names to IDs */
+    TMap<FName, uint32> TransactionTypeNameMap;
     
-    /** Lock for thread safety */
-    FSpinLock RegistryLock;
+    /** Map of zone grid configurations by name */
+    TMap<FName, TSharedRef<FZoneGridConfig>> ZoneConfigMap;
     
-    /** Lock for initialization */
-    FSpinLock InitializationLock;
+    /** Default zone grid configuration name */
+    FName DefaultZoneConfigName;
     
-    /** Initialization flag */
-    bool bIsInitialized;
+    /** Map of zone types by ID */
+    TMap<uint32, TSharedRef<FZoneTypeInfo>> ZoneTypeMap;
     
-    /** Map of transaction completion callbacks */
-    TMap<uint32, FTransactionCompletionDelegate> CompletionCallbacks;
+    /** Map of zone type names to IDs */
+    TMap<FName, uint32> ZoneTypeNameMap;
+    
+    /** Map of zone operation types by ID */
+    TMap<uint32, TSharedRef<FZoneOperationTypeInfo>> ZoneOperationTypeMap;
+    
+    /** Map of zone operation type names to IDs */
+    TMap<FName, uint32> ZoneOperationTypeNameMap;
+    
+    /** Map of parent zones to child zones */
+    TMap<int32, TArray<int32>> ZoneHierarchy;
+    
+    /** Map of child zones to parent zones */
+    TMap<int32, int32> ChildToParentMap;
+    
+    /** Flag indicating whether the registry has been initialized */
+    FThreadSafeBool bIsInitialized;
     
     /** Singleton instance */
-    static FZoneTypeRegistry* Instance;
+    static FZoneTypeRegistry* Singleton;
+    
+    /** Thread-safe initialization flag */
+    static FThreadSafeBool bSingletonInitialized;
 };

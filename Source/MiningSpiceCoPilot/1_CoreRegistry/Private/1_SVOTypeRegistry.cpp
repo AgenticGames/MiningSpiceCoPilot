@@ -11,7 +11,8 @@
 #include "ThreadSafety.h"
 #include "SVOAllocator.h" // Include SVOAllocator for ConfigureTypeLayout
 #include "HAL/ThreadSafeCounter.h" // For atomic operations
-#include "MiningSpiceCoPilot/3_ThreadingTaskSystem/Public/TaskHelpers.h"
+#include "../../3_ThreadingTaskSystem/Public/TaskHelpers.h"
+#include "../../3_ThreadingTaskSystem/Public/ParallelExecutor.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSVOTypeRegistry, Log, All);
 
@@ -1044,29 +1045,52 @@ ETypeCapabilities FSVOTypeRegistry::GetTypeCapabilities(uint32 TypeId) const
     // Map SVO capabilities to type capabilities
     if (TypeInfo->bSupportsThreading)
     {
-        Capabilities |= ETypeCapabilities::ThreadSafe;
-        Capabilities |= ETypeCapabilities::ParallelProcessing;
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::ThreadSafe);
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::ParallelProcessing);
     }
     
     if (TypeInfo->bSupportsSIMD)
     {
-        Capabilities |= ETypeCapabilities::SIMDOperations;
-    }
-    
-    if (TypeInfo->bSupportsSpatialCoherence)
-    {
-        Capabilities |= ETypeCapabilities::SpatialCoherence;
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::SIMDOperations);
     }
     
     if (TypeInfo->bSupportsIncrementalUpdates)
     {
-        Capabilities |= ETypeCapabilities::IncrementalUpdates;
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::IncrementalUpdates);
     }
     
-    if (TypeInfo->bOptimizedMemoryAccess)
+    // Check for batch operation support
+    if (TypeInfo->PreferredThreadBlockSize > 1)
     {
-        Capabilities |= ETypeCapabilities::MemoryEfficient;
-        Capabilities |= ETypeCapabilities::CacheOptimized;
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::BatchOperations);
+    }
+    
+    // Check for async operation support
+    if (TypeInfo->bSupportsThreading && TypeInfo->bSupportsConcurrentAccess)
+    {
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::AsyncOperations);
+    }
+    
+    // Check for partial execution support
+    if (TypeInfo->bSupportsIncrementalUpdates && TypeInfo->bSupportsThreading)
+    {
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::PartialExecution);
+    }
+    
+    // Check for result merging support
+    if (TypeInfo->bSupportsThreading && 
+        (TypeInfo->NodeClass == ESVONodeClass::Homogeneous || 
+         TypeInfo->NodeClass == ESVONodeClass::Interface))
+    {
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::ResultMerging);
     }
     
     return Capabilities;
@@ -1079,26 +1103,684 @@ uint64 FSVOTypeRegistry::ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskF
     TypedConfig.SetTypeId(TypeId, ERegistryType::SVO);
     
     // Set optimization flags based on type capabilities
-    ETypeCapabilities Capabilities = GetTypeCapabilities(TypeId);
-    EThreadOptimizationFlags OptimizationFlags = EThreadOptimizationFlags::None;
-    
-    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::SIMDOperations))
-    {
-        OptimizationFlags |= EThreadOptimizationFlags::SIMDAware;
-    }
-    
-    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::CacheOptimized))
-    {
-        OptimizationFlags |= EThreadOptimizationFlags::CacheLocality;
-    }
-    
-    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::SpatialCoherence))
-    {
-        OptimizationFlags |= EThreadOptimizationFlags::MemoryIntensive;
-    }
+    ETypeCapabilities BasicCapabilities = GetTypeCapabilities(TypeId);
+    ETypeCapabilitiesEx ExtendedCapabilities = GetTypeCapabilitiesEx(TypeId);
+    EThreadOptimizationFlags OptimizationFlags = FTaskScheduler::MapCapabilitiesToOptimizationFlags(
+        BasicCapabilities, ExtendedCapabilities);
     
     TypedConfig.SetOptimizationFlags(OptimizationFlags);
     
     // Schedule the task with the scheduler
     return ScheduleTaskWithScheduler(TaskFunc, TypedConfig);
+}
+
+bool FSVOTypeRegistry::RegisterNodeTypesBatch(
+    const TArray<FSVONodeTypeInfo>& TypeInfos,
+    TArray<uint32>& OutTypeIds,
+    TArray<FString>& OutErrors,
+    FParallelConfig Config)
+{
+    if (!IsInitialized())
+    {
+        OutErrors.Add(TEXT("Cannot register node types - registry not initialized"));
+        return false;
+    }
+    
+    if (TypeInfos.Num() == 0)
+    {
+        // Nothing to register, consider it successful
+        return true;
+    }
+    
+    // Clear output arrays
+    OutTypeIds.Reset(TypeInfos.Num());
+    OutTypeIds.SetNum(TypeInfos.Num());
+    
+    // First prevalidate all types
+    if (!PrevalidateNodeTypes(TypeInfos, OutErrors, true))
+    {
+        UE_LOG(LogSVOTypeRegistry, Error, TEXT("Batch node type registration failed: validation errors"));
+        return false;
+    }
+    
+    // For very small batches (<=3), just use sequential processing
+    if (TypeInfos.Num() <= 3 || Config.ExecutionMode == EParallelExecutionMode::ForceSequential)
+    {
+        FScopedSpinLock Lock(this->RegistryLock);
+        
+        for (int32 Index = 0; Index < TypeInfos.Num(); ++Index)
+        {
+            const FSVONodeTypeInfo& TypeInfo = TypeInfos[Index];
+            
+            // Check for duplicate names
+            if (NodeTypeNameMap.Contains(TypeInfo.TypeName))
+            {
+                OutErrors.Add(FString::Printf(TEXT("Type with name '%s' already registered"), *TypeInfo.TypeName.ToString()));
+                OutTypeIds[Index] = 0; // Set ID to 0 (invalid) for failed registrations
+                continue;
+            }
+            
+            // Generate a unique type ID
+            uint32 TypeId = GenerateUniqueTypeId();
+            
+            // Create a copy of the type info to store
+            TSharedRef<FSVONodeTypeInfo> NewTypeInfo = MakeShared<FSVONodeTypeInfo>(TypeInfo);
+            NewTypeInfo->TypeId = TypeId;
+            
+            // Register the new type
+            NodeTypeMap.Add(TypeId, NewTypeInfo);
+            NodeTypeNameMap.Add(NewTypeInfo->TypeName, TypeId);
+            
+            // Store the assigned type ID
+            OutTypeIds[Index] = TypeId;
+            
+            UE_LOG(LogSVOTypeRegistry, Log, TEXT("Registered SVO node type '%s' (ID %u)"),
+                *NewTypeInfo->TypeName.ToString(), TypeId);
+            
+            // Create memory pool for this type
+            CreateTypeSpecificPool(NewTypeInfo);
+        }
+        
+        return true;
+    }
+    
+    // For larger batches, use parallel processing with optimistic registration
+    // Use atomic operations and lock-free approaches where possible
+    
+    // First, reserve type IDs for all types to avoid ID collisions during parallel processing
+    TArray<uint32> ReservedTypeIds;
+    {
+        FScopedSpinLock Lock(this->RegistryLock);
+        ReservedTypeIds.SetNum(TypeInfos.Num());
+        
+        for (int32 Index = 0; Index < TypeInfos.Num(); ++Index)
+        {
+            ReservedTypeIds[Index] = GenerateUniqueTypeId();
+        }
+        
+        // Quick precheck for duplicate names to fail fast
+        TSet<FName> TypeNames;
+        for (const FSVONodeTypeInfo& TypeInfo : TypeInfos)
+        {
+            if (NodeTypeNameMap.Contains(TypeInfo.TypeName) || TypeNames.Contains(TypeInfo.TypeName))
+            {
+                OutErrors.Add(FString::Printf(TEXT("Type with name '%s' already registered"), *TypeInfo.TypeName.ToString()));
+                return false;
+            }
+            TypeNames.Add(TypeInfo.TypeName);
+        }
+    }
+    
+    // Setup shared struct for parallel processing
+    struct FRegistrationContext
+    {
+        FCriticalSection ContextLock;
+        TArray<uint32> SuccessIndices;
+        TArray<TSharedRef<FSVONodeTypeInfo>> RegisteredTypes;
+        TArray<FString> LocalErrors;
+    };
+    
+    FRegistrationContext Context;
+    Context.RegisteredTypes.Reserve(TypeInfos.Num());
+    
+    // Perform parallel registration
+    bool bSuccess = FParallelExecutor::Get().ParallelFor(
+        TypeInfos.Num(),
+        [this, &TypeInfos, &ReservedTypeIds, &Context](int32 Index)
+        {
+            const FSVONodeTypeInfo& TypeInfo = TypeInfos[Index];
+            uint32 TypeId = ReservedTypeIds[Index];
+            
+            // Create a copy of the type info to store
+            TSharedRef<FSVONodeTypeInfo> NewTypeInfo = MakeShared<FSVONodeTypeInfo>(TypeInfo);
+            NewTypeInfo->TypeId = TypeId;
+            
+            // Add to local collection
+            {
+                FScopeLock ContextLock(&Context.ContextLock);
+                Context.RegisteredTypes.Add(NewTypeInfo);
+                Context.SuccessIndices.Add(Index);
+            }
+            
+            // Create memory pool without holding global lock
+            CreateTypeSpecificPool(NewTypeInfo);
+        },
+        Config);
+    
+    // Now update the registry with the batch of new types
+    if (Context.RegisteredTypes.Num() > 0)
+    {
+        FScopedSpinLock Lock(this->RegistryLock);
+        
+        // Add all successfully registered types to the registry
+        for (int32 LocalIndex = 0; LocalIndex < Context.RegisteredTypes.Num(); ++LocalIndex)
+        {
+            const TSharedRef<FSVONodeTypeInfo>& NewTypeInfo = Context.RegisteredTypes[LocalIndex];
+            int32 OriginalIndex = Context.SuccessIndices[LocalIndex];
+            
+            // Double-check for name collisions before adding
+            if (NodeTypeNameMap.Contains(NewTypeInfo->TypeName))
+            {
+                Context.LocalErrors.Add(FString::Printf(TEXT("Type with name '%s' already registered during parallel processing"), 
+                    *NewTypeInfo->TypeName.ToString()));
+                OutTypeIds[OriginalIndex] = 0; // Invalid ID
+                continue;
+            }
+            
+            // Add to registries
+            NodeTypeMap.Add(NewTypeInfo->TypeId, NewTypeInfo);
+            NodeTypeNameMap.Add(NewTypeInfo->TypeName, NewTypeInfo->TypeId);
+            
+            // Store the assigned type ID
+            OutTypeIds[OriginalIndex] = NewTypeInfo->TypeId;
+            
+            UE_LOG(LogSVOTypeRegistry, Log, TEXT("Registered SVO node type '%s' (ID %u) in batch"),
+                *NewTypeInfo->TypeName.ToString(), NewTypeInfo->TypeId);
+        }
+    }
+    
+    // Add any errors from parallel processing
+    OutErrors.Append(Context.LocalErrors);
+    
+    // Check for overall success - all types must be registered
+    bool bAllRegistered = true;
+    for (uint32 TypeId : OutTypeIds)
+    {
+        if (TypeId == 0)
+        {
+            bAllRegistered = false;
+            break;
+        }
+    }
+    
+    return bAllRegistered;
+}
+
+bool FSVOTypeRegistry::PrevalidateNodeTypes(
+    const TArray<FSVONodeTypeInfo>& TypeInfos,
+    TArray<FString>& OutErrors,
+    bool bParallel)
+{
+    if (!IsInitialized())
+    {
+        OutErrors.Add(TEXT("Cannot validate node types - registry not initialized"));
+        return false;
+    }
+    
+    if (TypeInfos.Num() == 0)
+    {
+        // Nothing to validate, consider it successful
+        return true;
+    }
+    
+    // For very small batches or when parallel is disabled, use sequential validation
+    if (!bParallel || TypeInfos.Num() <= 3)
+    {
+        bool bAllValid = true;
+        
+        for (int32 Index = 0; Index < TypeInfos.Num(); ++Index)
+        {
+            const FSVONodeTypeInfo& TypeInfo = TypeInfos[Index];
+            
+            // Check for duplicate type names
+            if (IsNodeTypeRegistered(TypeInfo.TypeName))
+            {
+                OutErrors.Add(FString::Printf(TEXT("Type with name '%s' already registered"), *TypeInfo.TypeName.ToString()));
+                bAllValid = false;
+            }
+            
+            // Validate alignment requirement (must be power of 2)
+            if ((TypeInfo.AlignmentRequirement & (TypeInfo.AlignmentRequirement - 1)) != 0)
+            {
+                OutErrors.Add(FString::Printf(TEXT("Type '%s' has invalid alignment requirement %u (must be power of 2)"),
+                    *TypeInfo.TypeName.ToString(), TypeInfo.AlignmentRequirement));
+                bAllValid = false;
+            }
+            
+            // Validate data size (must be greater than 0)
+            if (TypeInfo.DataSize == 0)
+            {
+                OutErrors.Add(FString::Printf(TEXT("Type '%s' has invalid data size 0 (must be greater than 0)"),
+                    *TypeInfo.TypeName.ToString()));
+                bAllValid = false;
+            }
+            
+            // Validate SIMD compatibility
+            if (TypeInfo.bSupportsSIMD && !IsSIMDInstructionSetSupported(TypeInfo.RequiredInstructionSet))
+            {
+                OutErrors.Add(FString::Printf(TEXT("Type '%s' requires SIMD instruction set '%d' which is not supported by the current hardware"),
+                    *TypeInfo.TypeName.ToString(), static_cast<int32>(TypeInfo.RequiredInstructionSet)));
+                bAllValid = false;
+            }
+        }
+        
+        return bAllValid;
+    }
+    
+    // For larger batches, use parallel validation
+    FTypeValidationContext ValidationContext;
+    
+    // First validate for duplicate names within the batch
+    {
+        TSet<FName> TypeNamesInBatch;
+        for (const FSVONodeTypeInfo& TypeInfo : TypeInfos)
+        {
+            if (TypeNamesInBatch.Contains(TypeInfo.TypeName))
+            {
+                ValidationContext.AddError(FString::Printf(TEXT("Duplicate type name '%s' within batch"), 
+                    *TypeInfo.TypeName.ToString()));
+            }
+            TypeNamesInBatch.Add(TypeInfo.TypeName);
+        }
+        
+        // If we already have validation errors, no need to continue
+        if (ValidationContext.Errors.Num() > 0)
+        {
+            OutErrors.Append(ValidationContext.Errors);
+            return false;
+        }
+    }
+    
+    // Check if any type names are already registered (requires lock)
+    {
+        FScopedSpinLock Lock(this->RegistryLock);
+        for (const FSVONodeTypeInfo& TypeInfo : TypeInfos)
+        {
+            if (NodeTypeNameMap.Contains(TypeInfo.TypeName))
+            {
+                ValidationContext.AddError(FString::Printf(TEXT("Type with name '%s' already registered"), 
+                    *TypeInfo.TypeName.ToString()));
+            }
+        }
+    }
+    
+    // Perform parallel validation for other criteria
+    FParallelConfig Config;
+    Config.SetExecutionMode(EParallelExecutionMode::ForceParallel);
+    
+    FParallelExecutor::Get().ParallelFor(
+        TypeInfos.Num(),
+        [this, &TypeInfos, &ValidationContext](int32 Index)
+        {
+            const FSVONodeTypeInfo& TypeInfo = TypeInfos[Index];
+            
+            // Validate alignment requirement (must be power of 2)
+            if ((TypeInfo.AlignmentRequirement & (TypeInfo.AlignmentRequirement - 1)) != 0)
+            {
+                ValidationContext.AddError(FString::Printf(TEXT("Type '%s' has invalid alignment requirement %u (must be power of 2)"),
+                    *TypeInfo.TypeName.ToString(), TypeInfo.AlignmentRequirement));
+            }
+            
+            // Validate data size (must be greater than 0)
+            if (TypeInfo.DataSize == 0)
+            {
+                ValidationContext.AddError(FString::Printf(TEXT("Type '%s' has invalid data size 0 (must be greater than 0)"),
+                    *TypeInfo.TypeName.ToString()));
+            }
+            
+            // Validate SIMD compatibility
+            if (TypeInfo.bSupportsSIMD && !IsSIMDInstructionSetSupported(TypeInfo.RequiredInstructionSet))
+            {
+                ValidationContext.AddError(FString::Printf(TEXT("Type '%s' requires SIMD instruction set '%d' which is not supported by the current hardware"),
+                    *TypeInfo.TypeName.ToString(), static_cast<int32>(TypeInfo.RequiredInstructionSet)));
+            }
+        },
+        Config);
+    
+    // Check for validation errors
+    if (ValidationContext.Errors.Num() > 0)
+    {
+        OutErrors.Append(ValidationContext.Errors);
+        return false;
+    }
+    
+    return true;
+}
+
+bool FSVOTypeRegistry::ValidateTypeConsistency(
+    TArray<FString>& OutErrors,
+    bool bParallel)
+{
+    if (!IsInitialized())
+    {
+        OutErrors.Add(TEXT("Cannot validate type consistency - registry not initialized"));
+        return false;
+    }
+    
+    // Get all registered types
+    TArray<FSVONodeTypeInfo> AllTypes = GetAllNodeTypes();
+    
+    if (AllTypes.Num() == 0)
+    {
+        // Nothing to validate, consider it successful
+        return true;
+    }
+    
+    // For very small type counts or when parallel is disabled, use sequential validation
+    if (!bParallel || AllTypes.Num() <= 3)
+    {
+        return Validate(OutErrors);
+    }
+    
+    // For larger type counts, use parallel validation
+    FTypeValidationContext ValidationContext;
+    
+    // Verify name-to-ID map integrity (requires lock)
+    {
+        FScopedSpinLock Lock(this->RegistryLock);
+        
+        for (const auto& TypeNamePair : NodeTypeNameMap)
+        {
+            const FName& TypeName = TypeNamePair.Key;
+            const uint32 TypeId = TypeNamePair.Value;
+            
+            if (!NodeTypeMap.Contains(TypeId))
+            {
+                ValidationContext.AddError(FString::Printf(TEXT("SVO type name '%s' references non-existent type ID %u"), 
+                    *TypeName.ToString(), TypeId));
+            }
+            else if (NodeTypeMap[TypeId]->TypeName != TypeName)
+            {
+                ValidationContext.AddError(FString::Printf(TEXT("SVO type name mismatch: '%s' references ID %u, but ID maps to name '%s'"),
+                    *TypeName.ToString(), TypeId, *NodeTypeMap[TypeId]->TypeName.ToString()));
+            }
+        }
+    }
+    
+    // Perform parallel validation for individual type consistency
+    FParallelConfig Config;
+    Config.SetExecutionMode(EParallelExecutionMode::ForceParallel);
+    
+    FParallelExecutor::Get().ParallelFor(
+        AllTypes.Num(),
+        [this, &AllTypes, &ValidationContext](int32 Index)
+        {
+            const FSVONodeTypeInfo& TypeInfo = AllTypes[Index];
+            const uint32 TypeId = TypeInfo.TypeId;
+            
+            // Validate type ID-to-info map integrity
+            FScopedSpinLock Lock(this->RegistryLock);
+            
+            if (!NodeTypeNameMap.Contains(TypeInfo.TypeName))
+            {
+                ValidationContext.AddError(FString::Printf(TEXT("SVO type ID %u ('%s') not found in name map"),
+                    TypeId, *TypeInfo.TypeName.ToString()));
+            }
+            else if (NodeTypeNameMap[TypeInfo.TypeName] != TypeId)
+            {
+                ValidationContext.AddError(FString::Printf(TEXT("SVO type ID mismatch: ID %u maps to name '%s', but name maps to ID %u"),
+                    TypeId, *TypeInfo.TypeName.ToString(), NodeTypeNameMap[TypeInfo.TypeName]));
+            }
+            
+            // Validate alignment requirement (must be power of 2)
+            if ((TypeInfo.AlignmentRequirement & (TypeInfo.AlignmentRequirement - 1)) != 0)
+            {
+                ValidationContext.AddError(FString::Printf(TEXT("SVO type '%s' (ID %u) has invalid alignment requirement %u (must be power of 2)"),
+                    *TypeInfo.TypeName.ToString(), TypeId, TypeInfo.AlignmentRequirement));
+            }
+            
+            // Validate SIMD compatibility
+            if (TypeInfo.bSupportsSIMD && !IsSIMDInstructionSetSupported(TypeInfo.RequiredInstructionSet))
+            {
+                ValidationContext.AddError(FString::Printf(TEXT("SVO type '%s' (ID %u) requires SIMD instruction set that is not supported by the current hardware"),
+                    *TypeInfo.TypeName.ToString(), TypeId));
+            }
+            
+            // Validate memory management integration
+            IMemoryManager* MemoryManager = IServiceLocator::Get().ResolveService<IMemoryManager>();
+            if (MemoryManager && !MemoryManager->GetPoolForType(TypeId))
+            {
+                ValidationContext.AddError(FString::Printf(TEXT("SVO type '%s' (ID %u) has no memory pool configured"),
+                    *TypeInfo.TypeName.ToString(), TypeId));
+            }
+        },
+        Config);
+    
+    // Check for validation errors
+    if (ValidationContext.Errors.Num() > 0)
+    {
+        OutErrors.Append(ValidationContext.Errors);
+        return false;
+    }
+    
+    return true;
+}
+
+bool FSVOTypeRegistry::PreInitializeTypes()
+{
+    if (!IsInitialized())
+    {
+        UE_LOG(LogSVOTypeRegistry, Error, TEXT("Cannot pre-initialize types - registry not initialized"));
+        return false;
+    }
+    
+    // Get all registered types
+    TArray<FSVONodeTypeInfo> AllTypes = GetAllNodeTypes();
+    
+    if (AllTypes.Num() == 0)
+    {
+        // Nothing to initialize, consider it successful
+        return true;
+    }
+    
+    UE_LOG(LogSVOTypeRegistry, Log, TEXT("Pre-initializing %d SVO node types"), AllTypes.Num());
+    
+    // Perform pre-initialization steps for all types
+    for (const FSVONodeTypeInfo& TypeInfo : AllTypes)
+    {
+        // Ensure memory pool exists for each type
+        SynchronizePoolCreation(TypeInfo.TypeId);
+    }
+    
+    return true;
+}
+
+bool FSVOTypeRegistry::ParallelInitializeTypes(bool bParallel)
+{
+    if (!IsInitialized())
+    {
+        UE_LOG(LogSVOTypeRegistry, Error, TEXT("Cannot initialize types - registry not initialized"));
+        return false;
+    }
+    
+    // Get all registered types
+    TArray<FSVONodeTypeInfo> AllTypes = GetAllNodeTypes();
+    
+    if (AllTypes.Num() == 0)
+    {
+        // Nothing to initialize, consider it successful
+        return true;
+    }
+    
+    UE_LOG(LogSVOTypeRegistry, Log, TEXT("Initializing %d SVO node types in %s mode"),
+        AllTypes.Num(), bParallel ? TEXT("parallel") : TEXT("sequential"));
+    
+    // For very small type counts or when parallel is disabled, use sequential initialization
+    if (!bParallel || AllTypes.Num() <= 3)
+    {
+        for (const FSVONodeTypeInfo& TypeInfo : AllTypes)
+        {
+            // Initialize type-specific resources
+            if (TypeInfo.bSupportsMaterialRelationships)
+            {
+                // Initialize material relationship tables
+            }
+            
+            // Initialize other type-specific resources
+        }
+        
+        return true;
+    }
+    
+    // For larger type counts, use parallel initialization with dependency ordering
+    FParallelConfig Config;
+    Config.SetExecutionMode(EParallelExecutionMode::ForceParallel);
+    
+    bool bSuccess = FParallelExecutor::Get().ParallelForWithDependencies(
+        AllTypes.Num(),
+        [this, &AllTypes](int32 Index)
+        {
+            const FSVONodeTypeInfo& TypeInfo = AllTypes[Index];
+            
+            // Initialize type-specific resources
+            if (TypeInfo.bSupportsMaterialRelationships)
+            {
+                // Initialize material relationship tables
+            }
+            
+            // Initialize other type-specific resources
+        },
+        [this, &AllTypes](int32 Index) -> TArray<int32>
+        {
+            // Return dependencies for this type
+            return GetTypeDependencies(AllTypes[Index].TypeId);
+        },
+        Config);
+    
+    return bSuccess;
+}
+
+bool FSVOTypeRegistry::PostInitializeTypes()
+{
+    if (!IsInitialized())
+    {
+        UE_LOG(LogSVOTypeRegistry, Error, TEXT("Cannot post-initialize types - registry not initialized"));
+        return false;
+    }
+    
+    // Get all registered types
+    TArray<FSVONodeTypeInfo> AllTypes = GetAllNodeTypes();
+    
+    if (AllTypes.Num() == 0)
+    {
+        // Nothing to initialize, consider it successful
+        return true;
+    }
+    
+    UE_LOG(LogSVOTypeRegistry, Log, TEXT("Post-initializing %d SVO node types"), AllTypes.Num());
+    
+    // Perform post-initialization steps that require all types to be initialized
+    
+    // Example: Validate type relationships
+    TArray<FString> ValidationErrors;
+    bool bSuccess = ValidateTypeConsistency(ValidationErrors, true);
+    
+    if (!bSuccess)
+    {
+        for (const FString& Error : ValidationErrors)
+        {
+            UE_LOG(LogSVOTypeRegistry, Error, TEXT("Post-initialization validation error: %s"), *Error);
+        }
+        return false;
+    }
+    
+    return true;
+}
+
+TArray<int32> FSVOTypeRegistry::GetTypeDependencies(uint32 TypeId) const
+{
+    TArray<int32> Dependencies;
+    
+    if (!IsInitialized() || !IsNodeTypeRegistered(TypeId))
+    {
+        return Dependencies;
+    }
+    
+    // Lock for thread safety
+    FScopedSpinLock Lock(this->RegistryLock);
+    
+    // Get the type info
+    const TSharedRef<FSVONodeTypeInfo>* TypeInfoPtr = NodeTypeMap.Find(TypeId);
+    if (!TypeInfoPtr)
+    {
+        return Dependencies;
+    }
+    
+    const FSVONodeTypeInfo& TypeInfo = TypeInfoPtr->Get();
+    
+    // Check for dependencies based on node class
+    if (TypeInfo.NodeClass == ESVONodeClass::Interface)
+    {
+        // Interface nodes may depend on the homogeneous node types they can contain
+        for (const auto& TypePair : NodeTypeMap)
+        {
+            if (TypePair.Key != TypeId && TypePair.Value->NodeClass == ESVONodeClass::Homogeneous)
+            {
+                // Safely convert uint32 to int32, skipping if out of range
+                if (TypePair.Key <= static_cast<uint32>(INT32_MAX))
+                {
+                    Dependencies.Add(static_cast<int32>(TypePair.Key));
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("NodeType ID %u exceeds INT32_MAX, skipping as dependency"), TypePair.Key);
+                }
+            }
+        }
+    }
+    
+    // Add dependencies based on material relationships
+    if (TypeInfo.bSupportsMaterialRelationships)
+    {
+        // Find material type dependencies (would need access to material registry)
+    }
+    
+    return Dependencies;
+}
+
+// Add helper method for ParallelInitializeTypes
+void FSVOTypeRegistry::InitializeType(uint32 TypeId)
+{
+    // Implementation would initialize a specific type
+    // This is called from ParallelInitializeTypes
+}
+
+ETypeCapabilitiesEx FSVOTypeRegistry::GetTypeCapabilitiesEx(uint32 TypeId) const
+{
+    // Start with no capabilities
+    ETypeCapabilitiesEx Capabilities = ETypeCapabilitiesEx::None;
+    
+    // Check if this type is registered
+    if (!IsNodeTypeRegistered(TypeId))
+    {
+        return Capabilities;
+    }
+    
+    // Get the type info
+    const FSVONodeTypeInfo* TypeInfo = GetNodeTypeInfo(TypeId);
+    if (!TypeInfo)
+    {
+        return Capabilities;
+    }
+    
+    // Map SVO capabilities to extended type capabilities
+    if (TypeInfo->bSupportsSpatialCoherence)
+    {
+        Capabilities = TypeCapabilitiesHelpers::AddAdvancedCapability(
+            Capabilities, ETypeCapabilitiesEx::SpatialCoherence);
+    }
+    
+    if (TypeInfo->bOptimizedMemoryAccess)
+    {
+        Capabilities = TypeCapabilitiesHelpers::AddAdvancedCapability(
+            Capabilities, ETypeCapabilitiesEx::MemoryEfficient);
+        Capabilities = TypeCapabilitiesHelpers::AddAdvancedCapability(
+            Capabilities, ETypeCapabilitiesEx::CacheOptimized);
+    }
+    
+    // Determine if this type has low contention characteristics
+    if (TypeInfo->bSupportsConcurrentAccess && TypeInfo->MemoryLayout == ESVOMemoryLayout::Interleaved)
+    {
+        Capabilities = TypeCapabilitiesHelpers::AddAdvancedCapability(
+            Capabilities, ETypeCapabilitiesEx::LowContention);
+    }
+    
+    // Determine if this type supports SIMD vectorization
+    if (TypeInfo->bSupportsSIMD)
+    {
+        Capabilities = TypeCapabilitiesHelpers::AddAdvancedCapability(
+            Capabilities, ETypeCapabilitiesEx::Vectorizable);
+    }
+    
+    return Capabilities;
 }

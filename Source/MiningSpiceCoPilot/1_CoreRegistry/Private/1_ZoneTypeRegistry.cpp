@@ -9,22 +9,20 @@
 #include "MiningSpiceCoPilot/3_ThreadingTaskSystem/Public/TaskHelpers.h"
 #include "TypeRegistrationOperation.h"
 #include "../../3_ThreadingTaskSystem/Public/AsyncTaskManager.h"
-#include "../Public/Logging/LogMining.h"
+#include "Logging/LogMining.h"
 
 // Define ZoneTypeRegistrationOperationType
 static const FString ZoneTypeRegistrationOperationType = TEXT("ZoneTypeRegistration");
 
 // Initialize static members
-FZoneTypeRegistry* FZoneTypeRegistry::Instance = nullptr;
+FZoneTypeRegistry* FZoneTypeRegistry::Singleton = nullptr;
+FThreadSafeBool FZoneTypeRegistry::bSingletonInitialized(false);
 
 FZoneTypeRegistry::FZoneTypeRegistry()
-    : SchemaVersion(1) // Initial schema version
-    , bIsInitialized(false)
 {
-    // Initialize NextTypeId with value 1 (Reserve 0 as invalid/unregistered type ID)
+    // Initialize members properly
     NextTypeId.Set(1);
-    // Initialize type version counter
-    TypeVersion.Set(1);
+    bIsInitialized.AtomicSet(false);
     // Constructor is intentionally minimal
 }
 
@@ -46,12 +44,16 @@ bool FZoneTypeRegistry::Initialize()
     }
     
     // Set initialized flag
-    bIsInitialized = true;
+    bIsInitialized.AtomicSet(true);
     
     // Initialize internal maps
     TransactionTypeMap.Empty();
     TransactionTypeNameMap.Empty();
-    ZoneGridConfigMap.Empty();
+    ZoneConfigMap.Empty();
+    ZoneTypeMap.Empty();
+    ZoneTypeNameMap.Empty();
+    ZoneHierarchy.Empty();
+    ChildToParentMap.Empty();
     
     // Reset type ID counter
     NextTypeId.Set(1);
@@ -69,10 +71,10 @@ void FZoneTypeRegistry::Shutdown()
         // Clear all registered items
         TransactionTypeMap.Empty();
         TransactionTypeNameMap.Empty();
-        ZoneGridConfigMap.Empty();
+        ZoneConfigMap.Empty();
         
         // Reset state
-        bIsInitialized = false;
+        bIsInitialized.AtomicSet(false);
     }
 }
 
@@ -88,7 +90,7 @@ FName FZoneTypeRegistry::GetRegistryName() const
 
 uint32 FZoneTypeRegistry::GetSchemaVersion() const
 {
-    return SchemaVersion;
+    return 1; // Return schema version directly
 }
 
 bool FZoneTypeRegistry::Validate(TArray<FString>& OutErrors) const
@@ -160,7 +162,7 @@ bool FZoneTypeRegistry::Validate(TArray<FString>& OutErrors) const
     }
     
     // Validate zone grid configurations
-    for (const auto& ConfigPair : ZoneGridConfigMap)
+    for (const auto& ConfigPair : ZoneConfigMap)
     {
         const FName& ConfigName = ConfigPair.Key;
         const TSharedRef<FZoneGridConfig>& Config = ConfigPair.Value;
@@ -183,10 +185,10 @@ bool FZoneTypeRegistry::Validate(TArray<FString>& OutErrors) const
     }
     
     // Check default zone grid configuration
-    if (!DefaultConfigName.IsNone() && !ZoneGridConfigMap.Contains(DefaultConfigName))
+    if (!DefaultZoneConfigName.IsNone() && !ZoneConfigMap.Contains(DefaultZoneConfigName))
     {
         OutErrors.Add(FString::Printf(TEXT("Default zone grid configuration '%s' does not exist"),
-            *DefaultConfigName.ToString()));
+            *DefaultZoneConfigName.ToString()));
         bIsValid = false;
     }
     
@@ -206,13 +208,13 @@ void FZoneTypeRegistry::Clear()
         // Clear all registered items
         TransactionTypeMap.Empty();
         TransactionTypeNameMap.Empty();
-        ZoneGridConfigMap.Empty();
+        ZoneConfigMap.Empty();
         
         // Reset counter
         NextTypeId.Set(1);
         
         // Reset default config name
-        DefaultConfigName = NAME_None;
+        DefaultZoneConfigName = NAME_None;
     }
 }
 
@@ -249,52 +251,21 @@ bool FZoneTypeRegistry::SetTypeVersion(uint32 TypeId, uint32 NewVersion, bool bM
         return true;
     }
     
-    // Store old version for logging
-    uint32 OldVersion = TypeInfo->SchemaVersion;
+    // Record previous version for migration
+    uint32 PreviousVersion = TypeInfo->SchemaVersion;
     
-    // Update type version
+    // Update version
     TypeInfo->SchemaVersion = NewVersion;
     
-    UE_LOG(LogTemp, Log, TEXT("Updated type '%s' version from %u to %u"),
-        *TypeInfo->TypeName.ToString(), OldVersion, NewVersion);
+    // Log version change
+    UE_LOG(LogTemp, Log, TEXT("Updated type '%s' (ID %u) from version %u to version %u"),
+        *TypeInfo->TypeName.ToString(), TypeId, PreviousVersion, NewVersion);
     
-    // If migration is not requested, we're done
-    if (!bMigrateInstanceData)
+    // Handle instance data migration if needed
+    if (bMigrateInstanceData)
     {
-        return true;
-    }
-    
-    // Integrate with MemoryPoolManager to update memory state
-    IMemoryManager* MemoryManager = IServiceLocator::Get().ResolveService<IMemoryManager>();
-    if (!MemoryManager)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Memory migration skipped for type '%s' - Memory Manager not available"),
-            *TypeInfo->TypeName.ToString());
-        return true; // Still return true as the version was updated
-    }
-    
-    // Create memory migration data
-    FTypeVersionMigrationInfo MigrationInfo;
-    MigrationInfo.TypeId = TypeId;
-    MigrationInfo.TypeName = TypeInfo->TypeName;
-    MigrationInfo.OldVersion = OldVersion;
-    MigrationInfo.NewVersion = NewVersion;
-    
-    // Find the pool allocator for this type
-    IPoolAllocator* PoolAllocator = MemoryManager->GetPoolForType(TypeId);
-    if (!PoolAllocator)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Memory migration skipped for type '%s' - No pool allocator found"),
-            *TypeInfo->TypeName.ToString());
-        return true; // Still return true as the version was updated
-    }
-    
-    // Apply the type version update to the pool
-    if (!PoolAllocator->UpdateTypeVersion(MigrationInfo))
-    {
-        UE_LOG(LogTemp, Error, TEXT("Failed to update memory pool for type '%s' version %u -> %u"),
-            *TypeInfo->TypeName.ToString(), OldVersion, NewVersion);
-        return false;
+        // TODO: Implement migration logic
+        UE_LOG(LogTemp, Warning, TEXT("Instance data migration not yet implemented"));
     }
     
     return true;
@@ -302,7 +273,8 @@ bool FZoneTypeRegistry::SetTypeVersion(uint32 TypeId, uint32 NewVersion, bool bM
 
 uint32 FZoneTypeRegistry::GetTypeVersion(uint32 TypeId) const
 {
-    if (!IsInitialized() || !TransactionTypeMap.Contains(TypeId))
+    // Check if registry is initialized
+    if (!bIsInitialized)
     {
         return 0;
     }
@@ -313,6 +285,13 @@ uint32 FZoneTypeRegistry::GetTypeVersion(uint32 TypeId) const
     // Record contention if there's high lock traffic
     FThreadSafety::Get().RecordContention(const_cast<FSpinLock*>(&RegistryLock));
     
+    // Check if type exists
+    if (!TransactionTypeMap.Contains(TypeId))
+    {
+        return 0;
+    }
+    
+    // Return version
     return TransactionTypeMap[TypeId]->SchemaVersion;
 }
 
@@ -321,120 +300,78 @@ uint32 FZoneTypeRegistry::RegisterTransactionType(
     ETransactionConcurrency InConcurrencyLevel,
     ERetryStrategy InRetryStrategy)
 {
-    // Check if registry is initialized
-    if (!bIsInitialized)
+    // Check if already registered
+    if (IsTransactionTypeRegistered(InTypeName))
     {
-        UE_LOG(LogTemp, Error, TEXT("Cannot register transaction type - registry not initialized"));
-        return 0;
-    }
-    
-    // Check if type already exists (with a read lock first)
-    {
+        // Return existing ID
         FScopedSpinLock ReadLock(RegistryLock);
-        
-        // Record contention if there's high lock traffic
-        FThreadSafety::Get().RecordContention(const_cast<FSpinLock*>(&RegistryLock));
-        
-        if (TransactionTypeNameMap.Contains(InTypeName))
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Transaction type '%s' is already registered with ID %u"),
-                *InTypeName.ToString(), TransactionTypeNameMap[InTypeName]);
-            return TransactionTypeNameMap[InTypeName];
-        }
+        return TransactionTypeNameMap[InTypeName];
     }
     
-    // Implement optimistic locking for transaction registration
-    for (int32 RetryCount = 0; RetryCount < 3; RetryCount++)
+    // Create new transaction type info
+    TSharedRef<FZoneTransactionTypeInfo> TypeInfo = MakeShared<FZoneTransactionTypeInfo>();
+    
+    // Fill in basic info
+    TypeInfo->TypeName = InTypeName;
+    TypeInfo->ConcurrencyLevel = InConcurrencyLevel;
+    TypeInfo->RetryStrategy = InRetryStrategy;
+    
+    // Set default values based on concurrency level
+    switch (InConcurrencyLevel)
     {
-        // Read the current type version before attempting the registration
-        int32 ExpectedVersion = TypeVersion.GetValue();
-        
-        // Create the new transaction type info
-        TSharedRef<FZoneTransactionTypeInfo> TypeInfo = MakeShared<FZoneTransactionTypeInfo>();
-        TypeInfo->TypeName = InTypeName;
-        TypeInfo->ConcurrencyLevel = InConcurrencyLevel;
-        TypeInfo->RetryStrategy = InRetryStrategy;
-        TypeInfo->MaxRetries = (InRetryStrategy == ERetryStrategy::None) ? 0 : 3;
-        TypeInfo->BaseRetryIntervalMs = 10;
-        TypeInfo->MaterialChannelId = -1; // Default to -1 (not material-specific)
-        TypeInfo->Priority = static_cast<ETransactionPriority>(100); // Default priority
-        TypeInfo->bRequiresVersionTracking = (InConcurrencyLevel != ETransactionConcurrency::ReadOnly);
-        TypeInfo->bSupportsFastPath = (InConcurrencyLevel == ETransactionConcurrency::ReadOnly || 
-                                      InConcurrencyLevel == ETransactionConcurrency::Optimistic);
-        TypeInfo->FastPathThreshold = 0.2f; // Default threshold (20% conflict rate for fast path)
-        TypeInfo->bHasReadValidateWritePattern = (InConcurrencyLevel == ETransactionConcurrency::Optimistic);
-        TypeInfo->SchemaVersion = 1; // Initial version
-        
-        // Add transaction capability metrics for conflict tracking
-        TypeInfo->HistoricalConflictRates.Add(0.0f); // Initial conflict rate
-        TypeInfo->TotalExecutions = 0; 
-        TypeInfo->ConflictCount = 0;
-        TypeInfo->bSupportsPartialExecution = (InConcurrencyLevel == ETransactionConcurrency::Optimistic || 
-                                              InConcurrencyLevel == ETransactionConcurrency::MaterialChannel);
-        TypeInfo->bCanMergeResults = (InConcurrencyLevel != ETransactionConcurrency::Exclusive);
-        TypeInfo->Priority = (InConcurrencyLevel == ETransactionConcurrency::ReadOnly) ? static_cast<ETransactionPriority>(50) : 
-                            (InConcurrencyLevel == ETransactionConcurrency::Exclusive) ? static_cast<ETransactionPriority>(200) : static_cast<ETransactionPriority>(100);
-        
-        // Generate a unique type ID (atomic operation)
-        uint32 NewTypeId = NextTypeId.Increment();
-        TypeInfo->TypeId = NewTypeId;
-        
-        // Now attempt to commit the changes if the version hasn't changed
-        {
-            FScopedSpinLock WriteLock(RegistryLock);
+        case ETransactionConcurrency::ReadOnly:
+            TypeInfo->bRequiresVersionTracking = false;
+            TypeInfo->MaxRetries = 2;
+            TypeInfo->BaseRetryIntervalMs = 5;
+            TypeInfo->bSupportsFastPath = true;
+            TypeInfo->FastPathThreshold = 0.9f;
+            break;
             
-            // Record contention if there's high lock traffic
-            FThreadSafety::Get().RecordContention(const_cast<FSpinLock*>(&RegistryLock));
+        case ETransactionConcurrency::Optimistic:
+            TypeInfo->bRequiresVersionTracking = true;
+            TypeInfo->MaxRetries = 5;
+            TypeInfo->BaseRetryIntervalMs = 10;
+            TypeInfo->bSupportsFastPath = true;
+            TypeInfo->FastPathThreshold = 0.7f;
+            break;
             
-            // Check if another thread registered the same type while we were preparing
-            if (TransactionTypeNameMap.Contains(InTypeName))
-            {
-                UE_LOG(LogTemp, Warning, TEXT("Race condition: Transaction type '%s' was registered by another thread with ID %u"),
-                    *InTypeName.ToString(), TransactionTypeNameMap[InTypeName]);
-                return TransactionTypeNameMap[InTypeName];
-            }
+        case ETransactionConcurrency::Exclusive:
+            TypeInfo->bRequiresVersionTracking = true;
+            TypeInfo->MaxRetries = 0;
+            TypeInfo->BaseRetryIntervalMs = 0;
+            TypeInfo->bSupportsFastPath = false;
+            TypeInfo->FastPathThreshold = 0.0f;
+            break;
             
-            // Use FThreadSafetyHelpers::AtomicCompareExchange to validate and update the version
-            int32 ActualVersion;
-            if (FThreadSafetyHelpers::AtomicCompareExchange(TypeVersion, ActualVersion, ExpectedVersion + 1, ExpectedVersion))
-            {
-                // Success! Register the new type
-                TransactionTypeMap.Add(NewTypeId, TypeInfo);
-                TransactionTypeNameMap.Add(InTypeName, NewTypeId);
-                
-                // Register the transaction completion callback
-                if (!CompletionCallbacks.Contains(NewTypeId))
-                {
-                    CompletionCallbacks.Add(NewTypeId, FTransactionCompletionDelegate::CreateRaw(this, &FZoneTypeRegistry::OnTransactionCompleted));
-                    
-                    // Register the callback with the TransactionManager
-                    FTransactionManager::Get().RegisterCompletionCallback(NewTypeId, CompletionCallbacks[NewTypeId]);
-                }
-                
-                // Update the FastPathThreshold in FTransactionManager
-                FTransactionManager::Get().UpdateFastPathThreshold(NewTypeId, TypeInfo->FastPathThreshold);
-                
-                UE_LOG(LogTemp, Log, TEXT("Registered transaction type '%s' with ID %u"),
-                    *InTypeName.ToString(), NewTypeId);
-                
-                return NewTypeId;
-            }
-            else
-            {
-                // Version changed, need to retry
-                UE_LOG(LogTemp, Verbose, TEXT("Optimistic concurrency collision on transaction type registration '%s', retrying..."),
-                    *InTypeName.ToString());
-                
-                // Small backoff before retry
-                FPlatformProcess::Sleep(0.001f * FMath::Pow(2.0f, RetryCount));
-            }
-        }
+        case ETransactionConcurrency::MaterialChannel:
+            TypeInfo->bRequiresVersionTracking = true;
+            TypeInfo->MaxRetries = 3;
+            TypeInfo->BaseRetryIntervalMs = 20;
+            TypeInfo->bSupportsFastPath = true;
+            TypeInfo->FastPathThreshold = 0.5f;
+            break;
     }
     
-    // If we reach here, we failed after multiple retries
-    UE_LOG(LogTemp, Error, TEXT("Failed to register transaction type '%s' after multiple retries"),
-        *InTypeName.ToString());
-    return 0;
+    // Get next available ID
+    uint32 NewTypeId = GenerateUniqueTypeId();
+    TypeInfo->TypeId = NewTypeId;
+    
+    // Initialize version info
+    TypeInfo->SchemaVersion = 1;  // Start at version 1
+    
+    // Register in registry
+    {
+        FScopedSpinLock WriteLock(RegistryLock);
+        
+        // Add to maps
+        TransactionTypeMap.Add(NewTypeId, TypeInfo);
+        TransactionTypeNameMap.Add(InTypeName, NewTypeId);
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("Registered zone transaction type '%s' with ID %u"),
+        *InTypeName.ToString(), NewTypeId);
+    
+    return NewTypeId;
 }
 
 uint32 FZoneTypeRegistry::RegisterMaterialTransaction(
@@ -532,31 +469,28 @@ bool FZoneTypeRegistry::RegisterZoneGridConfig(
     // Lock for thread safety
     FScopedSpinLock Lock(RegistryLock);
     
-    // Check if config name is already registered
-    if (ZoneGridConfigMap.Contains(InConfigName))
+    // Check if a configuration with this name already exists
+    if (ZoneConfigMap.Contains(InConfigName))
     {
-        UE_LOG(LogTemp, Warning, TEXT("FZoneTypeRegistry::RegisterZoneGridConfig - config '%s' is already registered"),
+        UE_LOG(LogTemp, Warning, TEXT("Zone grid configuration '%s' already exists, overwriting"),
             *InConfigName.ToString());
-        return false;
     }
     
-    // Create and populate config
+    // Create a new configuration object
     TSharedRef<FZoneGridConfig> Config = MakeShared<FZoneGridConfig>();
     Config->ZoneSize = InZoneSize;
-    Config->DefaultConfigName = InConfigName;
     Config->MaxConcurrentTransactions = InMaxConcurrentTransactions;
-    Config->bUseMaterialSpecificVersioning = true;
-    Config->VersionHistoryLength = 8;
+    Config->DefaultConfigName = InConfigName;
+    Config->bUseMaterialSpecificVersioning = false;
+    Config->VersionHistoryLength = 10;
     
-    // Register the config
-    ZoneGridConfigMap.Add(InConfigName, Config);
+    // Add to map
+    ZoneConfigMap.Add(InConfigName, Config);
     
-    // If this is the first config, make it the default
-    if (DefaultConfigName.IsNone())
+    // If this is the first configuration, make it the default
+    if (DefaultZoneConfigName.IsNone())
     {
-        DefaultConfigName = InConfigName;
-        UE_LOG(LogTemp, Verbose, TEXT("FZoneTypeRegistry::RegisterZoneGridConfig - set '%s' as default config"),
-            *InConfigName.ToString());
+        DefaultZoneConfigName = InConfigName;
     }
     
     UE_LOG(LogTemp, Verbose, TEXT("FZoneTypeRegistry::RegisterZoneGridConfig - registered config '%s' with zone size %.2f"),
@@ -621,7 +555,7 @@ const FZoneGridConfig* FZoneTypeRegistry::GetZoneGridConfig(const FName& InConfi
     FScopedSpinLock Lock(RegistryLock);
     
     // Look up config by name
-    const TSharedRef<FZoneGridConfig>* ConfigPtr = ZoneGridConfigMap.Find(InConfigName);
+    const TSharedRef<FZoneGridConfig>* ConfigPtr = ZoneConfigMap.Find(InConfigName);
     if (ConfigPtr)
     {
         return &(ConfigPtr->Get());
@@ -632,12 +566,12 @@ const FZoneGridConfig* FZoneTypeRegistry::GetZoneGridConfig(const FName& InConfi
 
 const FZoneGridConfig* FZoneTypeRegistry::GetDefaultZoneGridConfig() const
 {
-    if (!IsInitialized() || DefaultConfigName.IsNone())
+    if (!IsInitialized() || DefaultZoneConfigName.IsNone())
     {
         return nullptr;
     }
     
-    return GetZoneGridConfig(DefaultConfigName);
+    return GetZoneGridConfig(DefaultZoneConfigName);
 }
 
 bool FZoneTypeRegistry::SetDefaultZoneGridConfig(const FName& InConfigName)
@@ -652,7 +586,7 @@ bool FZoneTypeRegistry::SetDefaultZoneGridConfig(const FName& InConfigName)
     FScopedSpinLock Lock(RegistryLock);
     
     // Check if config exists
-    if (!ZoneGridConfigMap.Contains(InConfigName))
+    if (!ZoneConfigMap.Contains(InConfigName))
     {
         UE_LOG(LogTemp, Error, TEXT("FZoneTypeRegistry::SetDefaultZoneGridConfig failed - config '%s' not found"),
             *InConfigName.ToString());
@@ -660,7 +594,7 @@ bool FZoneTypeRegistry::SetDefaultZoneGridConfig(const FName& InConfigName)
     }
     
     // Set as default
-    DefaultConfigName = InConfigName;
+    DefaultZoneConfigName = InConfigName;
     
     UE_LOG(LogTemp, Verbose, TEXT("FZoneTypeRegistry::SetDefaultZoneGridConfig - set '%s' as default config"),
         *InConfigName.ToString());
@@ -808,22 +742,34 @@ bool FZoneTypeRegistry::IsTransactionTypeRegistered(const FName& InTypeName) con
     return TransactionTypeNameMap.Contains(InTypeName);
 }
 
+bool FZoneTypeRegistry::IsZoneTypeRegistered(uint32 InTypeId) const
+{
+    if (!IsInitialized())
+    {
+        return false;
+    }
+    
+    FScopedSpinLock Lock(RegistryLock);
+    
+    return ZoneTypeMap.Contains(InTypeId);
+}
+
 FZoneTypeRegistry& FZoneTypeRegistry::Get()
 {
     // Use double-checked locking pattern with memory barriers
-    if (!Instance)
+    if (!Singleton)
     {
         // Fix the most vexing parse by creating a named lock object
         FSpinLock TempLock;
         FScopedSpinLock Lock(TempLock);
-        if (!Instance)
+        if (!Singleton)
         {
-            Instance = new FZoneTypeRegistry();
-            Instance->Initialize();
+            Singleton = new FZoneTypeRegistry();
+            Singleton->Initialize();
         }
     }
     
-    return *Instance;
+    return *Singleton;
 }
 
 uint32 FZoneTypeRegistry::GenerateUniqueTypeId()
@@ -836,177 +782,99 @@ bool FZoneTypeRegistry::UpdateConflictRate(uint32 InTypeId, float InNewRate)
 {
     if (!IsInitialized())
     {
-        UE_LOG(LogTemp, Error, TEXT("FZoneTypeRegistry::UpdateConflictRate failed - registry not initialized"));
         return false;
     }
     
-    // Clamp conflict rate to valid range
-    float ConflictRate = FMath::Clamp(InNewRate, 0.0f, 1.0f);
+    if (InNewRate < 0.0f || InNewRate > 1.0f)
+    {
+        // Invalid conflict rate provided
+        return false;
+    }
     
-    // Lock for thread safety
     FScopedSpinLock Lock(RegistryLock);
     
-    // Check if the transaction type is registered
-    TSharedRef<FZoneTransactionTypeInfo>* TypeInfoPtr = TransactionTypeMap.Find(InTypeId);
-    if (!TypeInfoPtr)
+    if (!TransactionTypeMap.Contains(InTypeId))
     {
-        UE_LOG(LogTemp, Error, TEXT("FZoneTypeRegistry::UpdateConflictRate failed - type ID %u not found"), InTypeId);
+        // Type not found
         return false;
     }
     
-    // Update conflict statistics
-    TypeInfoPtr->Get().HistoricalConflictRates.Add(ConflictRate);
+    TSharedRef<FZoneTransactionTypeInfo>& TypeInfo = TransactionTypeMap[InTypeId];
     
-    // Limit history size to prevent excessive memory usage
-    const int32 MaxHistorySize = 100;
-    if (TypeInfoPtr->Get().HistoricalConflictRates.Num() > MaxHistorySize)
+    // Update conflict rate
+    TypeInfo->HistoricalConflictRates.Add(InNewRate);
+    
+    // Keep only the last 20 rates to avoid excessive memory usage
+    if (TypeInfo->HistoricalConflictRates.Num() > 20)
     {
-        TypeInfoPtr->Get().HistoricalConflictRates.RemoveAt(0);
+        TypeInfo->HistoricalConflictRates.RemoveAt(0);
     }
     
-    // Increment total executions
-    TypeInfoPtr->Get().TotalExecutions++;
-    
-    // Update conflict count if this was a conflict
-    if (ConflictRate > 0.0f)
+    // Update overall conflict rate average
+    if (TypeInfo->TotalExecutions > 0)
     {
-        TypeInfoPtr->Get().ConflictCount++;
+        TypeInfo->ConflictCount = FMath::RoundToInt(TypeInfo->TotalExecutions * InNewRate);
     }
     
-    // Calculate new fast path threshold based on moving average of conflict rates
-    float AverageConflictRate = 0.0f;
-    for (float Rate : TypeInfoPtr->Get().HistoricalConflictRates)
+    // Update fast path threshold if applicable
+    if (TypeInfo->bSupportsFastPath)
     {
-        AverageConflictRate += Rate;
+        return UpdateFastPathThreshold(InTypeId, InNewRate);
     }
-    AverageConflictRate /= TypeInfoPtr->Get().HistoricalConflictRates.Num();
-    
-    // Update the FastPathThreshold in the registry
-    UpdateFastPathThreshold(InTypeId, AverageConflictRate);
-    
-    // Also update it in the TransactionManager
-    FTransactionManager::Get().UpdateFastPathThreshold(InTypeId, TypeInfoPtr->Get().FastPathThreshold);
-    
-    UE_LOG(LogTemp, Verbose, TEXT("FZoneTypeRegistry::UpdateConflictRate - updated conflict rate for type ID %u to %.3f"),
-        InTypeId, ConflictRate);
     
     return true;
-}
-
-bool FZoneTypeRegistry::RegisterZoneHierarchy(int32 ParentZoneId, const TArray<int32>& ChildZones)
-{
-    if (!IsInitialized())
-    {
-        UE_LOG(LogTemp, Error, TEXT("FZoneTypeRegistry::RegisterZoneHierarchy failed - registry not initialized"));
-        return false;
-    }
-    
-    if (ParentZoneId < 0)
-    {
-        UE_LOG(LogTemp, Error, TEXT("FZoneTypeRegistry::RegisterZoneHierarchy failed - invalid parent zone ID"));
-        return false;
-    }
-    
-    if (ChildZones.Num() == 0)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("FZoneTypeRegistry::RegisterZoneHierarchy - no child zones provided for parent %d"), ParentZoneId);
-        return false;
-    }
-    
-    // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
-    
-    // Create or update parent-child relationships
-    TArray<int32>& Children = ZoneHierarchy.FindOrAdd(ParentZoneId);
-    
-    // Add all children that aren't already in the list
-    for (int32 ChildId : ChildZones)
-    {
-        if (ChildId >= 0 && ChildId != ParentZoneId)
-        {
-            // Ensure we don't create cycles in the hierarchy
-            if (GetParentZone(ParentZoneId) == ChildId)
-            {
-                UE_LOG(LogTemp, Error, TEXT("FZoneTypeRegistry::RegisterZoneHierarchy - detected cycle: parent %d is a child of %d"),
-                    ParentZoneId, ChildId);
-                continue;
-            }
-            
-            if (!Children.Contains(ChildId))
-            {
-                Children.Add(ChildId);
-            }
-            
-            // Update reverse mapping
-            ChildToParentMap.FindOrAdd(ChildId) = ParentZoneId;
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("FZoneTypeRegistry::RegisterZoneHierarchy - invalid child zone ID %d"), ChildId);
-        }
-    }
-    
-    UE_LOG(LogTemp, Verbose, TEXT("FZoneTypeRegistry::RegisterZoneHierarchy - registered %d children for parent zone %d"),
-        Children.Num(), ParentZoneId);
-    
-    return true;
-}
-
-TArray<int32> FZoneTypeRegistry::GetChildZones(int32 ParentZoneId) const
-{
-    // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
-    
-    // Look up children for this parent
-    const TArray<int32>* Children = ZoneHierarchy.Find(ParentZoneId);
-    
-    // Return a copy of the array, or empty array if not found
-    return Children ? *Children : TArray<int32>();
-}
-
-int32 FZoneTypeRegistry::GetParentZone(int32 ChildZoneId) const
-{
-    // Lock for thread safety
-    FScopedSpinLock Lock(RegistryLock);
-    
-    // Look up parent for this child
-    const int32* Parent = ChildToParentMap.Find(ChildZoneId);
-    
-    // Return parent ID, or INDEX_NONE if not found
-    return Parent ? *Parent : INDEX_NONE;
 }
 
 void FZoneTypeRegistry::OnTransactionCompleted(uint32 TypeId, const FTransactionStats& Stats)
 {
-    if (!IsInitialized())
+    // Check if registry is initialized
+    if (!bIsInitialized)
     {
-        UE_LOG(LogTemp, Error, TEXT("FZoneTypeRegistry::OnTransactionCompleted - registry not initialized"));
         return;
     }
     
-    // Calculate conflict rate from transaction statistics
-    float ConflictRate = 0.0f;
+    // Lock for thread safety
+    FScopedSpinLock Lock(RegistryLock);
     
-    // If there were retries, there were conflicts
-    if (Stats.RetryCount > 0)
+    // Record contention if there's high lock traffic
+    FThreadSafety::Get().RecordContention(const_cast<FSpinLock*>(&RegistryLock));
+    
+    // Check if type exists
+    if (!TransactionTypeMap.Contains(TypeId))
     {
-        // Simple formula: conflict rate increases with retry count
-        // 0 retries = 0.0, 1 retry = 0.3, 2 retries = 0.6, 3+ retries = 0.9
-        ConflictRate = FMath::Min(Stats.RetryCount * 0.3f, 0.9f);
+        UE_LOG(LogTemp, Warning, TEXT("Received completion stats for unknown transaction type %u"), TypeId);
+        return;
     }
     
-    // For committed transactions with no retries, record a low conflict rate
-    // This helps in determining real-world performance
-    if (Stats.RetryCount == 0)
+    // Get mutable type info
+    TSharedRef<FZoneTransactionTypeInfo>& TypeInfo = TransactionTypeMap[TypeId];
+    
+    // Update execution stats
+    TypeInfo->TotalExecutions++;
+    TypeInfo->ConflictCount += Stats.ConflictCount;
+    
+    // Update conflict rate history
+    float ConflictRate = Stats.ConflictCount > 0 ? 1.0f : 0.0f;
+    TypeInfo->HistoricalConflictRates.Add(ConflictRate);
+    
+    // Maintain a limited history (last 100 executions)
+    const int32 MaxHistorySize = 100;
+    if (TypeInfo->HistoricalConflictRates.Num() > MaxHistorySize)
     {
-        ConflictRate = 0.0f;
+        TypeInfo->HistoricalConflictRates.RemoveAt(0, TypeInfo->HistoricalConflictRates.Num() - MaxHistorySize);
     }
     
-    // Update conflict statistics for this transaction type
-    UpdateConflictRate(TypeId, ConflictRate);
+    // Calculate new average conflict rate
+    float TotalRate = 0.0f;
+    for (float Rate : TypeInfo->HistoricalConflictRates)
+    {
+        TotalRate += Rate;
+    }
+    float AverageRate = TypeInfo->HistoricalConflictRates.Num() > 0 ? 
+        TotalRate / TypeInfo->HistoricalConflictRates.Num() : 0.0f;
     
-    UE_LOG(LogTemp, Verbose, TEXT("FZoneTypeRegistry::OnTransactionCompleted - transaction type %u completed with conflict rate %.2f"),
-        TypeId, ConflictRate);
+    // Update fast path threshold based on conflict history
+    UpdateFastPathThreshold(TypeId, AverageRate);
 }
 
 ERegistryType FZoneTypeRegistry::GetRegistryType() const
@@ -1025,43 +893,73 @@ ETypeCapabilities FZoneTypeRegistry::GetTypeCapabilities(uint32 TypeId) const
         return Capabilities;
     }
     
-    // Get the zone type info
+    // Get the transaction type info
     const FZoneTransactionTypeInfo* TypeInfo = GetTransactionTypeInfo(TypeId);
     if (!TypeInfo)
     {
         return Capabilities;
     }
     
-    // Map zone capabilities to type capabilities
-    if (TypeInfo->bSupportsThreadSafeAccess)
+    // Map zone transaction capabilities to type capabilities
+    if (TypeInfo->bSupportsThreading)
     {
-        Capabilities |= ETypeCapabilities::ThreadSafe;
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::ThreadSafe);
     }
     
     if (TypeInfo->bSupportsPartialProcessing)
     {
-        Capabilities |= ETypeCapabilities::PartialExecution;
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::PartialExecution);
     }
     
     if (TypeInfo->bSupportsIncrementalUpdates)
     {
-        Capabilities |= ETypeCapabilities::IncrementalUpdates;
-    }
-    
-    if (TypeInfo->bLowContention)
-    {
-        Capabilities |= ETypeCapabilities::LowContention;
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::IncrementalUpdates);
     }
     
     if (TypeInfo->bSupportsResultMerging)
     {
-        Capabilities |= ETypeCapabilities::ResultMerging;
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::ResultMerging);
     }
     
     if (TypeInfo->bSupportsAsyncProcessing)
     {
-        Capabilities |= ETypeCapabilities::AsyncOperations;
+        Capabilities = TypeCapabilitiesHelpers::AddBasicCapability(
+            Capabilities, ETypeCapabilities::AsyncOperations);
     }
+    
+    return Capabilities;
+}
+
+ETypeCapabilitiesEx FZoneTypeRegistry::GetTypeCapabilitiesEx(uint32 TypeId) const
+{
+    // Start with no extended capabilities
+    ETypeCapabilitiesEx Capabilities = ETypeCapabilitiesEx::None;
+    
+    // Check if this type is registered
+    if (!IsTransactionTypeRegistered(TypeId))
+    {
+        return Capabilities;
+    }
+    
+    // Get the transaction type info
+    const FZoneTransactionTypeInfo* TypeInfo = GetTransactionTypeInfo(TypeId);
+    if (!TypeInfo)
+    {
+        return Capabilities;
+    }
+    
+    // Map zone transaction capabilities to extended type capabilities
+    if (TypeInfo->bLowContention)
+    {
+        Capabilities = TypeCapabilitiesHelpers::AddAdvancedCapability(
+            Capabilities, ETypeCapabilitiesEx::LowContention);
+    }
+    
+    // Add additional mapping for other extended capabilities as needed
     
     return Capabilities;
 }
@@ -1073,23 +971,10 @@ uint64 FZoneTypeRegistry::ScheduleTypeTask(uint32 TypeId, TFunction<void()> Task
     TypedConfig.SetTypeId(TypeId, ERegistryType::Zone);
     
     // Set optimization flags based on type capabilities
-    ETypeCapabilities Capabilities = GetTypeCapabilities(TypeId);
-    EThreadOptimizationFlags OptimizationFlags = EThreadOptimizationFlags::None;
-    
-    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::ThreadSafe))
-    {
-        OptimizationFlags |= EThreadOptimizationFlags::ThreadAffinity;
-    }
-    
-    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::PartialExecution))
-    {
-        OptimizationFlags |= EThreadOptimizationFlags::DefaultScheduling;
-    }
-    
-    if (EnumHasAnyFlags(Capabilities, ETypeCapabilities::AsyncOperations))
-    {
-        OptimizationFlags |= EThreadOptimizationFlags::LowLatency;
-    }
+    ETypeCapabilities BasicCapabilities = GetTypeCapabilities(TypeId);
+    ETypeCapabilitiesEx ExtendedCapabilities = GetTypeCapabilitiesEx(TypeId);
+    EThreadOptimizationFlags OptimizationFlags = FTaskScheduler::MapCapabilitiesToOptimizationFlags(
+        BasicCapabilities, ExtendedCapabilities);
     
     TypedConfig.SetOptimizationFlags(OptimizationFlags);
     
@@ -1099,112 +984,329 @@ uint64 FZoneTypeRegistry::ScheduleTypeTask(uint32 TypeId, TFunction<void()> Task
 
 uint64 FZoneTypeRegistry::BeginAsyncTypeRegistration(const FString& SourceAsset)
 {
-    // Create the async operation through the AsyncTaskManager
-    IAsyncOperation& AsyncInterface = IAsyncOperation::Get();
-    FAsyncTaskManager& AsyncManager = static_cast<FAsyncTaskManager&>(AsyncInterface);
-    
-    // Ensure the factory is initialized
-    static bool bFactoryInitialized = false;
-    if (!bFactoryInitialized)
+    if (!bIsInitialized)
     {
-        FTypeRegistrationOperationFactory::Initialize();
-        bFactoryInitialized = true;
-    }
-    
-    // Create and start the operation
-    uint64 OperationId = AsyncManager.CreateOperation(ZoneTypeRegistrationOperationType, FPaths::GetBaseFilename(SourceAsset));
-    if (OperationId == 0)
-    {
-        UE_LOG(LogMining, Error, TEXT("Failed to create async type registration operation for %s"), *SourceAsset);
+        UE_LOG(LogTemp, Error, TEXT("Cannot begin async registration - registry not initialized"));
         return 0;
     }
     
-    // Set the source asset parameter
-    TMap<FString, FString> Parameters;
-    Parameters.Add(TEXT("SourceAsset"), SourceAsset);
+    // Create a new type registration operation
+    TSharedPtr<FTypeRegistrationOperation> Operation = MakeShared<FTypeRegistrationOperation>();
     
-    // Start the operation
-    if (!AsyncManager.StartOperation(OperationId, Parameters))
+    // Configure operation
+    Operation->SourceAsset = SourceAsset;
+    Operation->bUsingSourceAsset = true;
+    
+    // Generate a unique operation ID
+    uint64 OperationId = FMath::Rand() * 1000 + FMath::RandHelper(999);
+    
+    // Add to pending operations
     {
-        UE_LOG(LogMining, Error, TEXT("Failed to start async type registration operation for %s"), *SourceAsset);
-        return 0;
+        FScopedSpinLock Lock(PendingOperationsLock);
+        PendingOperations.Add(OperationId, Operation);
     }
     
     return OperationId;
-}
-
-uint64 FZoneTypeRegistry::BeginAsyncTransactionTypeBatchRegistration(const TArray<FZoneTransactionTypeInfo>& TypeInfos)
-{
-    if (TypeInfos.Num() == 0)
-    {
-        UE_LOG(LogMining, Warning, TEXT("Attempted to begin async transaction type batch registration with empty type list"));
-        return 0;
-    }
-    
-    // Create the async operation through the AsyncTaskManager
-    IAsyncOperation& AsyncInterface = IAsyncOperation::Get();
-    FAsyncTaskManager& AsyncManager = static_cast<FAsyncTaskManager&>(AsyncInterface);
-    
-    // Ensure the factory is initialized
-    static bool bFactoryInitialized = false;
-    if (!bFactoryInitialized)
-    {
-        FTypeRegistrationOperationFactory::Initialize();
-        bFactoryInitialized = true;
-    }
-    
-    // Create the operation
-    uint64 OperationId = AsyncManager.CreateOperation(ZoneTypeRegistrationOperationType, TEXT("TransactionTypeBatch"));
-    if (OperationId == 0)
-    {
-        UE_LOG(LogMining, Error, TEXT("Failed to create async type batch registration operation"));
-        return 0;
-    }
-    
-    // Get the operation object and configure it directly with the batch data
-    FAsyncOperationImpl* Operation = AsyncManager.GetOperationById(OperationId);
-    if (Operation)
-    {
-        FTypeRegistrationOperation* TypeRegistrationOp = static_cast<FTypeRegistrationOperation*>(Operation);
-        // Re-create the operation with the batch data
-        new (TypeRegistrationOp) FTypeRegistrationOperation(OperationId, TEXT("TransactionTypeBatch"), TypeInfos);
-    }
-    
-    // Start the operation
-    if (!AsyncManager.StartOperation(OperationId))
-    {
-        UE_LOG(LogMining, Error, TEXT("Failed to start async type batch registration operation"));
-        return 0;
-    }
-    
-    return OperationId;
-}
-
-bool FZoneTypeRegistry::RegisterTypeRegistrationProgressCallback(uint64 OperationId, const FAsyncProgressDelegate& Callback, uint32 UpdateIntervalMs)
-{
-    IAsyncOperation& AsyncInterface = IAsyncOperation::Get();
-    FAsyncTaskManager& AsyncManager = static_cast<FAsyncTaskManager&>(AsyncInterface);
-    return AsyncManager.RegisterProgressCallback(OperationId, Callback, UpdateIntervalMs);
 }
 
 bool FZoneTypeRegistry::RegisterTypeRegistrationCompletionCallback(uint64 OperationId, const FTypeRegistrationCompletionDelegate& Callback)
 {
-    IAsyncOperation& AsyncInterface = IAsyncOperation::Get();
-    FAsyncTaskManager& AsyncManager = static_cast<FAsyncTaskManager&>(AsyncInterface);
+    if (!bIsInitialized)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Cannot register completion callback - registry not initialized"));
+        return false;
+    }
     
-    // Create an adapter that converts FAsyncResult to bool for the callback
-    FAsyncCompletionDelegate AdapterDelegate;
-    AdapterDelegate.BindLambda([Callback](const FAsyncResult& Result) {
-        // Call the original callback with the success status from the result
-        Callback.ExecuteIfBound(Result.bSuccess);
-    });
+    // Get the operation
+    TSharedPtr<FTypeRegistrationOperation> Operation = nullptr;
     
-    return AsyncManager.RegisterCompletionCallback(OperationId, AdapterDelegate);
+    {
+        FScopedSpinLock Lock(PendingOperationsLock);
+        if (PendingOperations.Contains(OperationId))
+        {
+            Operation = PendingOperations[OperationId];
+        }
+    }
+    
+    if (!Operation.IsValid())
+    {
+        UE_LOG(LogTemp, Error, TEXT("Cannot register completion callback - operation %llu not found"), OperationId);
+        return false;
+    }
+    
+    // Register the completion callback with the operation
+    Operation->CompletionCallback = Callback;
+    return true;
 }
 
 bool FZoneTypeRegistry::CancelAsyncTypeRegistration(uint64 OperationId, bool bWaitForCancellation)
 {
-    IAsyncOperation& AsyncInterface = IAsyncOperation::Get();
-    FAsyncTaskManager& AsyncManager = static_cast<FAsyncTaskManager&>(AsyncInterface);
-    return AsyncManager.CancelOperation(OperationId, bWaitForCancellation);
+    if (!bIsInitialized)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Cannot cancel operation - registry not initialized"));
+        return false;
+    }
+    
+    // Get the operation
+    TSharedPtr<FTypeRegistrationOperation> Operation = nullptr;
+    
+    {
+        FScopedSpinLock Lock(PendingOperationsLock);
+        if (PendingOperations.Contains(OperationId))
+        {
+            Operation = PendingOperations[OperationId];
+        }
+    }
+    
+    if (!Operation.IsValid())
+    {
+        UE_LOG(LogTemp, Error, TEXT("Cannot cancel operation - operation %llu not found"), OperationId);
+        return false;
+    }
+    
+    // Cancel the operation
+    Operation->bCancelled = true;
+    
+    // Wait for cancellation if requested
+    if (bWaitForCancellation)
+    {
+        // TODO: Implement waiting logic
+    }
+    
+    // Remove from pending operations
+    {
+        FScopedSpinLock Lock(PendingOperationsLock);
+        PendingOperations.Remove(OperationId);
+    }
+    
+    return true;
+}
+
+bool FZoneTypeRegistry::PreInitializeTypes()
+{
+    if (!IsInitialized())
+    {
+        UE_LOG(LogZoneTypeRegistry, Error, TEXT("Cannot pre-initialize types - registry not initialized"));
+        return false;
+    }
+    
+    // Get all registered types
+    TArray<FZoneTypeInfo> AllTypes = GetAllZoneTypes();
+    
+    if (AllTypes.Num() == 0)
+    {
+        // Nothing to initialize, consider it successful
+        return true;
+    }
+    
+    UE_LOG(LogZoneTypeRegistry, Log, TEXT("Pre-initializing %d Zone types"), AllTypes.Num());
+    
+    // Perform pre-initialization steps for all types
+    for (const FZoneTypeInfo& TypeInfo : AllTypes)
+    {
+        // Pre-initialization logic
+    }
+    
+    return true;
+}
+
+bool FZoneTypeRegistry::ParallelInitializeTypes(bool bParallel)
+{
+    if (!bIsInitialized)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Cannot initialize types - registry not initialized"));
+        return false;
+    }
+    
+    // Get all registered types
+    TArray<uint32> AllTypes;
+    
+    {
+        FScopedSpinLock Lock(RegistryLock);
+        TransactionTypeMap.GetKeys(AllTypes);
+    }
+    
+    if (AllTypes.Num() == 0)
+    {
+        // No types to initialize
+        return true;
+    }
+    
+    if (!bParallel)
+    {
+        // Sequential initialization
+        for (uint32 TypeId : AllTypes)
+        {
+            InitializeTransactionType(TypeId);
+        }
+        return true;
+    }
+    else
+    {
+        // Parallel initialization using the available API
+        FParallelExecutor Executor;
+        
+        // Bind initialization function
+        Executor.ParallelFor(AllTypes.Num(),
+            [this, &AllTypes](int32 Index)
+            {
+                InitializeTransactionType(AllTypes[Index]);
+            });
+            
+        // The execution will happen when ParallelFor returns
+        return true;
+    }
+}
+
+bool FZoneTypeRegistry::PostInitializeTypes()
+{
+    if (!IsInitialized())
+    {
+        UE_LOG(LogZoneTypeRegistry, Error, TEXT("Cannot post-initialize types - registry not initialized"));
+        return false;
+    }
+    
+    // Get all registered types
+    TArray<FZoneTypeInfo> AllTypes = GetAllZoneTypes();
+    
+    if (AllTypes.Num() == 0)
+    {
+        // Nothing to initialize, consider it successful
+        return true;
+    }
+    
+    UE_LOG(LogZoneTypeRegistry, Log, TEXT("Post-initializing %d Zone types"), AllTypes.Num());
+    
+    // Perform post-initialization steps that require all types to be initialized
+    
+    // Example: Validate type relationships
+    TArray<FString> ValidationErrors;
+    bool bSuccess = Validate(ValidationErrors);
+    
+    if (!bSuccess)
+    {
+        for (const FString& Error : ValidationErrors)
+        {
+            UE_LOG(LogZoneTypeRegistry, Error, TEXT("Post-initialization validation error: %s"), *Error);
+        }
+        return false;
+    }
+    
+    return true;
+}
+
+TArray<int32> FZoneTypeRegistry::GetTypeDependencies(uint32 TypeId) const
+{
+    TArray<int32> Dependencies;
+    
+    if (!IsInitialized() || !IsZoneTypeRegistered(TypeId))
+    {
+        return Dependencies;
+    }
+    
+    // Lock for thread safety
+    FScopedSpinLock Lock(this->RegistryLock);
+    
+    // Get the type info
+    const TSharedRef<FZoneTypeInfo>* TypeInfoPtr = ZoneTypeMap.Find(TypeId);
+    if (!TypeInfoPtr)
+    {
+        return Dependencies;
+    }
+    
+    const FZoneTypeInfo& TypeInfo = TypeInfoPtr->Get();
+    
+    // Add dependencies based on hierarchy or composition requirements
+    if (TypeInfo.ParentZoneTypeId != 0)
+    {
+        // Safely convert uint32 to int32, skipping if out of range
+        if (TypeInfo.ParentZoneTypeId <= static_cast<uint32>(INT32_MAX))
+        {
+            Dependencies.Add(static_cast<int32>(TypeInfo.ParentZoneTypeId));
+        }
+        else
+        {
+            UE_LOG(LogZoneTypeRegistry, Warning, TEXT("Parent zone type ID %u exceeds INT32_MAX, skipping as dependency"), TypeInfo.ParentZoneTypeId);
+        }
+    }
+    
+    // Add dependencies from required material types
+    for (uint32 MaterialTypeId : TypeInfo.SupportedMaterialTypes)
+    {
+        // Safely convert uint32 to int32, skipping if out of range
+        if (MaterialTypeId <= static_cast<uint32>(INT32_MAX))
+        {
+            Dependencies.Add(static_cast<int32>(MaterialTypeId));
+        }
+        else
+        {
+            UE_LOG(LogZoneTypeRegistry, Warning, TEXT("Material type ID %u exceeds INT32_MAX, skipping as dependency"), MaterialTypeId);
+        }
+    }
+    
+    return Dependencies;
+}
+
+TArray<FZoneTypeInfo> FZoneTypeRegistry::GetAllZoneTypes() const
+{
+    TArray<FZoneTypeInfo> Result;
+    
+    if (!IsInitialized())
+    {
+        return Result;
+    }
+    
+    // Lock for thread safety
+    FScopedSpinLock Lock(this->RegistryLock);
+    
+    // Get all type entries from the map
+    for (const auto& Pair : ZoneTypeMap)
+    {
+        Result.Add(Pair.Value.Get());
+    }
+    
+    return Result;
+}
+
+void FZoneTypeRegistry::InitializeTransactionType(uint32 TypeId)
+{
+    // Check if registry is initialized
+    if (!bIsInitialized)
+    {
+        return;
+    }
+    
+    // Lock for thread safety
+    FScopedSpinLock Lock(RegistryLock);
+    
+    // Check if type exists
+    if (!TransactionTypeMap.Contains(TypeId))
+    {
+        return;
+    }
+    
+    // Get type info
+    TSharedRef<FZoneTransactionTypeInfo>& TypeInfo = TransactionTypeMap[TypeId];
+    
+    // If already initialized, nothing to do
+    if (TypeInfo->TotalExecutions > 0)
+    {
+        return;
+    }
+    
+    // Get transaction manager for type initialization
+    ITransactionManager& TransactionManager = FTransactionManager::Get();
+    
+    // Update transaction manager with type info
+    TransactionManager.UpdateFastPathThreshold(TypeId, TypeInfo->FastPathThreshold);
+    
+    // Initialize conflict history
+    if (TypeInfo->HistoricalConflictRates.Num() == 0)
+    {
+        // Start with assumption of low conflict rate
+        TypeInfo->HistoricalConflictRates.Add(0.1f);
+    }
+    
+    UE_LOG(LogTemp, Verbose, TEXT("Initialized transaction type '%s' (ID %u)"),
+        *TypeInfo->TypeName.ToString(), TypeId);
 }

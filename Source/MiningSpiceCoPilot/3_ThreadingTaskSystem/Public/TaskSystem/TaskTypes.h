@@ -169,7 +169,34 @@ enum class EThreadOptimizationFlags : uint32
     BackgroundPriority = 1 << 14,
     
     /** Task should use the thread scheduler's default behavior */
-    DefaultScheduling = 1 << 15
+    DefaultScheduling = 1 << 15,
+    
+    /** Task benefits from SIMD operations */
+    EnableSIMD = 1 << 16,
+    
+    /** Task requires thread safety */
+    ThreadSafetyEnabled = 1 << 17,
+    
+    /** Task benefits from batch processing */
+    BatchProcessingEnabled = 1 << 18,
+    
+    /** Task can be parallelized */
+    ParallelizationEnabled = 1 << 19,
+    
+    /** Task can be run asynchronously */
+    AsynchronousEnabled = 1 << 20,
+    
+    /** Task has spatial coherence benefits */
+    SpatialCoherenceEnabled = 1 << 21,
+    
+    /** Task benefits from cache optimization */
+    CacheOptimizationEnabled = 1 << 22,
+    
+    /** Task can be vectorized */
+    VectorizationEnabled = 1 << 23,
+    
+    /** Task has low contention properties */
+    LowContentionEnabled = 1 << 24
 };
 ENUM_CLASS_FLAGS(EThreadOptimizationFlags);
 
@@ -203,52 +230,187 @@ enum class ERegistryType : uint8
  * Type capabilities enumeration
  * Defines special capabilities that a type may support
  */
-UENUM()
-enum class ETypeCapabilities : uint32
+UENUM(BlueprintType)
+enum class ETypeCapabilities : uint8
 {
     /** No special capabilities */
-    None = 0,
+    None = 0 UMETA(DisplayName = "None"),
     
     /** Type supports SIMD operations */
-    SIMDOperations = 1 << 0,
+    SIMDOperations = 1 UMETA(DisplayName = "SIMD Operations"),
     
     /** Type is thread-safe */
-    ThreadSafe = 1 << 1,
+    ThreadSafe = 2 UMETA(DisplayName = "Thread Safe"),
     
     /** Type supports batch operations */
-    BatchOperations = 1 << 2,
+    BatchOperations = 4 UMETA(DisplayName = "Batch Operations"),
     
     /** Type supports parallel processing */
-    ParallelProcessing = 1 << 3,
+    ParallelProcessing = 8 UMETA(DisplayName = "Parallel Processing"),
     
     /** Type supports incremental updates */
-    IncrementalUpdates = 1 << 4,
+    IncrementalUpdates = 16 UMETA(DisplayName = "Incremental Updates"),
     
     /** Type supports async operations */
-    AsyncOperations = 1 << 5,
+    AsyncOperations = 32 UMETA(DisplayName = "Async Operations"),
     
     /** Type supports partial execution */
-    PartialExecution = 1 << 6,
+    PartialExecution = 64 UMETA(DisplayName = "Partial Execution"),
     
     /** Type supports result merging */
-    ResultMerging = 1 << 7,
-    
-    /** Type has spatial coherence */
-    SpatialCoherence = 1 << 8,
-    
-    /** Type supports cache optimization */
-    CacheOptimized = 1 << 9,
-    
-    /** Type is memory efficient */
-    MemoryEfficient = 1 << 10,
-    
-    /** Type has low contention properties */
-    LowContention = 1 << 11,
-    
-    /** Type supports vectorization */
-    Vectorizable = 1 << 12
+    ResultMerging = 128 UMETA(DisplayName = "Result Merging")
 };
 ENUM_CLASS_FLAGS(ETypeCapabilities);
+
+/**
+ * Extended type capabilities enumeration
+ * Defines additional advanced capabilities beyond what fits in uint8
+ */
+UENUM(BlueprintType)
+enum class ETypeCapabilitiesEx : uint8
+{
+    /** No special advanced capabilities */
+    None = 0 UMETA(DisplayName = "None"),
+    
+    /** Type has spatial coherence */
+    SpatialCoherence = 1 UMETA(DisplayName = "Spatial Coherence"),
+    
+    /** Type supports cache optimization */
+    CacheOptimized = 2 UMETA(DisplayName = "Cache Optimized"),
+    
+    /** Type is memory efficient */
+    MemoryEfficient = 4 UMETA(DisplayName = "Memory Efficient"),
+    
+    /** Type has low contention properties */
+    LowContention = 8 UMETA(DisplayName = "Low Contention"),
+    
+    /** Type supports vectorization */
+    Vectorizable = 16 UMETA(DisplayName = "Vectorizable")
+};
+ENUM_CLASS_FLAGS(ETypeCapabilitiesEx);
+
+/**
+ * Blueprint-friendly version of basic type capabilities (first 8 bits)
+ * For use in Blueprint scripts where the full capabilities enum isn't available
+ */
+UENUM(BlueprintType)
+enum class ETypeCapabilitiesBasic : uint8
+{
+    /** No special capabilities */
+    None = 0 UMETA(DisplayName = "None"),
+    
+    /** Type supports SIMD operations */
+    SIMDOperations = 1 << 0 UMETA(DisplayName = "SIMD Operations"),
+    
+    /** Type is thread-safe */
+    ThreadSafe = 1 << 1 UMETA(DisplayName = "Thread Safe"),
+    
+    /** Type supports batch operations */
+    BatchOperations = 1 << 2 UMETA(DisplayName = "Batch Operations"),
+    
+    /** Type supports parallel processing */
+    ParallelProcessing = 1 << 3 UMETA(DisplayName = "Parallel Processing"),
+    
+    /** Type supports incremental updates */
+    IncrementalUpdates = 1 << 4 UMETA(DisplayName = "Incremental Updates"),
+    
+    /** Type supports async operations */
+    AsyncOperations = 1 << 5 UMETA(DisplayName = "Async Operations"),
+    
+    /** Type supports partial execution */
+    PartialExecution = 1 << 6 UMETA(DisplayName = "Partial Execution"),
+    
+    /** Type supports result merging */
+    ResultMerging = 1 << 7 UMETA(DisplayName = "Result Merging")
+};
+
+/**
+ * Blueprint-friendly version of advanced type capabilities (additional capabilities)
+ * For use in Blueprint scripts where the full capabilities enum isn't available
+ */
+UENUM(BlueprintType)
+enum class ETypeCapabilitiesAdvanced : uint8
+{
+    /** No special capabilities */
+    None = 0 UMETA(DisplayName = "None"),
+    
+    /** Type has spatial coherence */
+    SpatialCoherence = 1 << 0 UMETA(DisplayName = "Spatial Coherence"),
+    
+    /** Type supports cache optimization */
+    CacheOptimized = 1 << 1 UMETA(DisplayName = "Cache Optimized"),
+    
+    /** Type is memory efficient */
+    MemoryEfficient = 1 << 2 UMETA(DisplayName = "Memory Efficient"),
+    
+    /** Type has low contention properties */
+    LowContention = 1 << 3 UMETA(DisplayName = "Low Contention"),
+    
+    /** Type supports vectorization */
+    Vectorizable = 1 << 4 UMETA(DisplayName = "Vectorizable")
+};
+
+/**
+ * Helper functions for working with type capabilities enums
+ */
+namespace TypeCapabilitiesHelpers
+{
+    /**
+     * Combines basic and advanced capabilities
+     * @param Basic Basic capabilities 
+     * @param Advanced Advanced capabilities
+     * @return Pair of capability enums
+     */
+    MININGSPICECOPILOT_API inline TPair<ETypeCapabilities, ETypeCapabilitiesEx> CombineCapabilities(
+        ETypeCapabilities Basic, ETypeCapabilitiesEx Advanced)
+    {
+        return TPair<ETypeCapabilities, ETypeCapabilitiesEx>(Basic, Advanced);
+    }
+    
+    /**
+     * Checks if a type has a specific basic capability
+     * @param Basic Basic capabilities
+     * @param Capability Capability to check for
+     * @return True if the capability is present
+     */
+    MININGSPICECOPILOT_API inline bool HasBasicCapability(ETypeCapabilities Basic, ETypeCapabilities Capability)
+    {
+        return (static_cast<uint8>(Basic) & static_cast<uint8>(Capability)) != 0;
+    }
+    
+    /**
+     * Checks if a type has a specific advanced capability
+     * @param Advanced Advanced capabilities
+     * @param Capability Capability to check for
+     * @return True if the capability is present
+     */
+    MININGSPICECOPILOT_API inline bool HasAdvancedCapability(ETypeCapabilitiesEx Advanced, ETypeCapabilitiesEx Capability)
+    {
+        return (static_cast<uint8>(Advanced) & static_cast<uint8>(Capability)) != 0;
+    }
+    
+    /**
+     * Adds a basic capability
+     * @param Basic Current basic capabilities
+     * @param Capability Capability to add
+     * @return Updated capabilities
+     */
+    MININGSPICECOPILOT_API inline ETypeCapabilities AddBasicCapability(ETypeCapabilities Basic, ETypeCapabilities Capability)
+    {
+        return static_cast<ETypeCapabilities>(static_cast<uint8>(Basic) | static_cast<uint8>(Capability));
+    }
+    
+    /**
+     * Adds an advanced capability
+     * @param Advanced Current advanced capabilities
+     * @param Capability Capability to add
+     * @return Updated capabilities
+     */
+    MININGSPICECOPILOT_API inline ETypeCapabilitiesEx AddAdvancedCapability(ETypeCapabilitiesEx Advanced, ETypeCapabilitiesEx Capability)
+    {
+        return static_cast<ETypeCapabilitiesEx>(static_cast<uint8>(Advanced) | static_cast<uint8>(Capability));
+    }
+}
 
 /**
  * SIMD instruction variant for optimized task execution

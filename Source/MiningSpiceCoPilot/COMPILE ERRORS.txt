@@ -1,55 +1,435 @@
-[1/4] Compile [x64] 1_MaterialRegistry.cpp
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(546): error C2672: 'MultiFind': no matching overloaded function found
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(32): note: could be 'void MultiFind(const TMap<KeyType,TArray<TSrc,InAllocatorType>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,InValueType,false>> &,const KeyType &,TArray<PtrType,FDefaultAllocator> &)'
+Build ID: {D30CB37B-D399-447E-9C1C-43E50F923DA5}
+
+--------------------Project: Default-------------------------------------------
+[1/16] Compile [x64] ParallelExecutor.cpp (0:01.11 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\ParallelExecutor.cpp(157): error C2511: 'bool FParallelExecutor::ParallelFor(int32,TFunction<void (int32)>,EParallelExecutionMode,int32)': overloaded member function not found in 'FParallelExecutor'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\ParallelExecutor.h(216): note: see declaration of 'FParallelExecutor'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\ParallelExecutor.cpp(165): error C2352: 'FParallelExecutor::ParallelFor': a call of a non-static member function requires an object
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\ParallelExecutor.h(232): note: see declaration of 'FParallelExecutor::ParallelFor'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\ParallelExecutor.cpp(264): error C2511: 'bool FParallelExecutor::ParallelForRange(int32,TFunction<void (int32,int32)>,EParallelExecutionMode,int32)': overloaded member function not found in 'FParallelExecutor'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\ParallelExecutor.h(216): note: see declaration of 'FParallelExecutor'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\ParallelExecutor.cpp(272): error C2352: 'FParallelExecutor::ParallelForRange': a call of a non-static member function requires an object
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\ParallelExecutor.h(242): note: see declaration of 'FParallelExecutor::ParallelForRange'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\ParallelExecutor.cpp(372): error C2511: 'bool FParallelExecutor::ParallelForSDF(int32,TFunction<void (int32,int32)>,EParallelExecutionMode)': overloaded member function not found in 'FParallelExecutor'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\ParallelExecutor.h(216): note: see declaration of 'FParallelExecutor'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\ParallelExecutor.cpp(379): error C2352: 'FParallelExecutor::ParallelForSDF': a call of a non-static member function requires an object
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\ParallelExecutor.h(252): note: see declaration of 'FParallelExecutor::ParallelForSDF'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\ParallelExecutor.cpp(466): error C2511: 'bool FParallelExecutor::ParallelZones(const TArray<int,FDefaultAllocator> &,TFunction<void (int32)>,EParallelExecutionMode)': overloaded member function not found in 'FParallelExecutor'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\ParallelExecutor.h(216): note: see declaration of 'FParallelExecutor'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\ParallelExecutor.cpp(473): error C2352: 'FParallelExecutor::ParallelZones': a call of a non-static member function requires an object
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\ParallelExecutor.h(262): note: see declaration of 'FParallelExecutor::ParallelZones'
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[2/16] Compile [x64] ZoneTypeRegistry.cpp (0:02.20 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(17): error C2011: 'ERegistryType': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(35): error C2011: 'ETypeCapabilities': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\ZoneTypeRegistry.h(334): error C2555: 'FZoneTypeRegistry::GetTypeDependencies': overriding virtual function return type differs and is not covariant from 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(215): note: see declaration of 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\ZoneTypeRegistry.cpp(19): error C2065: 'RegisteredTransactionTypes': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\ZoneTypeRegistry.cpp(19): error C2530: 'TypePair': references must be initialized
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\ZoneTypeRegistry.cpp(19): error C3531: 'TypePair': a symbol whose type contains 'auto' must have an initializer
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\ZoneTypeRegistry.cpp(19): error C2143: syntax error: missing ';' before ':'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\ZoneTypeRegistry.cpp(19): error C2143: syntax error: missing ';' before ')'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\ZoneTypeRegistry.cpp(29): error C2065: 'RegisteredTransactionTypes': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\ZoneTypeRegistry.cpp(32): error C2664: 'bool FParallelExecutor::ParallelForWithDependencies(int32,TFunction<void (int32)>,TFunction<TArray<int,FDefaultAllocator> (int32)>,const FParallelConfig &)': cannot convert argument 3 from 'FZoneTypeRegistry::ParallelInitializeTypes::<lambda_2>' to 'TFunction<TArray<int,FDefaultAllocator> (int32)>'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\ZoneTypeRegistry.cpp(39): note: No user-defined-conversion operator available that can perform this conversion, or the operator cannot be called
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\ParallelExecutor.h(273): note: see declaration of 'FParallelExecutor::ParallelForWithDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\ZoneTypeRegistry.cpp(32): note: while trying to match the argument list '(int, FZoneTypeRegistry::ParallelInitializeTypes::<lambda_1>, FZoneTypeRegistry::ParallelInitializeTypes::<lambda_2>, FParallelConfig)'
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[3/16] Compile [x64] MaterialRegistry.cpp (0:02.42 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(17): error C2011: 'ERegistryType': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(35): error C2011: 'ETypeCapabilities': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[4/16] Compile [x64] 1_SDFTypeRegistry.cpp (0:02.50 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(17): error C2011: 'ERegistryType': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(35): error C2011: 'ETypeCapabilities': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\SDFTypeRegistry.h(527): error C2555: 'FSDFTypeRegistry::GetTypeDependencies': overriding virtual function return type differs and is not covariant from 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(215): note: see declaration of 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(10): error C2039: 'Instance': is not a member of 'FSDFTypeRegistry'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\SDFTypeRegistry.h(494): note: see declaration of 'FSDFTypeRegistry'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(24): error C2614: 'FSDFTypeRegistry': illegal member initialization: 'RegistryName' is not a base or member
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(27): error C2614: 'FSDFTypeRegistry': illegal member initialization: 'bHasGPUSupport' is not a base or member
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(28): error C2614: 'FSDFTypeRegistry': illegal member initialization: 'bHasSSE2Support' is not a base or member
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(29): error C2614: 'FSDFTypeRegistry': illegal member initialization: 'bHasAVXSupport' is not a base or member
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(30): error C2614: 'FSDFTypeRegistry': illegal member initialization: 'bHasAVX2Support' is not a base or member
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(32): error C2614: 'FSDFTypeRegistry': illegal member initialization: 'bTypesInitialized' is not a base or member
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(33): error C2614: 'FSDFTypeRegistry': illegal member initialization: 'bInitializationInProgress' is not a base or member
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(38): error C2679: binary '=': no operator found which takes a right-hand operand of type 'FSpinLock *' (or there is no acceptable conversion)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\ThreadSafety.h(75): note: could be 'FSpinLock &FSpinLock::operator =(FSpinLock &&)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\ThreadSafety.h(75): note: or       'FSpinLock &FSpinLock::operator =(const FSpinLock &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(38): note: while trying to match the argument list '(FSpinLock, FSpinLock *)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(50): error C2065: 'TypeVersionMap': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(65): error C2679: binary '=': no operator found which takes a right-hand operand of type 'FSpinLock *' (or there is no acceptable conversion)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\ThreadSafety.h(75): note: could be 'FSpinLock &FSpinLock::operator =(FSpinLock &&)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\ThreadSafety.h(75): note: or       'FSpinLock &FSpinLock::operator =(const FSpinLock &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(65): note: while trying to match the argument list '(FSpinLock, FSpinLock *)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(74): error C2065: 'RegistryName': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(90): error C2065: 'bTypesInitialized': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(91): error C2065: 'bInitializationInProgress': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(101): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(141): error C2662: 'void FSDFTypeRegistry::DetectHardwareCapabilities(void)': cannot convert 'this' pointer from 'const FSDFTypeRegistry' to 'FSDFTypeRegistry &'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(141): note: Conversion loses qualifiers
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\SDFTypeRegistry.h(714): note: see declaration of 'FSDFTypeRegistry::DetectHardwareCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(141): note: while trying to match the argument list '()'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(145): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(266): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(274): error C2065: 'TypeVersionMap': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(421): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(534): error C2039: 'RegisterOperation': is not a member of 'FSDFTypeRegistry'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\SDFTypeRegistry.h(494): note: see declaration of 'FSDFTypeRegistry'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(540): error C3861: 'IsInitialized': identifier not found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(559): error C2065: 'RegistryLock': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(562): error C2065: 'OperationNameMap': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(570): error C3861: 'GenerateUniqueOperationId': identifier not found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(581): error C3861: 'SetDefaultOperationProperties': identifier not found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(584): error C3861: 'IsOperationGPUCompatible': identifier not found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(585): error C3861: 'IsOperationSIMDCompatible': identifier not found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(588): error C3861: 'GetOptimalThreadBlockSize': identifier not found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(591): error C2065: 'OperationMap': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(592): error C2065: 'OperationNameMap': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(618): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(664): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(689): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(709): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(736): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(758): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(780): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(805): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(828): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(842): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(856): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(869): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(977): error C2039: 'SupportsRenderTarget': is not a member of 'FWindowsPlatformMisc'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\Core\Public\Windows\WindowsPlatformMisc.h(96): note: see declaration of 'FWindowsPlatformMisc'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(977): error C3861: 'SupportsRenderTarget': identifier not found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(980): error C2039: 'SupportsSSE2': is not a member of 'FWindowsPlatformMisc'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\Core\Public\Windows\WindowsPlatformMisc.h(96): note: see declaration of 'FWindowsPlatformMisc'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(980): error C3861: 'SupportsSSE2': identifier not found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(981): error C2039: 'SupportsAVX': is not a member of 'FWindowsPlatformMisc'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\Core\Public\Windows\WindowsPlatformMisc.h(96): note: see declaration of 'FWindowsPlatformMisc'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(981): error C3861: 'SupportsAVX': identifier not found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(982): error C2039: 'SupportsAVX2': is not a member of 'FWindowsPlatformMisc'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\Core\Public\Windows\WindowsPlatformMisc.h(96): note: see declaration of 'FWindowsPlatformMisc'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(982): error C3861: 'SupportsAVX2': identifier not found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1116): error C2027: use of undefined type 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1116): error C2065: 'SDF': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1122): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1122): error C2065: 'None': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1141): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1141): error C2065: 'ThreadSafe': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1143): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1143): error C2065: 'ParallelProcessing': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1149): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1149): error C2065: 'SIMDOperations': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1155): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1155): error C2065: 'IncrementalUpdates': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1199): error C2027: use of undefined type 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1199): error C2065: 'SDF': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1217): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1220): error C2065: 'bTypesInitialized': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1221): error C2065: 'bInitializationInProgress': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1224): error C2065: 'InitializationErrors': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1234): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1246): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1251): error C2664: 'bool FParallelExecutor::ParallelForWithDependencies(int32,TFunction<void (int32)>,TFunction<TArray<int,FDefaultAllocator> (int32)>,const FParallelConfig &)': cannot convert argument 3 from 'FSDFTypeRegistry::ParallelInitializeTypes::<lambda_2>' to 'TFunction<TArray<int,FDefaultAllocator> (int32)>'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1258): note: No user-defined-conversion operator available that can perform this conversion, or the operator cannot be called        
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\ParallelExecutor.h(273): note: see declaration of 'FParallelExecutor::ParallelForWithDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1251): note: while trying to match the argument list '(int, FSDFTypeRegistry::ParallelInitializeTypes::<lambda_1>, FSDFTypeRegistry::ParallelInitializeTypes::<lambda_2>, FParallelConfig)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1265): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1273): error C2065: 'InitializationErrors': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1277): error C2065: 'bInitializationInProgress': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1278): error C2065: 'bTypesInitialized': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1278): error C2065: 'InitializationErrors': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1280): error C2065: 'bTypesInitialized': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1287): error C2100: illegal indirection
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SDFTypeRegistry.cpp(1301): error C2100: illegal indirection
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[5/16] Compile [x64] SpecializedTaskWorker.cpp (0:02.48 at +0:00)
+[6/16] Compile [x64] TaskHelpers.cpp (0:02.81 at +0:00)
+[7/16] Compile [x64] 1_MaterialRegistry.cpp (0:03.01 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(17): error C2011: 'ERegistryType': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(35): error C2011: 'ETypeCapabilities': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(47): error C2371: 'bSingletonInitialized': redefinition; different basic types
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\MaterialRegistry.h(1028): note: see declaration of 'bSingletonInitialized'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(88): warning C5038: data member 'FMaterialRegistry::SchemaVersion' will be initialized after data member 'FMaterialRegistry::RegistryName'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(545): error C2660: 'TMapBase<KeyType,ValueType,SetAllocator,KeyFuncs>::Contains': function does not take 2 arguments
         with
         [
-            InValueType=TArray<TSrc,InAllocatorType>
+            KeyType=TTuple<uint32,uint32>,
+            ValueType=uint32,
+            SetAllocator=FDefaultSetAllocator,
+            KeyFuncs=TDefaultMapHashableKeyFuncs<TTuple<uint32,uint32>,uint32,false>
         ]
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(546): note: 'void MultiFind(const TMap<KeyType,TArray<TSrc,InAllocatorType>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,InValueType,false>> &,const KeyType &,TArray<PtrType,FDefaultAllocator> &)': could not deduce template argument for 'const TMap<KeyType,TArray<TSrc,InAllocatorType>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,InValueType,false>> &' from 'TMultiMap<uint32,uint32,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,ValueType,true>>'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\Core\Public\Containers\Map.h(762): note: see declaration of 'TMapBase<KeyType,ValueType,SetAllocator,KeyFuncs>::Contains'
         with
         [
-            InValueType=TArray<TSrc,InAllocatorType>
+            KeyType=TTuple<uint32,uint32>,
+            ValueType=uint32,
+            SetAllocator=FDefaultSetAllocator,
+            KeyFuncs=TDefaultMapHashableKeyFuncs<TTuple<uint32,uint32>,uint32,false>
         ]
-        and
-        [
-            InValueType=TArray<TSrc,InAllocatorType>
-        ]
-        and
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(545): note: while trying to match the argument list '(uint32, uint32)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(547): error C2039: 'MultiFind': is not a member of 'TMap<TTuple<KeyType,ValueType>,uint32,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<InKeyType,ValueType,false>>'
+        with
         [
             KeyType=uint32,
-            ValueType=uint32
+            ValueType=uint32,
+            InKeyType=TTuple<uint32,uint32>
         ]
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(772): error C2672: 'MultiFind': no matching overloaded function found
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(32): note: could be 'void MultiFind(const TMap<KeyType,TArray<TSrc,InAllocatorType>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,InValueType,false>> &,const KeyType &,TArray<PtrType,FDefaultAllocator> &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\MaterialRegistry.h(977): note: see declaration of 'TMap<TTuple<KeyType,ValueType>,uint32,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<InKeyType,ValueType,false>>'
         with
-        [
-            InValueType=TArray<TSrc,InAllocatorType>
-        ]
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(772): note: 'void MultiFind(const TMap<KeyType,TArray<TSrc,InAllocatorType>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,InValueType,false>> &,const KeyType &,TArray<PtrType,FDefaultAllocator> &)': could not deduce template argument for 'const TMap<KeyType,TArray<TSrc,InAllocatorType>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,InValueType,false>> &' from 'const TMultiMap<uint32,uint32,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<KeyType,ValueType,true>>'
-        with
-        [
-            InValueType=TArray<TSrc,InAllocatorType>
-        ]
-        and
-        [
-            InValueType=TArray<TSrc,InAllocatorType>
-        ]
-        and
         [
             KeyType=uint32,
-            ValueType=uint32
+            ValueType=uint32,
+            InKeyType=TTuple<uint32,uint32>
         ]
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1599): error C2065: 'MaterialTypesByCategoryMap': undeclared identifier
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1638): error C2065: 'MaterialTypesByCategoryMap': undeclared identifier
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1643): error C2065: 'MaterialTypesByCategoryMap': undeclared identifier
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1655): error C2065: 'MaterialTypesByCategoryMap': undeclared identifier
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2392): error C2662: 'void FMaterialRegistry::RecordMaterialTypeAccess(uint32,uint32,bool)': cannot convert 'this' pointer from 'const FMaterialRegistry' to 'FMaterialRegistry &'
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2392): note: Conversion loses qualifiers
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\MaterialRegistry.h(947): note: see declaration of 'FMaterialRegistry::RecordMaterialTypeAccess'
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2392): note: while trying to match the argument list '(uint32, int, bool)'
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2408): error C2662: 'void FMaterialRegistry::RecordMaterialTypeAccess(uint32,uint32,bool)': cannot convert 'this' pointer from 'const FMaterialRegistry' to 'FMaterialRegistry &'
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2408): note: Conversion loses qualifiers
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\MaterialRegistry.h(947): note: see declaration of 'FMaterialRegistry::RecordMaterialTypeAccess'
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2408): note: while trying to match the argument list '(uint32, int, bool)'
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2586): error C4456: declaration of 'Lock' hides previous local declaration
-C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(2523): note: see declaration of 'Lock'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(630): error C2678: binary '++': no operator found which takes a left-hand operand of type 'FThreadSafeCounter' (or there is no acceptable conversion)
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\Core\Public\GenericPlatform\GenericPlatform.h(104): note: could be 'FGenericPlatformTypes::UTF8CHAR operator ++(FGenericPlatformTypes::UTF8CHAR &,int)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(630): note: while trying to match the argument list '(FThreadSafeCounter, int)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(773): error C2065: 'TypeRelationships': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1314): error C2039: 'HotReloadId': is not a member of 'FMaterialTypeInfo'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\MaterialRegistry.h(351): note: see declaration of 'FMaterialTypeInfo'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1549): error C2039: 'CreateBlueprintWrapper': is not a member of 'FMaterialTypeInfo'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\MaterialRegistry.h(351): note: see declaration of 'FMaterialTypeInfo'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1578): error C2065: 'HardwareCapabilities': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1600): error C2065: 'MaterialTypesByCategoryMap': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1639): error C2065: 'MaterialTypesByCategoryMap': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1644): error C2065: 'MaterialTypesByCategoryMap': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1656): error C2065: 'MaterialTypesByCategoryMap': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1905): error C2039: 'CreateBlueprintWrapper': is not a member of 'FMaterialTypeInfo'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\MaterialRegistry.h(351): note: see declaration of 'FMaterialTypeInfo'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1905): error C2270: 'CreateBlueprintWrapper': modifiers not allowed on nonmember functions
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1909): error C2065: 'TypeName': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1909): error C3553: decltype expects an expression not a type
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1909): error C2062: type 'unknown-type' unexpected
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1909): error C2653: 'UE_FMT_STR_Checker': is not a class or namespace name
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1909): error C3861: 'Check': identifier not found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1909): error C2131: expression did not evaluate to a constant
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1909): note: failure was caused by a read of an uninitialized symbol
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1909): note: see usage of 'UE::Core::Private::FormatStringSan::FResult::Status'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_MaterialRegistry.cpp(1909): fatal error C1903: unable to recover from previous error(s); stopping compilation
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[8/16] Compile [x64] 1_SVOTypeRegistry.cpp (0:03.00 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(17): error C2011: 'ERegistryType': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(35): error C2011: 'ETypeCapabilities': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\SDFTypeRegistry.h(527): error C2555: 'FSDFTypeRegistry::GetTypeDependencies': overriding virtual function return type differs and is not covariant from 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(215): note: see declaration of 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(27): warning C5038: data member 'FSVOTypeRegistry::PoolContentionCount' will be initialized after data member 'FSVOTypeRegistry::bSIMDCapabilitiesDetected'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(29): warning C5038: data member 'FSVOTypeRegistry::OptimisticLockFailures' will be initialized after data member 'FSVOTypeRegistry::bSupportsSSE2'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1024): error C2027: use of undefined type 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1024): error C2065: 'SVO': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1030): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1030): error C2065: 'None': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1049): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1049): error C2065: 'ThreadSafe': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1051): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1051): error C2065: 'ParallelProcessing': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1057): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1057): error C2065: 'SIMDOperations': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1063): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1063): error C2065: 'IncrementalUpdates': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1070): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1070): error C2065: 'BatchOperations': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1077): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1077): error C2065: 'AsyncOperations': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1084): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1084): error C2065: 'PartialExecution': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1090): error C2838: 'Heterogeneous': illegal qualified name in member declaration
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1090): error C2065: 'Heterogeneous': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1093): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1093): error C2065: 'ResultMerging': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1103): error C2027: use of undefined type 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_SVOTypeRegistry.cpp(1103): error C2065: 'SVO': undeclared identifier
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[9/16] Compile [x64] TypeRegistrationOperation.cpp (0:03.04 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(17): error C2011: 'ERegistryType': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(35): error C2011: 'ETypeCapabilities': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\ZoneTypeRegistry.h(334): error C2555: 'FZoneTypeRegistry::GetTypeDependencies': overriding virtual function return type differs and is not covariant from 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(215): note: see declaration of 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\SDFTypeRegistry.h(527): error C2555: 'FSDFTypeRegistry::GetTypeDependencies': overriding virtual function return type differs and is not covariant from 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(215): note: see declaration of 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\TypeRegistrationOperation.cpp(569): error C2039: 'RegisterOperation': is not a member of 'FSDFTypeRegistry'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\SDFTypeRegistry.h(494): note: see declaration of 'FSDFTypeRegistry'
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[10/16] Compile [x64] 1_ZoneTypeRegistry.cpp (0:03.48 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(17): error C2011: 'ERegistryType': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(35): error C2011: 'ETypeCapabilities': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\ZoneTypeRegistry.h(334): error C2555: 'FZoneTypeRegistry::GetTypeDependencies': overriding virtual function return type differs and is not covariant from 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(215): note: see declaration of 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\SDFTypeRegistry.h(527): error C2555: 'FSDFTypeRegistry::GetTypeDependencies': overriding virtual function return type differs and is not covariant from 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(215): note: see declaration of 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(811): error C2039: 'IsZoneTypeRegistered': is not a member of 'FZoneTypeRegistry'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\ZoneTypeRegistry.h(301): note: see declaration of 'FZoneTypeRegistry'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(811): error C2270: 'IsZoneTypeRegistered': modifiers not allowed on nonmember functions
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(813): error C3861: 'IsInitialized': identifier not found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(819): error C2065: 'RegistryLock': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(821): error C2065: 'ZoneTypeMap': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1036): error C2027: use of undefined type 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1036): error C2065: 'Zone': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1042): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1042): error C2065: 'None': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1058): error C2039: 'bSupportsThreading': is not a member of 'FZoneTransactionTypeInfo'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\ZoneTypeRegistry.h(113): note: see declaration of 'FZoneTransactionTypeInfo'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1061): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1061): error C2065: 'ThreadSafe': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1067): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1067): error C2065: 'PartialExecution': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1073): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1073): error C2065: 'IncrementalUpdates': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1079): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1079): error C2065: 'ResultMerging': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1085): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1085): error C2065: 'AsyncOperations': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1125): error C2027: use of undefined type 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1125): error C2065: 'Zone': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1260): error C2065: 'FZoneTypeInfo': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1260): error C2923: 'TArray': 'FZoneTypeInfo' is not a valid template type argument for parameter 'InElementType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1260): note: see declaration of 'FZoneTypeInfo'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1260): error C2976: 'TArray': too few template arguments
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\Core\Public\Containers\Array.h(369): note: see declaration of 'TArray'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1260): error C3861: 'GetAllZoneTypes': identifier not found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1260): error C2641: cannot deduce template arguments for 'TArray'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1268): error C2039: 'Check': is not a member of 'UE::Core::Private::FormatStringSan::TCheckFormatString<UE::Core::Private::FormatStringSan::TFmtArgTypes<InAllocatorType::SizeType>>'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1268): note: see declaration of 'UE::Core::Private::FormatStringSan::TCheckFormatString<UE::Core::Private::FormatStringSan::TFmtArgTypes<InAllocatorType::SizeType>>'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1268): error C3861: 'Check': identifier not found
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1268): error C2131: expression did not evaluate to a constant
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1268): note: failure was caused by a read of an uninitialized symbol
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1268): note: see usage of 'UE::Core::Private::FormatStringSan::FResult::Status'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Private\1_ZoneTypeRegistry.cpp(1268): fatal error C1903: unable to recover from previous error(s); stopping compilation
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[11/16] Compile [x64] TaskScheduler.cpp (0:03.35 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1325): error C2838: 'EnableSIMD': illegal qualified name in member declaration
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1325): error C2065: 'EnableSIMD': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1330): error C2838: 'ThreadSafetyEnabled': illegal qualified name in member declaration
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1330): error C2065: 'ThreadSafetyEnabled': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1335): error C2838: 'BatchProcessingEnabled': illegal qualified name in member declaration
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1335): error C2065: 'BatchProcessingEnabled': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1340): error C2838: 'ParallelizationEnabled': illegal qualified name in member declaration
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1340): error C2065: 'ParallelizationEnabled': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1345): error C2838: 'AsynchronousEnabled': illegal qualified name in member declaration
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1345): error C2065: 'AsynchronousEnabled': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1360): error C2838: 'SpatialCoherenceEnabled': illegal qualified name in member declaration
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1360): error C2065: 'SpatialCoherenceEnabled': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1365): error C2838: 'CacheOptimizationEnabled': illegal qualified name in member declaration
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1365): error C2065: 'CacheOptimizationEnabled': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1370): error C2838: 'VectorizationEnabled': illegal qualified name in member declaration
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1370): error C2065: 'VectorizationEnabled': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1375): error C2838: 'LowContentionEnabled': illegal qualified name in member declaration
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1375): error C2065: 'LowContentionEnabled': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Private\TaskScheduler.cpp(1437): error C4458: declaration of 'Workers' hides class member
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskScheduler.h(530): note: see declaration of 'FTaskScheduler::Workers'
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[12/16] Compile [x64] Module.MiningSpiceCoPilot.1.cpp (0:03.89 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(17): error C2011: 'ERegistryType': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(35): error C2011: 'ETypeCapabilities': 'unsigned enum' type redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(504): error C2027: use of undefined type 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(504): error C2065: 'None': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(505): error C2027: use of undefined type 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(505): error C2065: 'SDF': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(506): error C2027: use of undefined type 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(506): error C2065: 'SVO': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(507): error C2027: use of undefined type 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(507): error C2065: 'Zone': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(508): error C2027: use of undefined type 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(508): error C2065: 'Material': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(509): error C2027: use of undefined type 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(181): note: see declaration of 'ERegistryType'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(509): error C2065: 'Service': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(503): error C2131: expression did not evaluate to a constant
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(503): note: failure was caused by a read of an uninitialized symbol
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(503): note: see usage of 'UECodeGen_Private::FEnumeratorParam::Value'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(600): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(600): error C2065: 'None': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(601): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(601): error C2065: 'SIMDOperations': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(602): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(602): error C2065: 'ThreadSafe': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(603): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(603): error C2065: 'BatchOperations': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(604): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(604): error C2065: 'ParallelProcessing': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(605): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(605): error C2065: 'IncrementalUpdates': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(606): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(606): error C2065: 'AsyncOperations': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(607): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(607): error C2065: 'PartialExecution': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(608): error C2027: use of undefined type 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\3_ThreadingTaskSystem\Public\TaskSystem\TaskTypes.h(207): note: see declaration of 'ETypeCapabilities'
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(608): error C2065: 'ResultMerging': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(599): error C2131: expression did not evaluate to a constant
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(599): note: failure was caused by a read of an uninitialized symbol
+C:\MiningSpiceCoPilot - Copy\Intermediate\Build\Win64\UnrealEditor\Inc\MiningSpiceCoPilot\UHT\TaskTypes.gen.cpp(599): note: see usage of 'UECodeGen_Private::FEnumeratorParam::Value'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\SDFTypeRegistry.h(527): error C2555: 'FSDFTypeRegistry::GetTypeDependencies': overriding virtual function return type differs and is not covariant from 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(215): note: see declaration of 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\ZoneTypeRegistry.h(334): error C2555: 'FZoneTypeRegistry::GetTypeDependencies': overriding virtual function return type differs and is not covariant from 'IRegistry::GetTypeDependencies'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\1_CoreRegistry\Public\Interfaces\IRegistry.h(215): note: see declaration of 'IRegistry::GetTypeDependencies'
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[13/16] Compile [x64] Module.MiningSpiceCoPilot.3.cpp (0:07.95 at +0:00)
+---------------------- Done ----------------------
+
+    Rebuild All: 0 succeeded, 1 failed, 0 skipped

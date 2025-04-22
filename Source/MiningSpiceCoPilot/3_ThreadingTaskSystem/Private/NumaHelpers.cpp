@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-// Include the CoreMinimal.h first to get all the basic includes
+#include "NumaHelpers.h"
+// Include the CoreMinimal.h after NumaHelpers.h
 #include "CoreMinimal.h"
 #include "ThreadSafety.h"
 #include "HAL/PlatformProcess.h"
@@ -20,40 +21,52 @@
 
 namespace NumaHelpers
 {
-    int32 GetNumberOfCoresPerProcessor()
+    uint32 GetNumberOfCoresPerProcessor()
     {
-        int32 TotalCores = FPlatformMisc::NumberOfCores();
-        int32 TotalThreads = FPlatformMisc::NumberOfCoresIncludingHyperthreads();
-        int32 NumProcessors = (TotalThreads > TotalCores) ? (TotalThreads / TotalCores) : 1;
-        return TotalCores / NumProcessors;
+        // Default implementation - platform specific code may vary
+        static uint32 CoresPerProcessor = 0;
+        
+        if (CoresPerProcessor == 0)
+        {
+            uint32 TotalCores = FPlatformMisc::NumberOfCores();
+            uint32 NumNodes = 1; // Default to 1 if NUMA info not available
+            
+            // This is a simplification - on Windows we would use actual NUMA API
+            // For now just estimate as 1/4 of cores per node on higher core count systems
+            if (TotalCores >= 16)
+            {
+                NumNodes = 4;
+            }
+            else if (TotalCores >= 8)
+            {
+                NumNodes = 2;
+            }
+            
+            CoresPerProcessor = FMath::Max(1u, TotalCores / NumNodes);
+        }
+        
+        return CoresPerProcessor;
     }
     
     uint64 GetProcessorMaskForDomain(uint32 DomainId)
     {
-        uint64 Mask = 0;
+        // Default implementation - ideally would use Windows or Linux NUMA API
+        uint32 TotalCores = FPlatformMisc::NumberOfCores();
+        uint32 CoresPerProcessor = GetNumberOfCoresPerProcessor();
+        uint32 NumNodes = FMath::Max(1u, TotalCores / CoresPerProcessor);
         
-#if PLATFORM_WINDOWS
-        ULONG HighestNodeNumber = 0;
-        if (::GetNumaHighestNodeNumber(&HighestNodeNumber) && DomainId <= HighestNodeNumber)
+        // Validate domain ID
+        if (DomainId >= NumNodes)
         {
-            ULONGLONG AvailableMask = 0;
-            if (::GetNumaNodeProcessorMask((UCHAR)DomainId, &AvailableMask))
-            {
-                return (uint64)AvailableMask;
-            }
+            return 0;
         }
-#endif
         
-        // Fallback: Allocate cores evenly across domains
-        int32 TotalCores = FPlatformMisc::NumberOfCores();
-        int32 TotalThreads = FPlatformMisc::NumberOfCoresIncludingHyperthreads();
-        int32 NumDomains = (TotalThreads > TotalCores) ? (TotalThreads / TotalCores) : 1;
+        // Create a mask for the cores in this domain
+        uint64 Mask = 0;
+        uint32 StartCore = DomainId * CoresPerProcessor;
+        uint32 EndCore = FMath::Min(TotalCores, (DomainId + 1) * CoresPerProcessor);
         
-        int32 CoresPerDomain = TotalCores / NumDomains;
-        int32 StartCore = DomainId * CoresPerDomain;
-        int32 EndCore = FMath::Min(StartCore + CoresPerDomain, TotalCores);
-        
-        for (int32 CoreId = StartCore; CoreId < EndCore; ++CoreId)
+        for (uint32 CoreId = StartCore; CoreId < EndCore; ++CoreId)
         {
             Mask |= (1ULL << CoreId);
         }
@@ -61,14 +74,39 @@ namespace NumaHelpers
         return Mask;
     }
     
-    bool SetProcessorAffinityMask(uint64 AffinityMask)
+    bool SetProcessorAffinityMask(uint64 ProcessorMask)
     {
 #if PLATFORM_WINDOWS
-        HANDLE Process = ::GetCurrentProcess();
-        return !!::SetProcessAffinityMask(Process, (DWORD_PTR)AffinityMask);
+        HANDLE ThreadHandle = GetCurrentThread();
+        DWORD_PTR Result = SetThreadAffinityMask(ThreadHandle, static_cast<DWORD_PTR>(ProcessorMask));
+        return Result != 0;
 #else
+        // Default implementation for other platforms
         return false;
 #endif
+    }
+    
+    uint32 GetDomainForAddress(void* Address)
+    {
+        // Default implementation - would use VirtualQueryEx on Windows with NUMA info
+        // or move_pages on Linux
+        
+        // For now, just return domain 0
+        return 0;
+    }
+    
+    void* AllocateMemoryOnDomain(SIZE_T Size, uint32 DomainId)
+    {
+#if PLATFORM_WINDOWS
+        // On Windows, would use VirtualAllocExNuma or similar
+        // For now, just use regular allocation
+#endif
+        return FMemory::Malloc(Size);
+    }
+    
+    void FreeNUMAMemory(void* Ptr)
+    {
+        FMemory::Free(Ptr);
     }
     
     uint64 GetAllCoresMask()

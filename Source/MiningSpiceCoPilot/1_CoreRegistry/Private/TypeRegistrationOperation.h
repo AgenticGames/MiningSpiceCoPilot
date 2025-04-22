@@ -10,6 +10,11 @@
 #include "../Public/SVOTypeRegistry.h"
 
 /**
+ * Type registration completion delegate
+ */
+DECLARE_DELEGATE_OneParam(FTypeRegistrationCompletionDelegate, bool /*bSuccess*/);
+
+/**
  * Enum defining the registry type for a registration operation
  */
 enum class ETypeRegistrationRegistry : uint8
@@ -53,6 +58,17 @@ struct FTypeRegistrationProgress
 class FTypeRegistrationOperation : public FAsyncOperationImpl
 {
 public:
+    /** Default constructor */
+    FTypeRegistrationOperation()
+        : FAsyncOperationImpl(0, TEXT("TypeRegistration"), TEXT(""))
+        , SourceAsset()
+        , bUsingSourceAsset(false)
+        , bCancelled(false)
+        , RegistryType(ETypeRegistrationRegistry::Zone)
+        , TaskId(0)
+    {
+    }
+
     /** Constructor for source asset registration */
     FTypeRegistrationOperation(uint64 InId, const FString& InName, ETypeRegistrationRegistry InRegistryType, const FString& InSourceAsset);
     
@@ -73,11 +89,18 @@ public:
     
     /** Destructor */
     virtual ~FTypeRegistrationOperation();
+
+    /** Returns the task ID for this operation */
+    uint64 GetTaskId() const { return TaskId; }
     
-    //~ Begin FAsyncOperationImpl interface
+    /** Sets the task ID for this operation */
+    void SetTaskId(uint64 InTaskId) { TaskId = InTaskId; }
+
+    /** Execute the operation */
     virtual bool Execute() override;
+    
+    /** Cancel the operation */
     virtual bool Cancel() override;
-    //~ End FAsyncOperationImpl interface
 
     /** Helper method to get the operation type string for a registry type */
     FString GetOperationTypeForRegistry(ETypeRegistrationRegistry RegType);
@@ -93,6 +116,18 @@ public:
      * @param InProgress The progress information
      */
     void SetProgress(const FAsyncProgress& InProgress);
+
+    /** Source asset path for asset-based registration */
+    FString SourceAsset;
+    
+    /** Whether this operation is using a source asset */
+    bool bUsingSourceAsset;
+    
+    /** Whether the operation has been cancelled */
+    bool bCancelled;
+    
+    /** Completion callback to be called when the operation completes */
+    FTypeRegistrationCompletionDelegate CompletionCallback;
 
 private:
     /** Executes a source asset registration operation */
@@ -122,9 +157,6 @@ private:
     /** Registry type for this operation */
     ETypeRegistrationRegistry RegistryType;
     
-    /** Source asset path for asset-based registration */
-    FString SourceAsset;
-    
     /** Zone transaction types for batch registration */
     TArray<FZoneTransactionTypeInfo> ZoneTypes;
     
@@ -143,11 +175,8 @@ private:
     /** Progress information for this operation */
     FTypeRegistrationProgress TypeProgress;
     
-    /** Whether this operation is using a source asset */
-    bool bUsingSourceAsset;
-    
-    /** Whether the operation has been cancelled */
-    bool bCancelled;
+    /** Task ID for this operation */
+    uint64 TaskId;
 };
 
 /**

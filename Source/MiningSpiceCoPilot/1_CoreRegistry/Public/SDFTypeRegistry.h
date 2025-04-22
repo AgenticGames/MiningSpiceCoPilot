@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "../../3_ThreadingTaskSystem/Public/ParallelExecutor.h"
 #include "Interfaces/IRegistry.h"
 #include "Containers/Map.h"
 #include "Templates/SharedPointer.h"
@@ -493,7 +494,7 @@ struct MININGSPICECOPILOT_API FFieldEvaluationContext
 class MININGSPICECOPILOT_API FSDFTypeRegistry : public IRegistry
 {
 public:
-    /** Default constructor */
+    /** Constructor */
     FSDFTypeRegistry();
     
     /** Destructor */
@@ -511,13 +512,25 @@ public:
     virtual uint32 GetTypeVersion(uint32 TypeId) const override;
     virtual ERegistryType GetRegistryType() const override;
     virtual ETypeCapabilities GetTypeCapabilities(uint32 TypeId) const override;
+    
+    /**
+     * Gets the extended capabilities of a specific field type
+     * @param TypeId The ID of the field type to query
+     * @return The extended capabilities of the field type
+     */
+    virtual ETypeCapabilitiesEx GetTypeCapabilitiesEx(uint32 TypeId) const override;
+    
     virtual uint64 ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskFunc, const FTaskConfig& Config) override;
+    virtual bool PreInitializeTypes() override;
+    virtual bool ParallelInitializeTypes(bool bParallel = true) override;
+    virtual bool PostInitializeTypes() override;
+    virtual TArray<int32> GetTypeDependencies(uint32 TypeId) const override;
     //~ End IRegistry Interface
     
     /**
-     * Registers a new SDF field type
+     * Registers a new SDF field type with the registry
      * @param InTypeName Name of the field type
-     * @param InChannelCount Number of channels supported
+     * @param InChannelCount Number of channels for this field type
      * @param InAlignmentRequirement Memory alignment requirement (must be power of 2)
      * @param bInSupportsGPU Whether this field type supports GPU evaluation
      * @return Unique ID for the registered type, or 0 if registration failed
@@ -529,11 +542,47 @@ public:
         bool bInSupportsGPU = false);
 
     /**
-     * Registers a new SDF operation
+     * Registers multiple field types in a batch using parallel processing
+     * @param TypeInfos Array of field type information to register
+     * @param OutTypeIds Array to receive the assigned type IDs
+     * @param OutErrors Array to receive any errors that occurred during registration
+     * @param Config Configuration for parallel execution
+     * @return True if all types were registered successfully
+     */
+    bool RegisterFieldTypesBatch(
+        const TArray<FSDFFieldTypeInfo>& TypeInfos,
+        TArray<uint32>& OutTypeIds,
+        TArray<FString>& OutErrors,
+        struct FParallelConfig Config = FParallelConfig());
+
+    /**
+     * Pre-validates a batch of field types before registration
+     * @param TypeInfos Array of field type information to validate
+     * @param OutErrors Array to receive validation errors
+     * @param bParallel Whether to validate in parallel
+     * @return True if all types passed validation
+     */
+    bool PrevalidateFieldTypes(
+        const TArray<FSDFFieldTypeInfo>& TypeInfos,
+        TArray<FString>& OutErrors,
+        bool bParallel = true);
+
+    /**
+     * Validates the consistency of all registered types
+     * @param OutErrors Array to receive any validation errors
+     * @param bParallel Whether to validate in parallel
+     * @return True if all types are consistent
+     */
+    bool ValidateTypeConsistency(
+        TArray<FString>& OutErrors,
+        bool bParallel = true);
+
+    /**
+     * Registers a new operation with the registry
      * @param InOperationName Name of the operation
-     * @param InOperationType Type of CSG operation
-     * @param InInputCount Number of input fields required
-     * @param bInSupportsSmoothing Whether operation supports smoothing
+     * @param InOperationType Type of operation
+     * @param InInputCount Number of inputs required by the operation
+     * @param bInSupportsSmoothing Whether this operation supports smoothing
      * @return Unique ID for the registered operation, or 0 if registration failed
      */
     uint32 RegisterOperation(
@@ -541,6 +590,34 @@ public:
         ESDFOperationType InOperationType,
         uint32 InInputCount,
         bool bInSupportsSmoothing = false);
+
+    /**
+     * Registers a new field operation with the registry
+     * @param InOperationName Name of the operation
+     * @param InOperationType Type of operation
+     * @param InInputCount Number of inputs required by the operation
+     * @param bInSupportsSmoothing Whether this operation supports smoothing
+     * @return Unique ID for the registered operation, or 0 if registration failed
+     */
+    uint32 RegisterFieldOperation(
+        const FName& InOperationName,
+        ESDFOperationType InOperationType,
+        uint32 InInputCount,
+        bool bInSupportsSmoothing = false);
+
+    /**
+     * Registers multiple field operations in a batch using parallel processing
+     * @param OperationInfos Array of operation information to register
+     * @param OutOperationIds Array to receive the assigned operation IDs
+     * @param OutErrors Array to receive any errors that occurred during registration
+     * @param Config Configuration for parallel execution
+     * @return True if all operations were registered successfully
+     */
+    bool RegisterFieldOperationsBatch(
+        const TArray<FSDFOperationInfo>& OperationInfos,
+        TArray<uint32>& OutOperationIds,
+        TArray<FString>& OutErrors,
+        struct FParallelConfig Config = FParallelConfig());
         
     /**
      * Gets information about a registered field type
@@ -710,70 +787,72 @@ private:
     /** Generates a unique type ID for new field type registrations */
     uint32 GenerateUniqueTypeId();
     
-    /** Generates a unique operation ID for new operation registrations */
+    /** Generates a unique operation ID for new field operation registrations */
     uint32 GenerateUniqueOperationId();
     
-    /** Maps of registered field types by ID and name */
-    TMap<uint32, TSharedRef<FSDFFieldTypeInfo, ESPMode::ThreadSafe>> TypeMap;
-    TMap<FName, uint32> TypeNameMap;
-    TMap<uint32, TSharedRef<FSDFFieldTypeInfo, ESPMode::ThreadSafe>> FieldTypeMap;
+    /** Initializes a field type after registration */
+    void InitializeFieldType(uint32 TypeId);
+    
+    /** Thread-safe lock for registry access */
+    mutable TSharedPtr<FSpinLock> RegistryLock;
+    
+    /** Map of field types by ID */
+    TMap<uint32, TSharedRef<FSDFFieldTypeInfo>> FieldTypeMap;
+    
+    /** Map of field types by name */
     TMap<FName, uint32> FieldTypeNameMap;
     
-    /** Maps of registered operations by ID and name */
-    TMap<uint32, TSharedRef<FSDFOperationInfo, ESPMode::ThreadSafe>> OperationMap;
+    /** Map of operations by ID */
+    TMap<uint32, TSharedRef<FSDFOperationInfo>> OperationMap;
+    
+    /** Map of operations by name */
     TMap<FName, uint32> OperationNameMap;
     
-    /** Lock for general registry operations */
-    mutable FSpinLock RegistryLock;
+    /** Map of shared buffer managers by type ID */
+    TMap<uint32, TSharedRef<FSharedBufferManager>> TypeBufferMap;
     
-    /** Lock for field evaluation operations */
-    FSVOFieldReadLock EvaluationLock;
+    /** Map of type versions by type ID */
+    TMap<uint32, uint32> TypeVersionMap;
     
-    /** Map of type buffers for shared usage */
-    TMap<uint32, TSharedRef<FSharedBufferManager, ESPMode::ThreadSafe>> TypeBufferMap;
-    
-    /** Current maximum type ID */
-    uint32 MaxTypeId;
-    
-    /** Current maximum operation ID */
-    uint32 MaxOperationId;
-    
-    /** Counter for contention tracking */
-    mutable FThreadSafeCounter ContentionCount;
-    
-    /** Atomic type version counter for optimistic concurrency */
-    FThreadSafeCounter TypeVersion;
-    
-    /** Detected hardware capabilities */
-    bool bSIMDCapabilitiesDetected;
-    bool bSupportsSSE2;
-    bool bSupportsAVX;
-    bool bSupportsAVX2;
-    
-    /** Field operation cache */
-    TMap<uint32, FFieldOperationCacheEntry> OperationCache;
-    
-    /** Pool of field evaluation contexts */
-    TArray<FFieldEvaluationContext> EvaluationContextPool;
-    
-    /** Mutex for accessing the evaluation context pool */
-    FSpinLock ContextPoolLock;
-    
-    /** Next available type ID */
+    /** Counter for generating unique type IDs */
     FThreadSafeCounter NextTypeId;
     
-    /** Next available operation ID */
+    /** Counter for generating unique operation IDs */
     FThreadSafeCounter NextOperationId;
     
-    /** Flag indicating whether the registry is initialized */
-    FThreadSafeBool bIsInitialized;
+    /** Registry name */
+    FName RegistryName;
     
-    /** Current schema version */
+    /** Schema version for this registry */
     uint32 SchemaVersion;
+    
+    /** Whether GPU support is available */
+    bool bHasGPUSupport;
+    
+    /** Whether SSE2 support is available */
+    bool bHasSSE2Support;
+    
+    /** Whether AVX support is available */
+    bool bHasAVXSupport;
+    
+    /** Whether AVX2 support is available */
+    bool bHasAVX2Support;
+    
+    /** Whether types have been initialized */
+    bool bTypesInitialized;
+    
+    /** Whether initialization is in progress */
+    bool bInitializationInProgress;
+    
+    /** Whether hardware capabilities have been detected */
+    bool bHardwareCapabilitiesDetected;
+    
+    /** Errors encountered during initialization */
+    TArray<FString> InitializationErrors;
     
     /** Singleton instance */
     static FSDFTypeRegistry* Singleton;
     
-    /** Flag indicating whether singleton has been initialized */
+    /** Thread-safe initialization flag */
     static FThreadSafeBool bSingletonInitialized;
 };

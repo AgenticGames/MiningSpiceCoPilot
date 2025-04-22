@@ -14,6 +14,7 @@
 #include "HAL/ThreadHeartBeat.h"
 #include "HAL/PlatformMisc.h"
 #include "Math/NumericLimits.h"
+#include "NumaHelpers.h"
 
 // On Windows, we need specific Windows APIs for NUMA functions
 #if PLATFORM_WINDOWS
@@ -24,75 +25,6 @@
 #include <WinBase.h>
 #include "Windows/HideWindowsPlatformTypes.h"
 #endif
-
-// Define NumaHelpers namespace early, before it's used by any other code
-namespace NumaHelpers
-{
-    inline int32 GetNumberOfCoresPerProcessor()
-    {
-        int32 TotalCores = FPlatformMisc::NumberOfCores();
-        int32 TotalThreads = FPlatformMisc::NumberOfCoresIncludingHyperthreads();
-        int32 NumProcessors = (TotalThreads > TotalCores) ? (TotalThreads / TotalCores) : 1;
-        return TotalCores / NumProcessors;
-    }
-    
-    inline uint64 GetProcessorMaskForDomain(uint32 DomainId)
-    {
-        uint64 Mask = 0;
-        
-#if PLATFORM_WINDOWS
-        ULONG HighestNodeNumber = 0;
-        if (::GetNumaHighestNodeNumber(&HighestNodeNumber) && DomainId <= HighestNodeNumber)
-        {
-            ULONGLONG AvailableMask = 0;
-            if (::GetNumaNodeProcessorMask((UCHAR)DomainId, &AvailableMask))
-            {
-                return (uint64)AvailableMask;
-            }
-        }
-#endif
-        
-        // Fallback: Allocate cores evenly across domains
-        int32 TotalCores = FPlatformMisc::NumberOfCores();
-        int32 TotalThreads = FPlatformMisc::NumberOfCoresIncludingHyperthreads();
-        int32 NumDomains = (TotalThreads > TotalCores) ? (TotalThreads / TotalCores) : 1;
-        
-        int32 CoresPerDomain = TotalCores / NumDomains;
-        int32 StartCore = DomainId * CoresPerDomain;
-        int32 EndCore = FMath::Min(StartCore + CoresPerDomain, TotalCores);
-        
-        for (int32 CoreIdx = StartCore; CoreIdx < EndCore; ++CoreIdx)
-        {
-            Mask |= (1ULL << CoreIdx);
-        }
-        
-        return Mask;
-    }
-    
-    inline bool SetProcessorAffinityMask(uint64 AffinityMask)
-    {
-#if PLATFORM_WINDOWS
-        HANDLE Process = ::GetCurrentProcess();
-        return !!::SetProcessAffinityMask(Process, (DWORD_PTR)AffinityMask);
-#else
-        return false;
-#endif
-    }
-    
-    inline uint64 GetAllCoresMask()
-    {
-        uint64 Mask = 0;
-        int32 NumCores = FPlatformMisc::NumberOfCores();
-        
-        // Set bits for each core
-        for (int32 CoreIdx = 0; CoreIdx < NumCores; ++CoreIdx)
-        {
-            Mask |= (1ULL << CoreIdx);
-        }
-        
-        return Mask;
-    }
-}
 
 // Initialize static members before they're used
 uint32 FHierarchicalLock::ThreadHighestLockLevelTLS = FPlatformTLS::AllocTlsSlot();
@@ -1501,21 +1433,7 @@ TArray<uint32> FNUMATopology::GetLogicalCoresForDomain(uint32 DomainId) const
 
 uint64 FNUMATopology::GetAffinityMaskForDomain(uint32 DomainId) const
 {
-    uint64 AffinityMask = 0;
-    
-    for (const FNUMADomainInfo& Domain : Domains)
-    {
-        if (Domain.DomainId == DomainId)
-        {
-            for (uint32 CoreId : Domain.LogicalCores)
-            {
-                AffinityMask |= (1ULL << CoreId);
-            }
-            break;
-        }
-    }
-    
-    return AffinityMask;
+    return NumaHelpers::GetProcessorMaskForDomain(DomainId);
 }
 
 // FThreadSafety NUMA-related implementations
@@ -1562,15 +1480,15 @@ bool FThreadSafety::AssignThreadToNUMADomain(uint32 ThreadId, uint32 DomainId)
         return false;
     }
     
-    // Get affinity mask for the domain
-    uint64 DomainAffinityMask = NUMATopology.GetAffinityMaskForDomain(DomainId);
-    if (DomainAffinityMask == 0)
+    // Get the processor mask for the specified NUMA domain
+    uint64 DomainMask = NumaHelpers::GetProcessorMaskForDomain(DomainId);
+    if (DomainMask == 0)
     {
         return false;
     }
     
     // Set thread affinity using our helper function
-    bool bSuccess = NumaHelpers::SetProcessorAffinityMask(DomainAffinityMask);
+    bool bSuccess = NumaHelpers::SetProcessorAffinityMask(DomainMask);
     
     if (bSuccess)
     {

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "../../3_ThreadingTaskSystem/Public/ParallelExecutor.h"
 #include "Interfaces/IRegistry.h"
 #include "Containers/Map.h"
 #include "Templates/SharedPointer.h"
@@ -184,7 +185,12 @@ public:
     virtual uint32 GetTypeVersion(uint32 TypeId) const override;
     virtual ERegistryType GetRegistryType() const override;
     virtual ETypeCapabilities GetTypeCapabilities(uint32 TypeId) const override;
+    virtual ETypeCapabilitiesEx GetTypeCapabilitiesEx(uint32 TypeId) const override;
     virtual uint64 ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskFunc, const FTaskConfig& Config) override;
+    virtual bool PreInitializeTypes() override;
+    virtual bool ParallelInitializeTypes(bool bParallel = true) override;
+    virtual bool PostInitializeTypes() override;
+    virtual TArray<int32> GetTypeDependencies(uint32 TypeId) const override;
     //~ End IRegistry Interface
     
     /**
@@ -202,6 +208,42 @@ public:
         uint32 InDataSize, 
         uint32 InAlignmentRequirement = 16, 
         bool bInSupportsMaterialRelationships = false);
+    
+    /**
+     * Registers multiple node types in a batch using parallel processing
+     * @param TypeInfos Array of node type information to register
+     * @param OutTypeIds Array to receive the assigned type IDs
+     * @param OutErrors Array to receive any errors that occurred during registration
+     * @param ExecutionMode How to execute the operation (parallel, sequential, etc.)
+     * @return True if all types were registered successfully
+     */
+    bool RegisterNodeTypesBatch(
+        const TArray<FSVONodeTypeInfo>& TypeInfos,
+        TArray<uint32>& OutTypeIds,
+        TArray<FString>& OutErrors,
+        struct FParallelConfig Config = FParallelConfig());
+    
+    /**
+     * Pre-validates a batch of node types before registration
+     * @param TypeInfos Array of node type information to validate
+     * @param OutErrors Array to receive validation errors
+     * @param bParallel Whether to validate in parallel
+     * @return True if all types passed validation
+     */
+    bool PrevalidateNodeTypes(
+        const TArray<FSVONodeTypeInfo>& TypeInfos,
+        TArray<FString>& OutErrors,
+        bool bParallel = true);
+    
+    /**
+     * Validates the consistency of all registered types
+     * @param OutErrors Array to receive any validation errors
+     * @param bParallel Whether to validate in parallel
+     * @return True if all types are consistent
+     */
+    bool ValidateTypeConsistency(
+        TArray<FString>& OutErrors,
+        bool bParallel = true);
     
     /**
      * Attempts to register a node type using optimistic locking for better performance in hot paths
@@ -338,7 +380,10 @@ private:
     /** Generates a unique type ID for new registrations */
     uint32 GenerateUniqueTypeId();
     
-    /** Detect CPU SIMD capabilities */
+    /** Initializes a specific node type */
+    void InitializeType(uint32 TypeId);
+    
+    /** Detected SIMD capabilities of the current system */
     void DetectSIMDCapabilities();
     
     /**

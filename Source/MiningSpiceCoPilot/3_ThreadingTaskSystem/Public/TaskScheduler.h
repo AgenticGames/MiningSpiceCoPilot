@@ -266,35 +266,67 @@ protected:
 class MININGSPICECOPILOT_API FSpecializedTaskWorker : public FMiningTaskWorker
 {
 public:
-    /** Constructor */
+    /** Constructor with basic capabilities only */
     FSpecializedTaskWorker(class FTaskScheduler* InScheduler, int32 InThreadId, EThreadPriority InPriority, ETypeCapabilities InSupportedCapabilities)
         : FMiningTaskWorker(InScheduler, InThreadId, InPriority)
         , SupportedCapabilities(InSupportedCapabilities)
+        , SupportedCapabilitiesEx(ETypeCapabilitiesEx::None)
     {
     }
     
-    /** Gets the supported capabilities */
+    /** Constructor with both basic and extended capabilities */
+    FSpecializedTaskWorker(class FTaskScheduler* InScheduler, int32 InThreadId, EThreadPriority InPriority, 
+                           ETypeCapabilities InSupportedCapabilities, ETypeCapabilitiesEx InSupportedCapabilitiesEx)
+        : FMiningTaskWorker(InScheduler, InThreadId, InPriority)
+        , SupportedCapabilities(InSupportedCapabilities)
+        , SupportedCapabilitiesEx(InSupportedCapabilitiesEx)
+    {
+    }
+    
+    /** Gets the supported basic capabilities */
     ETypeCapabilities GetSupportedCapabilities() const
     {
         return SupportedCapabilities;
     }
     
-    /** Sets the supported capabilities */
+    /** Gets the supported extended capabilities */
+    ETypeCapabilitiesEx GetSupportedCapabilitiesEx() const
+    {
+        return SupportedCapabilitiesEx;
+    }
+    
+    /** Sets the supported basic capabilities */
     void SetSupportedCapabilities(ETypeCapabilities InCapabilities)
     {
         SupportedCapabilities = InCapabilities;
     }
     
-    /** Checks if this worker supports the given capabilities */
+    /** Sets the supported extended capabilities */
+    void SetSupportedCapabilitiesEx(ETypeCapabilitiesEx InCapabilitiesEx)
+    {
+        SupportedCapabilitiesEx = InCapabilitiesEx;
+    }
+    
+    /** Checks if this worker supports the given basic capabilities */
     bool SupportsCapabilities(ETypeCapabilities InCapabilities) const
     {
         // Check if all required capabilities are supported
-        return (static_cast<uint32>(SupportedCapabilities) & static_cast<uint32>(InCapabilities)) == static_cast<uint32>(InCapabilities);
+        return TypeCapabilitiesHelpers::HasBasicCapability(SupportedCapabilities, InCapabilities);
+    }
+    
+    /** Checks if this worker supports the given extended capabilities */
+    bool SupportsCapabilitiesEx(ETypeCapabilitiesEx InCapabilitiesEx) const
+    {
+        // Check if all required capabilities are supported
+        return TypeCapabilitiesHelpers::HasAdvancedCapability(SupportedCapabilitiesEx, InCapabilitiesEx);
     }
 
 protected:
-    /** Specialized capabilities supported by this worker */
+    /** Specialized basic capabilities supported by this worker */
     ETypeCapabilities SupportedCapabilities;
+    
+    /** Specialized extended capabilities supported by this worker */
+    ETypeCapabilitiesEx SupportedCapabilitiesEx;
     
     /** Override for specialized task selection */
     virtual FMiningTask* SelectNextTask() override;
@@ -367,6 +399,15 @@ public:
     int32 CreateSpecializedWorker(ETypeCapabilities Capabilities, EThreadPriority Priority = TPri_Normal);
     
     /**
+     * Creates a specialized worker thread with both basic and extended capabilities
+     * @param Capabilities The basic type capabilities this worker should specialize in
+     * @param CapabilitiesEx The extended type capabilities this worker should specialize in
+     * @param Priority Thread priority for the worker
+     * @return Thread ID of the created worker
+     */
+    int32 CreateSpecializedWorker(ETypeCapabilities Capabilities, ETypeCapabilitiesEx CapabilitiesEx, EThreadPriority Priority = TPri_Normal);
+    
+    /**
      * Gets all specialized worker threads
      * @return Map of capabilities to worker thread IDs
      */
@@ -381,11 +422,27 @@ public:
     static ETypeCapabilities GetTypeCapabilities(uint32 TypeId, ERegistryType RegistryType);
     
     /**
+     * Gets extended type capabilities from a registry type and ID
+     * @param TypeId The type ID to query
+     * @param RegistryType The registry containing the type
+     * @return Extended capabilities of the specified type
+     */
+    static ETypeCapabilitiesEx GetTypeCapabilitiesEx(uint32 TypeId, ERegistryType RegistryType);
+    
+    /**
      * Maps type capabilities to thread optimization flags
      * @param Capabilities The capabilities to map
      * @return Corresponding optimization flags
      */
     static EThreadOptimizationFlags MapCapabilitiesToOptimizationFlags(ETypeCapabilities Capabilities);
+    
+    /**
+     * Maps type capabilities (both basic and extended) to thread optimization flags
+     * @param Capabilities The basic capabilities to map
+     * @param CapabilitiesEx The extended capabilities to map
+     * @return Corresponding optimization flags
+     */
+    static EThreadOptimizationFlags MapCapabilitiesToOptimizationFlags(ETypeCapabilities Capabilities, ETypeCapabilitiesEx CapabilitiesEx);
     
     /**
      * Detects available processor features
@@ -426,6 +483,14 @@ public:
     int32 FindWorkerWithCapabilities(ETypeCapabilities Capabilities);
     
     /**
+     * Finds a worker with specific basic and extended capabilities
+     * @param Capabilities The required basic capabilities
+     * @param CapabilitiesEx The required extended capabilities
+     * @return Index of a suitable worker, or -1 if no suitable worker is available
+     */
+    int32 FindWorkerWithCapabilities(ETypeCapabilities Capabilities, ETypeCapabilitiesEx CapabilitiesEx);
+    
+    /**
      * Calculates an affinity mask for a worker thread based on NUMA topology
      * @param ThreadIndex Index of the thread
      * @param TotalThreads Total number of threads
@@ -462,7 +527,7 @@ private:
     bool bIsInitialized;
     
     /** Worker threads */
-    TArray<FMiningTaskWorker*> Workers;
+    TArray<FMiningTaskWorker*> WorkerThreads;
     
     /** Task maps for each priority level */
     TMap<ETaskPriority, TArray<FMiningTask*>> TaskQueues;

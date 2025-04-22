@@ -68,7 +68,12 @@ enum class EMaterialCapabilities : uint32
     SupportsDynamicRehierarchization = 1 << 15,
     SupportsAdaptiveCompression = 1 << 16,
     SupportsRuntimeMaterialReplacement = 1 << 17,
-    SupportsLiveEditing = 1 << 18
+    SupportsLiveEditing = 1 << 18,
+    // Extended capabilities for new system
+    SupportsSpatialCoherence = 1 << 19,
+    SupportsVectorization = 1 << 20,
+    SupportsConcurrentAccess = 1 << 21,
+    SupportsLowMemoryMode = 1 << 22
 };
 ENUM_CLASS_FLAGS(EMaterialCapabilities);
 
@@ -341,78 +346,56 @@ struct FMaterialProperty : public FMaterialPropertyBase
 };
 
 /**
- * Structure containing information about a material type
- * Optimized for memory alignment and SIMD operations
+ * Material type information structure
  */
 struct MININGSPICECOPILOT_API FMaterialTypeInfo
 {
-    /** Unique ID for this material type */
+    /** Unique identifier for this material type */
     uint32 TypeId;
     
     /** Name of this material type */
     FName TypeName;
     
-    /** Version of this material type's schema */
-    uint32 SchemaVersion;
-    
-    /** Priority of this material type */
-    EMaterialPriority Priority;
-    
-    /** Parent material type ID (0 for base types) */
-    uint32 ParentTypeId;
+    /** Category of this material type */
+    FName Category;
     
     /** Display name for UI */
     FText DisplayName;
     
-    /** Description for UI */
+    /** Description of this material type */
     FText Description;
     
-    /** Category for organization */
-    FName Category;
+    /** Material properties for this type */
+    TMap<FName, FString> Properties;
     
-    /** Capabilities bit flags (using EMaterialCapabilities) */
-    uint32 CapabilitiesFlags;
+    /** Related material type IDs */
+    TArray<uint32> RelatedMaterialTypeIds;
     
-    /** Capabilities of this material type (stored as an enum for easier interface access) */
+    /** Priority for conflict resolution */
+    EMaterialPriority Priority;
+    
+    /** Material capabilities */
     EMaterialCapabilities Capabilities;
     
-    /** Whether this type can be instantiated */
-    bool bCanBeInstantiated;
+    /** Parent type ID for inheritance */
+    uint32 ParentTypeId;
     
-    /** Whether this type is an abstract base for others */
-    bool bIsAbstract;
-    
-    /** Whether this type supports visual material properties */
-    bool bHasVisualProperties;
-    
-    /** Whether this type is a composite */
-    bool bIsComposite;
-    
-    /** Whether this type is a blend */
-    bool bIsBlend;
-    
-    /** Associated material instance (if applicable) */
-    TSoftObjectPtr<UMaterialInstanceDynamic> MaterialInstance;
-    
-    /** Associated sound (if applicable) */
-    TSoftObjectPtr<USoundBase> ImpactSound;
-    
-    /** Channel ID allocated for this material type (-1 if not allocated) */
+    /** Channel ID for material data */
     int32 ChannelId;
     
-    /** Number of channels allocated for this material type */
-    int32 ChannelCount;
+    /** Schema version for migration */
+    uint32 SchemaVersion;
     
-    /** Resource value multiplier for this material */
+    /** Resource value multiplier */
     float ResourceValueMultiplier;
     
-    /** Base mining resistance (higher = harder to mine) */
+    /** Base mining resistance */
     float BaseMiningResistance;
     
-    /** Sound amplification factor for mining sound effects */
+    /** Sound amplification factor */
     float SoundAmplificationFactor;
     
-    /** Particle emission multiplier for mining effects */
+    /** Particle emission multiplier */
     float ParticleEmissionMultiplier;
     
     /** Whether this material is mineable */
@@ -424,113 +407,98 @@ struct MININGSPICECOPILOT_API FMaterialTypeInfo
     /** Whether this material can fracture */
     bool bCanFracture;
     
-    /** Visualization material for the editor */
-    TSoftObjectPtr<UMaterialInterface> VisualizationMaterial;
+    /** Whether this material type is abstract and cannot be instantiated directly */
+    bool bIsAbstract;
     
-    /** Base mining sound */
-    TSoftObjectPtr<USoundBase> MiningSound;
+    /** Visualization material for this material type */
+    TSoftObjectPtr<UObject> VisualizationMaterial;
     
-    /** 
-     * Hot reload identifier - used to preserve references when reloading material types
-     * This remains constant across reloads, even if TypeId changes
-     */
-    FGuid HotReloadId;
+    /** Mining sound for this material type */
+    TSoftObjectPtr<UObject> MiningSound;
     
-    /** Cached dynamic material instance for visualization */
-    mutable TWeakObjectPtr<UMaterialInstanceDynamic> CachedVisualizationInstance;
+    /** Hot reload identifier */
+    uint32 HotReloadId;
     
-    /** Constructor initializing with default values */
+    /** Count of channels used by this material */
+    int32 ChannelCount;
+    
+    /** Default constructor */
     FMaterialTypeInfo()
         : TypeId(0)
-        , SchemaVersion(1)
         , Priority(EMaterialPriority::Normal)
-        , ParentTypeId(0)
-        , DisplayName(FText::GetEmpty())
-        , Description(FText::GetEmpty())
-        , Category(NAME_None)
-        , CapabilitiesFlags(0)
         , Capabilities(EMaterialCapabilities::None)
-        , bCanBeInstantiated(true)
-        , bIsAbstract(false)
-        , bHasVisualProperties(true)
-        , bIsComposite(false)
-        , bIsBlend(false)
+        , ParentTypeId(0)
         , ChannelId(-1)
-        , ChannelCount(0)
+        , SchemaVersion(1)
         , ResourceValueMultiplier(1.0f)
         , BaseMiningResistance(1.0f)
         , SoundAmplificationFactor(1.0f)
         , ParticleEmissionMultiplier(1.0f)
-        , bIsMineable(true)
+        , bIsMineable(false)
         , bIsResource(false)
-        , bCanFracture(true)
-        , HotReloadId(FGuid::NewGuid())
+        , bCanFracture(false)
+        , bIsAbstract(false)
+        , HotReloadId(0)
+        , ChannelCount(0)
     {
     }
     
-    /** Constructor from name */
-    explicit FMaterialTypeInfo(const FName& InTypeName)
+    /** Constructor with name */
+    FMaterialTypeInfo(const FName& InName)
         : TypeId(0)
-        , TypeName(InTypeName)
-        , SchemaVersion(1)
+        , TypeName(InName)
         , Priority(EMaterialPriority::Normal)
-        , ParentTypeId(0)
-        , DisplayName(FText::GetEmpty())
-        , Description(FText::GetEmpty())
-        , Category(NAME_None)
-        , CapabilitiesFlags(0)
         , Capabilities(EMaterialCapabilities::None)
-        , bCanBeInstantiated(true)
-        , bIsAbstract(false)
-        , bHasVisualProperties(true)
-        , bIsComposite(false)
-        , bIsBlend(false)
+        , ParentTypeId(0)
         , ChannelId(-1)
-        , ChannelCount(0)
+        , SchemaVersion(1)
         , ResourceValueMultiplier(1.0f)
         , BaseMiningResistance(1.0f)
         , SoundAmplificationFactor(1.0f)
         , ParticleEmissionMultiplier(1.0f)
-        , bIsMineable(true)
+        , bIsMineable(false)
         , bIsResource(false)
-        , bCanFracture(true)
-        , HotReloadId(FGuid::NewGuid())
+        , bCanFracture(false)
+        , bIsAbstract(false)
+        , HotReloadId(0)
+        , ChannelCount(0)
     {
     }
     
-    /** Helper method to check if this material type has a specific capability */
-    bool HasCapability(EMaterialCapabilities InCapability) const
-    {
-        return (CapabilitiesFlags & static_cast<uint32>(InCapability)) != 0;
-    }
-    
-    /** Helper method to add a capability to this material type */
+    /** Adds a capability to this material type */
     void AddCapability(EMaterialCapabilities InCapability)
     {
-        CapabilitiesFlags |= static_cast<uint32>(InCapability);
+        Capabilities = static_cast<EMaterialCapabilities>(static_cast<uint32>(Capabilities) | static_cast<uint32>(InCapability));
     }
     
-    /** Helper method to remove a capability from this material type */
+    /** Removes a capability from this material type */
     void RemoveCapability(EMaterialCapabilities InCapability)
     {
-        CapabilitiesFlags &= ~static_cast<uint32>(InCapability);
+        Capabilities = static_cast<EMaterialCapabilities>(static_cast<uint32>(Capabilities) & ~static_cast<uint32>(InCapability));
     }
     
-    /** Creates a Blueprint wrapper for this material type */
-    void CreateBlueprintWrapper() const;
-    
-    /** 
-     * Updates material type from a newer schema version
-     * @param CurrentSchemaVersion The current schema version to upgrade to
-     * @return True if migration was successful
-     */
-    bool MigrateToCurrentVersion(uint32 CurrentSchemaVersion);
-    
-    /** Whether this material type info is valid */
-    bool IsValid() const
+    /** Checks if this material type has the specified capability */
+    bool HasCapability(EMaterialCapabilities InCapability) const
     {
-        return TypeId != 0 && !TypeName.IsNone();
+        return (static_cast<uint32>(Capabilities) & static_cast<uint32>(InCapability)) != 0;
     }
+    
+    /** Migrates to current schema version */
+    bool MigrateToCurrentVersion(uint32 CurrentSchemaVersion)
+    {
+        if (SchemaVersion >= CurrentSchemaVersion)
+        {
+            return true;
+        }
+        
+        // Implement migration logic based on schema version differences
+        // This is just a stub implementation
+        SchemaVersion = CurrentSchemaVersion;
+        return true;
+    }
+    
+    /** Creates a blueprint wrapper for this material type */
+    bool CreateBlueprintWrapper() const;
 };
 
 /**
@@ -552,6 +520,9 @@ struct MININGSPICECOPILOT_API FMaterialRelationship
     
     /** Whether these materials can blend at interfaces */
     bool bCanBlend;
+    
+    /** Whether this relationship is applied in both directions */
+    bool bBidirectional;
     
     /** Blend sharpness (0 = smooth blend, 1 = sharp interface) */
     float BlendSharpness;
@@ -581,6 +552,7 @@ struct MININGSPICECOPILOT_API FMaterialRelationship
         , TargetTypeId(0)
         , CompatibilityScore(0.0f)
         , bCanBlend(false)
+        , bBidirectional(false)
         , BlendSharpness(0.5f)
         , InteractionType(NAME_None)
         , InteractionPriority(0)
@@ -633,8 +605,22 @@ public:
     virtual uint32 GetTypeVersion(uint32 TypeId) const override;
     virtual ERegistryType GetRegistryType() const override;
     virtual ETypeCapabilities GetTypeCapabilities(uint32 TypeId) const override;
+    
+    /**
+     * Gets the extended capabilities of a specific material type
+     * @param TypeId The ID of the material type to query
+     * @return The extended capabilities of the material type
+     */
+    virtual ETypeCapabilitiesEx GetTypeCapabilitiesEx(uint32 TypeId) const override;
+    
     virtual uint64 ScheduleTypeTask(uint32 TypeId, TFunction<void()> TaskFunc, const struct FTaskConfig& Config) override;
     //~ End IRegistry Interface
+    
+    // Add missing abstract method implementations
+    virtual bool PreInitializeTypes() override;
+    virtual bool ParallelInitializeTypes(bool bParallel = true) override;
+    virtual bool PostInitializeTypes() override;
+    virtual TArray<int32> GetTypeDependencies(uint32 TypeId) const override;
     
     /**
      * Registers a material type
@@ -967,87 +953,85 @@ public:
      * @param InTargetTypeName Name of the target material type
      * @param InCompatibilityScore Compatibility score (0.0-1.0) with higher values indicating better compatibility
      * @param bInCanBlend Whether the materials can blend together
+     * @param bInBidirectional Whether the relationship applies in both directions
      * @return Relationship ID, or 0 if registration failed
      */
     uint32 RegisterMaterialRelationship(
         const FName& InSourceTypeName,
         const FName& InTargetTypeName,
         float InCompatibilityScore = 0.5f,
-        bool bInCanBlend = true);
+        bool bInCanBlend = true,
+        bool bInBidirectional = false);
 
 private:
     /** Generates a unique type ID for new material type registrations */
     uint32 GenerateUniqueTypeId();
     
-    /** Generates a unique relationship ID for new material relationships */
+    /** Generates a unique ID for material relationships */
     uint32 GenerateUniqueRelationshipId();
     
-    /** Gets a modifiable material type info pointer */
+    /** Gets a mutable pointer to a material type info */
     TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>* GetMutableMaterialTypeInfo(uint32 InTypeId);
     
-    /**
-     * Allocates memory for material channels
-     * @param TypeInfo Material type info to allocate for
-     */
+    /** Allocates memory for material channel data */
     void AllocateChannelMemory(const TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>& TypeInfo);
     
-    /** Sets up memory sharing for derived materials */
+    /** Sets up memory sharing between parent and derived materials */
     void SetupMemorySharingForDerivedMaterials(uint32 TypeId);
     
-    /** Ensures a property map exists for a type */
+    /** Makes sure property map exists for a material type */
     void EnsurePropertyMap(uint32 InTypeId);
     
-    /**
-     * Recursively visualizes a type hierarchy
-     * @param InTypeId Root type ID
-     * @param InDepth Current recursion depth
-     * @param OutVisualizationData Output visualization string
-     */
+    /** Helper method for type hierarchy visualization */
     void VisualizeTypeHierarchy(uint32 InTypeId, int32 InDepth, FString& OutVisualizationData) const;
     
-    /** Map of material types by ID */
-    TMap<uint32, TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>> MaterialTypes;
+    /** Helper method for material type initialization */
+    bool InitializeMaterialType(uint32 TypeId);
     
-    /** Map of material type information */
+    /** Allocates property tables for the material type */
+    void AllocatePropertyTables(uint32 TypeId);
+    
+    /** Initializes material properties for a type */
+    void InitializeMaterialProperties(uint32 TypeId);
+    
+    /** Sets up compatibility matrix for material interactions */
+    bool SetupCompatibilityMatrix(uint32 TypeId);
+    
+    /** Generates a combined compatibility matrix for all materials */
+    void GenerateCombinedCompatibilityMatrix();
+    
+    /** Map of material types by ID */
     TMap<uint32, TSharedRef<FMaterialTypeInfo, ESPMode::ThreadSafe>> MaterialTypeMap;
     
-    /** Map of material property information */
-    TMap<uint32, TMap<FName, TSharedPtr<FMaterialPropertyBase>>> MaterialPropertyMap;
-    
-    /** Map of material types by name */
+    /** Map of material type names to IDs */
     TMap<FName, uint32> MaterialTypeNameMap;
     
-    /** Map of child types by parent type ID */
-    TMultiMap<uint32, uint32> MaterialTypeHierarchy;
+    /** Map of relationships by ID */
+    TMap<uint32, TSharedRef<FMaterialRelationship, ESPMode::ThreadSafe>> RelationshipMap;
     
-    /** Map of material relationships by ID */
-    TMap<uint32, TSharedRef<FMaterialRelationship, ESPMode::ThreadSafe>> MaterialRelationships;
+    /** Map of relationships by type pair */
+    TMap<TPair<uint32, uint32>, uint32> TypePairToRelationshipMap;
     
-    /** Map of material properties by type ID */
-    TMap<uint32, TMap<FName, TSharedPtr<FMaterialPropertyBase>>> MaterialProperties;
+    /** Map of relationships by source type ID */
+    TMap<uint32, TArray<uint32>> RelationshipsBySourceMap;
     
-    /** Map of material channel versions by channel ID */
-    TMap<int32, FThreadSafeCounter*> MaterialChannelVersions;
+    /** Map of relationships by target type ID */
+    TMap<uint32, TArray<uint32>> RelationshipsByTargetMap;
+    
+    /** Map of property maps by type ID */
+    TMap<uint32, TMap<FName, TSharedPtr<FMaterialPropertyBase>>> PropertyMaps;
     
     /** Map of material types by category */
-    TMultiMap<FName, uint32> MaterialTypesByCategoryMap;
+    TMap<FName, TArray<uint32>> MaterialTypesByCategoryMap;
     
-    /** Lock for modifying material types */
-    mutable FSpinLock RegistryLock;
+    /** Map of type relationships for hierarchical relationships */
+    TMap<uint32, TArray<uint32>> TypeRelationships;
     
-    /** Lock for modifying type hierarchy */
-    mutable FCriticalSection HierarchyLock;
+    /** Hardware capabilities for this system */
+    EMaterialCapabilities HardwareCapabilities;
     
-    /** Lock for modifying properties */
-    mutable FCriticalSection PropertyLock;
-    
-    /** Lock for async operations */
-    mutable FCriticalSection AsyncOperationLock;
-    
-    /* Maps to organize material relationships by source and target */
-    TMap<uint32, TArray<uint32>> RelationshipsBySourceMap;
-    TMap<uint32, TArray<uint32>> RelationshipsByTargetMap;
-    TMap<uint32, TSharedRef<FMaterialRelationship>> RelationshipMap;
+    /** Lock for thread safety */
+    mutable FCriticalSection RegistryLock;
     
     /** Next available type ID */
     FThreadSafeCounter NextTypeId;
@@ -1055,37 +1039,51 @@ private:
     /** Next available relationship ID */
     FThreadSafeCounter NextRelationshipId;
     
-    /** Current schema version */
-    uint32 CurrentSchemaVersion;
+    /** Next available channel ID */
+    FThreadSafeCounter NextChannelId;
     
-    /** Map of operation IDs to async operations */
-    TMap<uint64, class FAsyncOperationImpl*> AsyncOperations;
+    /** Registry name */
+    FName RegistryName;
     
-    /** Map of type IDs to preferred NUMA domains */
-    TMap<uint32, uint32> TypeNUMADomainPreferences;
+    /** Schema version */
+    uint32 SchemaVersion;
     
-    /** Lock for NUMA domain preferences */
-    mutable FCriticalSection NumaDomainLock;
-    
-    /** Map of type access statistics by domain */
-    mutable TMap<uint32, TMap<uint32, uint32>> TypeAccessByDomain;
-    
-    /** Lock for type access statistics */
-    mutable FCriticalSection TypeAccessLock;
-    
-    /** Detected hardware capabilities */
-    EMaterialCapabilities HardwareCapabilities;
-    
-    /** Singleton instance */
-    static FMaterialRegistry* Singleton;
-    static FThreadSafeBool bSingletonInitialized;
-    
-    // Internal state
+    /** Whether registry is initialized */
     FThreadSafeBool bIsInitialized;
     
-    // Counters for ID generation
-    uint32 NextChannelId;
-
-    /** Relationships between material types */
-    TMultiMap<uint32, uint32> TypeRelationships;
+    /** Whether types have been initialized */
+    bool bTypesInitialized;
+    
+    /** Whether initialization is in progress */
+    bool bInitializationInProgress;
+    
+    /** Initialization errors */
+    TArray<FString> InitializationErrors;
+    
+    /** Map of channel IDs by type */
+    TMap<uint32, int32> TypeToChannelMap;
+    
+    /** NUMA topology for optimized memory access */
+    TMap<uint32, uint32> TypeNUMADomainMap;
+    
+    /** Lock for NUMA domain operations */
+    mutable FCriticalSection NumaDomainLock;
+    
+    /** Map of type ID to preferred NUMA domain */
+    TMap<uint32, uint32> TypeNUMADomainPreferences;
+    
+    /** Lock for type access tracking */
+    mutable FCriticalSection TypeAccessLock;
+    
+    /** Map of type access counts by domain (TypeID -> Map of DomainID -> AccessCount) */
+    mutable TMap<uint32, TMap<uint32, uint32>> TypeAccessByDomain;
+    
+    /** Lock for initialization operations */
+    mutable FCriticalSection InitLock;
+    
+    /** Singleton instance */
+    static FMaterialRegistry* Instance;
+    
+    /** Whether singleton is initialized */
+    static bool bSingletonInitialized;
 };

@@ -154,6 +154,61 @@ struct FParallelContext
 };
 
 /**
+ * Configuration for parallel execution
+ */
+struct FParallelConfig
+{
+    /** Execution mode */
+    EParallelExecutionMode ExecutionMode;
+    
+    /** Granularity (items per chunk, 0 for automatic) */
+    int32 Granularity;
+    
+    /** Whether to use work stealing */
+    bool bUseWorkStealing;
+    
+    /** Whether to use thread affinity */
+    bool bUseThreadAffinity;
+    
+    /** Constructor with default values */
+    FParallelConfig()
+        : ExecutionMode(EParallelExecutionMode::Automatic)
+        , Granularity(0)
+        , bUseWorkStealing(true)
+        , bUseThreadAffinity(false)
+    {
+    }
+    
+    /** Sets the execution mode */
+    FParallelConfig& SetExecutionMode(EParallelExecutionMode InMode)
+    {
+        ExecutionMode = InMode;
+        return *this;
+    }
+    
+    /** Sets the granularity */
+    FParallelConfig& SetGranularity(int32 InGranularity)
+    {
+        Granularity = InGranularity;
+        return *this;
+    }
+    
+    /** Sets whether to use work stealing */
+    FParallelConfig& SetWorkStealing(bool bInUseWorkStealing)
+    {
+        bUseWorkStealing = bInUseWorkStealing;
+        return *this;
+    }
+    
+    /** Sets whether to use thread affinity */
+    FParallelConfig& SetThreadAffinity(bool bInUseThreadAffinity)
+    {
+        bUseThreadAffinity = bInUseThreadAffinity;
+        return *this;
+    }
+};
+
+/**
  * Parallel executor for efficient execution of similar mining operations
  * Provides work distribution across available cores with NUMA awareness,
  * SIMD optimization, and load balancing for mining operations.
@@ -171,45 +226,97 @@ public:
      * Executes a function for each item in a range in parallel
      * @param ItemCount Total number of items to process
      * @param Function Function to execute for each item
-     * @param ExecutionMode How to execute the operation
-     * @param Granularity Number of items per work unit (0 for automatic)
+     * @param Config Optional configuration for execution
      * @return True if all items were processed successfully
      */
     bool ParallelFor(int32 ItemCount, TFunction<void(int32)> Function, 
-        EParallelExecutionMode ExecutionMode = EParallelExecutionMode::Automatic, 
-        int32 Granularity = 0);
+        const FParallelConfig& Config = FParallelConfig());
+    
+    /**
+     * Legacy version - Executes a function for each item in a range in parallel
+     * @param ItemCount Total number of items to process
+     * @param Function Function to execute for each item
+     * @param ExecutionMode Execution mode
+     * @param Granularity Number of items per chunk (0 for automatic)
+     * @return True if all items were processed successfully
+     */
+    bool ParallelFor(int32 ItemCount, TFunction<void(int32)> Function, 
+        EParallelExecutionMode ExecutionMode, int32 Granularity = 0);
     
     /**
      * Executes a function for ranges of items in parallel
      * @param ItemCount Total number of items to process
      * @param Function Function to execute for each range
-     * @param ExecutionMode How to execute the operation
-     * @param Granularity Number of items per work unit (0 for automatic)
+     * @param Config Optional configuration for execution
      * @return True if all items were processed successfully
      */
     bool ParallelForRange(int32 ItemCount, TFunction<void(int32, int32)> Function,
-        EParallelExecutionMode ExecutionMode = EParallelExecutionMode::Automatic,
-        int32 Granularity = 0);
+        const FParallelConfig& Config = FParallelConfig());
+    
+    /**
+     * Legacy version - Executes a function for ranges of items in parallel
+     * @param ItemCount Total number of items to process
+     * @param Function Function to execute for each range
+     * @param ExecutionMode Execution mode
+     * @param Granularity Number of items per chunk (0 for automatic)
+     * @return True if all items were processed successfully
+     */
+    bool ParallelForRange(int32 ItemCount, TFunction<void(int32, int32)> Function,
+        EParallelExecutionMode ExecutionMode, int32 Granularity = 0);
     
     /**
      * Executes a SIMD-optimized function for processing distance fields
      * @param VoxelCount Number of voxels to process
      * @param Function Function to execute with SIMD optimization
-     * @param ExecutionMode How to execute the operation
+     * @param Config Optional configuration for execution
      * @return True if all items were processed successfully
      */
     bool ParallelForSDF(int32 VoxelCount, TFunction<void(int32, int32)> Function,
-        EParallelExecutionMode ExecutionMode = EParallelExecutionMode::SIMDOptimized);
+        const FParallelConfig& Config = FParallelConfig());
+    
+    /**
+     * Legacy version - Executes a SIMD-optimized function for processing distance fields
+     * @param VoxelCount Number of voxels to process
+     * @param Function Function to execute with SIMD optimization
+     * @param ExecutionMode Execution mode
+     * @return True if all items were processed successfully
+     */
+    bool ParallelForSDF(int32 VoxelCount, TFunction<void(int32, int32)> Function,
+        EParallelExecutionMode ExecutionMode);
     
     /**
      * Executes a function for multiple zones in parallel with data locality
      * @param Zones Array of zone IDs to process
      * @param Function Function to execute for each zone
-     * @param ExecutionMode How to execute the operation
+     * @param Config Optional configuration for execution
      * @return True if all zones were processed successfully
      */
     bool ParallelZones(const TArray<int32>& Zones, TFunction<void(int32)> Function,
-        EParallelExecutionMode ExecutionMode = EParallelExecutionMode::CacheOptimized);
+        const FParallelConfig& Config = FParallelConfig());
+    
+    /**
+     * Legacy version - Executes a function for multiple zones in parallel with data locality
+     * @param Zones Array of zone IDs to process
+     * @param Function Function to execute for each zone
+     * @param ExecutionMode Execution mode
+     * @return True if all zones were processed successfully
+     */
+    bool ParallelZones(const TArray<int32>& Zones, TFunction<void(int32)> Function,
+        EParallelExecutionMode ExecutionMode);
+    
+    /**
+     * Executes a function for items with dependencies in parallel
+     * @param ItemCount Total number of items to process
+     * @param WorkFunction Function to execute for each item
+     * @param DependencyFunction Function that returns dependencies for an item
+     * @param Config Optional configuration for execution
+     * @return True if all items were processed successfully
+     */
+    bool ParallelForWithDependencies(
+        int32 ItemCount, 
+        TFunction<void(int32)> WorkFunction,
+        TFunction<TArray<int32>(int32)> DependencyFunction,
+        const FParallelConfig& Config = FParallelConfig());
     
     /**
      * Cancels the current parallel execution
@@ -248,7 +355,7 @@ public:
     void SetThreadCount(int32 Count);
     
     /**
-     * Gets the singleton instance
+     * Gets the singleton instance of the parallel executor
      * @return Reference to the parallel executor
      */
     static FParallelExecutor& Get();
@@ -307,6 +414,9 @@ private:
     
     /** Gets the SIMD processing width based on CPU features */
     int32 GetSIMDProcessingWidth() const;
+    
+    /** Executes the dependency-based workload */
+    bool ExecuteWithDependencies(FParallelContext& Context, TFunction<TArray<int32>(int32)> DependencyFunction);
 
     /** Singleton instance */
     static FParallelExecutor* Instance;

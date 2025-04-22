@@ -157,6 +157,17 @@ FParallelExecutor::~FParallelExecutor()
 bool FParallelExecutor::ParallelFor(int32 ItemCount, TFunction<void(int32)> Function, 
     EParallelExecutionMode ExecutionMode, int32 Granularity)
 {
+    // Convert old parameters to new config
+    FParallelConfig Config;
+    Config.SetExecutionMode(ExecutionMode);
+    Config.SetGranularity(Granularity);
+    
+    return ParallelFor(ItemCount, Function, Config);
+}
+
+bool FParallelExecutor::ParallelFor(int32 ItemCount, TFunction<void(int32)> Function, 
+    const FParallelConfig& Config)
+{
     SCOPE_CYCLE_COUNTER(STAT_ParallelExecutor_ParallelFor);
     
     if (ItemCount <= 0 || !Function)
@@ -178,13 +189,13 @@ bool FParallelExecutor::ParallelFor(int32 ItemCount, TFunction<void(int32)> Func
     FParallelContext Context;
     Context.WorkItemFunction = Function;
     Context.ItemCount = ItemCount;
-    Context.ExecutionMode = ExecutionMode;
+    Context.ExecutionMode = Config.ExecutionMode;
     Context.NumThreads = ThreadCount > 0 ? ThreadCount : GetRecommendedThreadCount();
-    Context.bUseWorkStealing = CurrentContext.bUseWorkStealing;
-    Context.bUseThreadAffinity = CurrentContext.bUseThreadAffinity;
+    Context.bUseWorkStealing = Config.bUseWorkStealing;
+    Context.bUseThreadAffinity = Config.bUseThreadAffinity;
     
     // Determine granularity if not specified
-    Context.Granularity = Granularity > 0 ? Granularity : DetermineOptimalGranularity(ItemCount, ExecutionMode);
+    Context.Granularity = Config.Granularity > 0 ? Config.Granularity : DetermineOptimalGranularity(ItemCount, Config.ExecutionMode);
     
     // Create completion event
     FParallelCompletionEvent CompletionEvent;
@@ -210,7 +221,7 @@ bool FParallelExecutor::ParallelFor(int32 ItemCount, TFunction<void(int32)> Func
     bool bSuccess = false;
     
     // Choose execution strategy based on execution mode
-    switch (ExecutionMode)
+    switch (Config.ExecutionMode)
     {
         case EParallelExecutionMode::ForceSequential:
             bSuccess = ExecuteSequential(CurrentContext);
@@ -253,6 +264,17 @@ bool FParallelExecutor::ParallelFor(int32 ItemCount, TFunction<void(int32)> Func
 bool FParallelExecutor::ParallelForRange(int32 ItemCount, TFunction<void(int32, int32)> Function, 
     EParallelExecutionMode ExecutionMode, int32 Granularity)
 {
+    // Convert old parameters to new config
+    FParallelConfig Config;
+    Config.SetExecutionMode(ExecutionMode);
+    Config.SetGranularity(Granularity);
+    
+    return ParallelForRange(ItemCount, Function, Config);
+}
+
+bool FParallelExecutor::ParallelForRange(int32 ItemCount, TFunction<void(int32, int32)> Function, 
+    const FParallelConfig& Config)
+{
     if (ItemCount <= 0 || !Function)
     {
         return false;
@@ -272,13 +294,13 @@ bool FParallelExecutor::ParallelForRange(int32 ItemCount, TFunction<void(int32, 
     FParallelContext Context;
     Context.WorkRangeFunction = Function;
     Context.ItemCount = ItemCount;
-    Context.ExecutionMode = ExecutionMode;
+    Context.ExecutionMode = Config.ExecutionMode;
     Context.NumThreads = ThreadCount > 0 ? ThreadCount : GetRecommendedThreadCount();
-    Context.bUseWorkStealing = CurrentContext.bUseWorkStealing;
-    Context.bUseThreadAffinity = CurrentContext.bUseThreadAffinity;
+    Context.bUseWorkStealing = Config.bUseWorkStealing;
+    Context.bUseThreadAffinity = Config.bUseThreadAffinity;
     
     // Determine granularity if not specified
-    Context.Granularity = Granularity > 0 ? Granularity : DetermineOptimalGranularity(ItemCount, ExecutionMode);
+    Context.Granularity = Config.Granularity > 0 ? Config.Granularity : DetermineOptimalGranularity(ItemCount, Config.ExecutionMode);
     
     // Create completion event
     FParallelCompletionEvent CompletionEvent;
@@ -304,7 +326,7 @@ bool FParallelExecutor::ParallelForRange(int32 ItemCount, TFunction<void(int32, 
     bool bSuccess = false;
     
     // Choose execution strategy based on execution mode
-    switch (ExecutionMode)
+    switch (Config.ExecutionMode)
     {
         case EParallelExecutionMode::ForceSequential:
             bSuccess = ExecuteSequential(CurrentContext);
@@ -350,6 +372,16 @@ bool FParallelExecutor::ParallelForRange(int32 ItemCount, TFunction<void(int32, 
 bool FParallelExecutor::ParallelForSDF(int32 VoxelCount, TFunction<void(int32, int32)> Function, 
     EParallelExecutionMode ExecutionMode)
 {
+    // Convert old parameters to new config
+    FParallelConfig Config;
+    Config.SetExecutionMode(ExecutionMode);
+    
+    return ParallelForSDF(VoxelCount, Function, Config);
+}
+
+bool FParallelExecutor::ParallelForSDF(int32 VoxelCount, TFunction<void(int32, int32)> Function, 
+    const FParallelConfig& Config)
+{
     if (VoxelCount <= 0 || !Function)
     {
         return false;
@@ -369,14 +401,15 @@ bool FParallelExecutor::ParallelForSDF(int32 VoxelCount, TFunction<void(int32, i
     FParallelContext Context;
     Context.WorkRangeFunction = Function;
     Context.ItemCount = VoxelCount;
-    Context.ExecutionMode = ExecutionMode;
+    Context.ExecutionMode = Config.ExecutionMode;
     Context.NumThreads = ThreadCount > 0 ? ThreadCount : GetRecommendedThreadCount();
-    Context.bUseWorkStealing = CurrentContext.bUseWorkStealing;
-    Context.bUseThreadAffinity = CurrentContext.bUseThreadAffinity;
+    Context.bUseWorkStealing = Config.bUseWorkStealing;
+    Context.bUseThreadAffinity = Config.bUseThreadAffinity;
     
     // Determine optimal granularity for SIMD operations
     int32 SimdWidth = GetSIMDProcessingWidth();
-    Context.Granularity = FMath::Max(DEFAULT_GRANULARITY, SimdWidth * 16);
+    int32 OptimaGranularity = FMath::Max(DEFAULT_GRANULARITY, SimdWidth * 16);
+    Context.Granularity = Config.Granularity > 0 ? Config.Granularity : OptimaGranularity;
     
     // Create completion event
     FParallelCompletionEvent CompletionEvent;
@@ -399,18 +432,49 @@ bool FParallelExecutor::ParallelForSDF(int32 VoxelCount, TFunction<void(int32, i
     CurrentContext.bUseWorkStealing = Context.bUseWorkStealing;
     CurrentContext.bUseThreadAffinity = Context.bUseThreadAffinity;
     
-    // Execute using SIMD optimization
-    bool bSuccess = ExecuteSIMD(CurrentContext);
+    bool bSuccess = false;
+    
+    switch (Config.ExecutionMode)
+    {
+        case EParallelExecutionMode::SIMDOptimized:
+            bSuccess = ExecuteSIMD(CurrentContext);
+            break;
+        
+        case EParallelExecutionMode::ForceSequential:
+            bSuccess = ExecuteSequential(CurrentContext);
+            break;
+            
+        case EParallelExecutionMode::CacheOptimized:
+            bSuccess = ExecuteCacheOptimized(CurrentContext);
+            break;
+            
+        default:
+            bSuccess = ExecuteSIMD(CurrentContext);
+            break;
+    }
     
     // Wait for completion
-    CurrentContext.CompletionEvent->Wait();
+    if (bSuccess)
+    {
+        CompletionEvent.Wait();
+    }
     
     bIsExecuting.Decrement();
     return bSuccess;
 }
 
-bool FParallelExecutor::ParallelZones(const TArray<int32>& Zones, TFunction<void(int32)> Function, 
+bool FParallelExecutor::ParallelZones(const TArray<int32>& Zones, TFunction<void(int32)> Function,
     EParallelExecutionMode ExecutionMode)
+{
+    // Convert old parameters to new config
+    FParallelConfig Config;
+    Config.SetExecutionMode(ExecutionMode);
+    
+    return ParallelZones(Zones, Function, Config);
+}
+
+bool FParallelExecutor::ParallelZones(const TArray<int32>& Zones, TFunction<void(int32)> Function,
+    const FParallelConfig& Config)
 {
     if (Zones.Num() <= 0 || !Function)
     {
@@ -427,17 +491,25 @@ bool FParallelExecutor::ParallelZones(const TArray<int32>& Zones, TFunction<void
     
     bIsExecuting.Increment();
     
-    // Create a new context instead of using assignment
+    // Create a new context for this operation - we'll map zone indices to items
     FParallelContext Context;
-    Context.WorkItemFunction = Function;
     Context.ItemCount = Zones.Num();
-    Context.ExecutionMode = ExecutionMode;
+    Context.ExecutionMode = Config.ExecutionMode;
     Context.NumThreads = ThreadCount > 0 ? ThreadCount : GetRecommendedThreadCount();
-    Context.bUseWorkStealing = CurrentContext.bUseWorkStealing;
-    Context.bUseThreadAffinity = CurrentContext.bUseThreadAffinity;
+    Context.bUseWorkStealing = Config.bUseWorkStealing;
+    Context.bUseThreadAffinity = Config.bUseThreadAffinity;
     
-    // Determine granularity - zones are typically processed individually
-    Context.Granularity = FMath::Max(1, DetermineOptimalGranularity(Zones.Num(), ExecutionMode) / 4);
+    // Create zone worker function that maps item index to zone
+    Context.WorkItemFunction = [&Zones, Function](int32 Index)
+    {
+        if (Index >= 0 && Index < Zones.Num())
+        {
+            Function(Zones[Index]);
+        }
+    };
+    
+    // Determine granularity - for zones, we usually want 1 zone per chunk to maximize cache coherence
+    Context.Granularity = Config.Granularity > 0 ? Config.Granularity : 1;
     
     // Create completion event
     FParallelCompletionEvent CompletionEvent;
@@ -447,7 +519,7 @@ bool FParallelExecutor::ParallelZones(const TArray<int32>& Zones, TFunction<void
     CreateWorkChunks(Context);
     CompletionEvent.SetChunkCount(Context.Chunks.Num());
     
-    // Manually copy fields to CurrentContext instead of assignment
+    // Manually copy fields instead of using assignment operator
     CurrentContext.WorkItemFunction = Context.WorkItemFunction;
     CurrentContext.WorkRangeFunction = Context.WorkRangeFunction;
     CurrentContext.CompletionEvent = Context.CompletionEvent;
@@ -462,50 +534,241 @@ bool FParallelExecutor::ParallelZones(const TArray<int32>& Zones, TFunction<void
     
     bool bSuccess = false;
     
-    // For zone-based processing, we want cache-optimized execution by default
-    if (ExecutionMode == EParallelExecutionMode::Automatic)
+    // For zone operations, prioritize cache coherence
+    if (Config.ExecutionMode == EParallelExecutionMode::CacheOptimized || 
+        Config.ExecutionMode == EParallelExecutionMode::Automatic)
     {
         bSuccess = ExecuteCacheOptimized(CurrentContext);
     }
     else
     {
-        // Choose execution strategy based on execution mode
-        switch (ExecutionMode)
+        switch (Config.ExecutionMode)
         {
             case EParallelExecutionMode::ForceSequential:
                 bSuccess = ExecuteSequential(CurrentContext);
                 break;
                 
-            case EParallelExecutionMode::CacheOptimized:
-                bSuccess = ExecuteCacheOptimized(CurrentContext);
+            case EParallelExecutionMode::ForceParallel:
+                bSuccess = DistributeWork(CurrentContext);
                 break;
                 
-            case EParallelExecutionMode::ForceParallel:
-            case EParallelExecutionMode::Adaptive:
             default:
-                bSuccess = DistributeWork(CurrentContext);
+                // Default to cache-optimized for zones
+                bSuccess = ExecuteCacheOptimized(CurrentContext);
                 break;
         }
     }
     
-    // Wait for all work to complete
+    // Wait for completion
     if (bSuccess)
     {
         CompletionEvent.Wait();
     }
     
     bIsExecuting.Decrement();
-    
-    // Create a wrapper for zone IDs
-    TFunction<void(int32)> ZoneFunction = [&Zones, &Function](int32 Index)
+    return bSuccess;
+}
+
+bool FParallelExecutor::ParallelForWithDependencies(
+    int32 ItemCount, 
+    TFunction<void(int32)> WorkFunction,
+    TFunction<TArray<int32>(int32)> DependencyFunction,
+    const FParallelConfig& Config)
+{
+    if (ItemCount <= 0 || !WorkFunction || !DependencyFunction)
     {
-        if (Zones.IsValidIndex(Index))
-        {
-            Function(Zones[Index]);
-        }
-    };
+        return false;
+    }
     
-    return ParallelFor(Zones.Num(), ZoneFunction, ExecutionMode);
+    // Acquire lock to ensure only one parallel operation runs at a time
+    FScopeLock Lock(&ContextLock);
+    
+    if (bIsExecuting.GetValue() > 0)
+    {
+        return false;
+    }
+    
+    bIsExecuting.Increment();
+    
+    // Create a new context for this operation
+    FParallelContext Context;
+    Context.WorkItemFunction = WorkFunction;
+    Context.ItemCount = ItemCount;
+    Context.ExecutionMode = Config.ExecutionMode;
+    Context.NumThreads = ThreadCount > 0 ? ThreadCount : GetRecommendedThreadCount();
+    Context.bUseWorkStealing = Config.bUseWorkStealing;
+    Context.bUseThreadAffinity = Config.bUseThreadAffinity;
+    Context.Granularity = 1; // Each item is processed individually due to dependencies
+    
+    // Create completion event
+    FParallelCompletionEvent CompletionEvent;
+    Context.CompletionEvent = &CompletionEvent;
+    
+    // Manually copy fields instead of using assignment operator
+    CurrentContext.WorkItemFunction = Context.WorkItemFunction;
+    CurrentContext.WorkRangeFunction = Context.WorkRangeFunction;
+    CurrentContext.CompletionEvent = &CompletionEvent;
+    CurrentContext.ExecutionMode = Context.ExecutionMode;
+    CurrentContext.ItemCount = Context.ItemCount;
+    CurrentContext.Granularity = Context.Granularity;
+    CurrentContext.NumThreads = Context.NumThreads;
+    CurrentContext.bCancelled.Set(0);
+    CurrentContext.bUseWorkStealing = Context.bUseWorkStealing;
+    CurrentContext.bUseThreadAffinity = Context.bUseThreadAffinity;
+    
+    // Use the special dependency-based execution
+    bool bSuccess = ExecuteWithDependencies(CurrentContext, DependencyFunction);
+    
+    // Wait for completion
+    if (bSuccess)
+    {
+        CurrentContext.CompletionEvent->Wait();
+    }
+    
+    bIsExecuting.Decrement();
+    return bSuccess;
+}
+
+bool FParallelExecutor::ExecuteWithDependencies(
+    FParallelContext& Context, 
+    TFunction<TArray<int32>(int32)> DependencyFunction)
+{
+    const int32 ItemCount = Context.ItemCount;
+    
+    // Build dependency graph
+    TArray<TArray<int32>> DependsOn;  // DependsOn[i] = items that i depends on
+    TArray<TArray<int32>> DependedOnBy; // DependedOnBy[i] = items that depend on i
+    TArray<int32> InDegree;  // Number of dependencies for each item
+    
+    DependsOn.SetNum(ItemCount);
+    DependedOnBy.SetNum(ItemCount);
+    InDegree.SetNum(ItemCount);
+    
+    // Build the dependency graph
+    for (int32 ItemIndex = 0; ItemIndex < ItemCount; ItemIndex++)
+    {
+        TArray<int32> Dependencies = DependencyFunction(ItemIndex);
+        DependsOn[ItemIndex] = Dependencies;
+        
+        for (int32 Dependency : Dependencies)
+        {
+            // Ensure dependency is in valid range
+            if (Dependency >= 0 && Dependency < ItemCount)
+            {
+                DependedOnBy[Dependency].Add(ItemIndex);
+                InDegree[ItemIndex]++;
+            }
+        }
+    }
+    
+    // Find all items with no dependencies (roots of the graph)
+    TArray<int32> Queue;
+    for (int32 ItemIndex = 0; ItemIndex < ItemCount; ItemIndex++)
+    {
+        if (InDegree[ItemIndex] == 0)
+        {
+            Queue.Add(ItemIndex);
+        }
+    }
+    
+    // Process the graph level by level (topological sort)
+    TArray<TArray<int32>> Levels;
+    while (Queue.Num() > 0)
+    {
+        TArray<int32> CurrentLevel = Queue;
+        Levels.Add(CurrentLevel);
+        Queue.Empty();
+        
+        // Process current level
+        for (int32 Item : CurrentLevel)
+        {
+            // For each item that depends on this one
+            for (int32 Dependent : DependedOnBy[Item])
+            {
+                // Decrease its in-degree
+                InDegree[Dependent]--;
+                
+                // If all dependencies are satisfied, add to the queue
+                if (InDegree[Dependent] == 0)
+                {
+                    Queue.Add(Dependent);
+                }
+            }
+        }
+    }
+    
+    // Check if we have a cycle in the graph
+    int32 ProcessedItems = 0;
+    for (const TArray<int32>& Level : Levels)
+    {
+        ProcessedItems += Level.Num();
+    }
+    
+    if (ProcessedItems < ItemCount)
+    {
+        // Cycle detected, cannot process all items
+        return false;
+    }
+    
+    // Process each level in parallel
+    const int32 LevelCount = Levels.Num();
+    FParallelCompletionEvent* CompletionEvent = Context.CompletionEvent;
+    CompletionEvent->SetChunkCount(LevelCount);
+    
+    // Run each level as a separate parallel batch
+    for (int32 LevelIndex = 0; LevelIndex < LevelCount; LevelIndex++)
+    {
+        const TArray<int32>& CurrentLevel = Levels[LevelIndex];
+        const int32 LevelItemCount = CurrentLevel.Num();
+        
+        if (LevelItemCount == 0)
+        {
+            continue;
+        }
+        
+        // For small levels, execute sequentially
+        if (LevelItemCount <= 1 || !ShouldExecuteInParallel(LevelItemCount))
+        {
+            for (int32 Item : CurrentLevel)
+            {
+                if (Context.bCancelled.GetValue() != 0)
+                {
+                    return false;
+                }
+                Context.WorkItemFunction(Item);
+            }
+        }
+        else
+        {
+            // Execute this level in parallel
+            FParallelConfig LevelConfig;
+            LevelConfig.SetExecutionMode(EParallelExecutionMode::ForceParallel);
+            LevelConfig.SetWorkStealing(Context.bUseWorkStealing);
+            LevelConfig.SetThreadAffinity(Context.bUseThreadAffinity);
+            
+            // Create a parallel operation that operates on indices from the current level
+            ParallelFor(LevelItemCount, 
+                [&Context, &CurrentLevel](int32 Index)
+                {
+                    if (Context.bCancelled.GetValue() == 0)
+                    {
+                        Context.WorkItemFunction(CurrentLevel[Index]);
+                    }
+                },
+                LevelConfig);
+        }
+        
+        // Signal that this level is complete
+        CompletionEvent->SignalCompletion();
+        
+        // Check for cancellation after each level
+        if (Context.bCancelled.GetValue() != 0)
+        {
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 void FParallelExecutor::Cancel()
