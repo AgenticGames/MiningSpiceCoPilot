@@ -44,4 +44,10 @@ public:
      * @return Priority value
      */
     virtual int32 GetPriority() const = 0;
+    
+    /**
+     * Checks if the service is currently healthy and functioning properly
+     * @return True if the service is healthy
+     */
+    virtual bool IsHealthy() const { return IsInitialized(); }
 }; 
