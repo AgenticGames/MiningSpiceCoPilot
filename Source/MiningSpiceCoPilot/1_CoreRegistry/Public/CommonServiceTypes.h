@@ -53,7 +53,9 @@ enum class EServiceHealthStatus : uint8
     Critical,     // Service is functioning but at risk of failure
     Failed,       // Service has failed but may be recoverable
     Unresponsive, // Service is not responding to health checks
-    Unknown       // Service health cannot be determined
+    Unknown,      // Service health cannot be determined
+    NotRegistered,// Service is not yet registered with the locator
+    Recovering    // Service is in the process of recovery after failure
 };
 
 /**

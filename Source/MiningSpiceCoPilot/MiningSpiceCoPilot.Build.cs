@@ -15,6 +15,7 @@ public class MiningSpiceCoPilot : ModuleRules
 			Path.Combine(ModuleDirectory, "1_CoreRegistry/Public"),
 			Path.Combine(ModuleDirectory, "2_MemoryManagement/Public"),
 			Path.Combine(ModuleDirectory, "3_ThreadingTaskSystem/Public"),
+			Path.Combine(ModuleDirectory, "6_ServiceRegistryandDependency/Public"),
 			
 			// Extended systems
 			Path.Combine(ModuleDirectory, "2.1_TieredCompression/Public"),
@@ -28,6 +29,7 @@ public class MiningSpiceCoPilot : ModuleRules
 			Path.Combine(ModuleDirectory, "1_CoreRegistry/Private"),
 			Path.Combine(ModuleDirectory, "2_MemoryManagement/Private"),
 			Path.Combine(ModuleDirectory, "3_ThreadingTaskSystem/Private"),
+			Path.Combine(ModuleDirectory, "6_ServiceRegistryandDependency/Private"),
 			
 			// Extended systems
 			Path.Combine(ModuleDirectory, "2.1_TieredCompression/Private"),
