@@ -13,7 +13,7 @@
 #include "Templates/Function.h"
 #include "UObject/WeakObjectPtr.h"
 #include "Misc/SpinLock.h"
-#include "Interfaces/IServiceProvider.h"
+#include "../../1_CoreRegistry/Public/Interfaces/IServiceProvider.h"
 
 /**
  * Structure for cached service entry with version information

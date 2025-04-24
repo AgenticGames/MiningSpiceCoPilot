@@ -18,24 +18,12 @@
 #include "ThreadSafety.h"
 #include "../../3_ThreadingTaskSystem/Public/TaskScheduler.h"
 #include "../../3_ThreadingTaskSystem/Public/AsyncTaskTypes.h"
+#include "SVONodeTypes.h" // Include the SVO Node Types
 
-/**
- * SVO node class types for classification in the registry
- */
-enum class ESVONodeClass : uint8
-{
-    /** Homogeneous nodes with a single material throughout */
-    Homogeneous,
-    
-    /** Interface nodes that contain multiple materials */
-    Interface,
-    
-    /** Empty nodes with no material */
-    Empty,
-    
-    /** Custom node type for specialized behavior */
-    Custom
-};
+// Define SVONODE_API if not already defined
+#ifndef SVONODE_API
+#define SVONODE_API MININGSPICECOPILOT_API
+#endif
 
 /**
  * Memory layout types for optimal access patterns

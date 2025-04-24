@@ -8,11 +8,11 @@
 #include "HAL/PlatformProperties.h"
 #include "RHI.h"
 #include "Interfaces/IRegistry.h"
-#include "MiningSpiceCoPilot/3_ThreadingTaskSystem/Public/PlatformMiscExtensions.h"
-#include "MiningSpiceCoPilot/1_CoreRegistry/Public/MaterialRegistry.h"
-#include "MiningSpiceCoPilot/1_CoreRegistry/Public/SDFTypeRegistry.h"
-#include "MiningSpiceCoPilot/1_CoreRegistry/Public/SVOTypeRegistry.h"
-#include "MiningSpiceCoPilot/1_CoreRegistry/Public/ZoneTypeRegistry.h"
+#include "../../3_ThreadingTaskSystem/Public/PlatformMiscExtensions.h"
+#include "../../1_CoreRegistry/Public/MaterialRegistry.h"
+#include "../../1_CoreRegistry/Public/SDFTypeRegistry.h"
+#include "../../1_CoreRegistry/Public/SVOTypeRegistry.h"
+#include "../../1_CoreRegistry/Public/ZoneTypeRegistry.h"
 
 FDependencyResolver::FDependencyResolver()
     : LastResolutionStatus(EResolutionStatus::NotAttempted)

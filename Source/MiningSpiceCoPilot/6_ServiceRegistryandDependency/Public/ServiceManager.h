@@ -4,8 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "DependencyResolver.h"
-#include "Interfaces/IServiceLocator.h"
-#include "Interfaces/IMemoryManager.h"
+#include "../../1_CoreRegistry/Public/Interfaces/IServiceLocator.h"
+#include "../../2_MemoryManagement/Public/Interfaces/IMemoryManager.h"
 #include "HAL/ThreadSafeBool.h"
 #include "HAL/CriticalSection.h"
 #include "Containers/Map.h"
