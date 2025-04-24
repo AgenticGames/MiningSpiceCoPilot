@@ -3,6 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/Class.h"
+#include "UObject/Interface.h"
+#include "UObject/ScriptInterface.h"
+#include "UObject/ObjectMacros.h"
+#include "Templates/SubclassOf.h"
 
 /**
  * Shared types and enums for the Service Registry and Dependency Management system
@@ -48,14 +53,17 @@ enum class EServiceDependencyType : uint8
  */
 enum class EServiceHealthStatus : uint8
 {
-    Healthy,      // Service is functioning normally
-    Degraded,     // Service is functioning but with reduced capabilities
-    Critical,     // Service is functioning but at risk of failure
-    Failed,       // Service has failed but may be recoverable
-    Unresponsive, // Service is not responding to health checks
-    Unknown,      // Service health cannot be determined
-    NotRegistered,// Service is not yet registered with the locator
-    Recovering    // Service is in the process of recovery after failure
+    Healthy,          // Service is functioning normally
+    Warning,          // Service is functioning with minor issues
+    Degraded,         // Service is functioning but with reduced capabilities
+    SeverelyDegraded, // Service is functioning with severe capability reduction
+    Critical,         // Service is functioning but at risk of failure
+    CriticalFailure,  // Service has failed severely
+    Failed,           // Service has failed but may be recoverable
+    Unresponsive,     // Service is not responding to health checks
+    Unknown,          // Service health cannot be determined
+    NotRegistered,    // Service is not yet registered with the locator
+    Recovering        // Service is in the process of recovery after failure
 };
 
 /**

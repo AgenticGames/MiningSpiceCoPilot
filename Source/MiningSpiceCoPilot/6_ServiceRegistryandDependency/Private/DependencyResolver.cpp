@@ -1034,3 +1034,27 @@ bool FDependencyResolver::IsDependencyActive(const FDependencyEdge& Edge) const
     
     return true;
 }
+
+uint32 FDependencyResolver::GetNodeIdByName(const FName& NodeName) const
+{
+    const uint32* IdPtr = NodeNameToIdMap.Find(NodeName);
+    return IdPtr ? *IdPtr : 0;
+}
+
+TArray<FDependencyResolver::FDependencyEdge> FDependencyResolver::GetDependencies(uint32 NodeId) const
+{
+    if (const FDependencyNode* Node = Nodes.Find(NodeId))
+    {
+        return Node->Dependencies;
+    }
+    return TArray<FDependencyEdge>();
+}
+
+FName FDependencyResolver::GetNodeNameById(uint32 NodeId) const
+{
+    if (const FDependencyNode* Node = Nodes.Find(NodeId))
+    {
+        return Node->Name;
+    }
+    return NAME_None;
+}

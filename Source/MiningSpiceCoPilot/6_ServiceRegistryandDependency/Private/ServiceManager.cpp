@@ -1171,4 +1171,54 @@ bool FServiceManager::CreateServiceFactoryAndDependencies(const UClass* InInterf
     // 3. Extract and register dependencies for the service type
     
     return true;
+}
+
+void FServiceManager::GetAllServiceKeys(TArray<FName>& OutKeys) const
+{
+    if (!bIsInitialized)
+    {
+        return;
+    }
+    
+    FScopeLock Lock(&InstancesLock);
+    ServiceInstances.GetKeys(OutKeys);
+}
+
+void FServiceManager::RecordServiceOperation(const FName& ServiceKey, bool bSuccess, float DurationMs, uint64 MemoryUsed)
+{
+    if (!bIsInitialized)
+    {
+        return;
+    }
+    
+    FScopeLock Lock(&InstancesLock);
+    
+    FServiceInstance* Instance = ServiceInstances.Find(ServiceKey);
+    if (!Instance)
+    {
+        return;
+    }
+    
+    // Update metrics
+    if (bSuccess)
+    {
+        Instance->Metrics.SuccessfulOperations.Add(1);
+    }
+    else
+    {
+        Instance->Metrics.FailedOperations.Add(1);
+        Instance->Metrics.LastFailureTime = FPlatformTime::Seconds();
+    }
+    
+    Instance->Metrics.TotalOperationTimeMs.Add(static_cast<int64>(DurationMs));
+    
+    if (DurationMs > Instance->Metrics.MaxOperationTimeMs.GetValue())
+    {
+        Instance->Metrics.MaxOperationTimeMs.Set(static_cast<int64>(DurationMs));
+    }
+    
+    if (MemoryUsed > 0)
+    {
+        Instance->Metrics.MemoryUsageBytes.Set(MemoryUsed);
+    }
 } 

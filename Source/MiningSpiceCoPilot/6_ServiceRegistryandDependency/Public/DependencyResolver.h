@@ -353,6 +353,27 @@ public:
      */
     TArray<uint32> GetNodeDependents(uint32 NodeId) const;
 
+    /**
+     * Gets a node ID by name
+     * @param NodeName The name of the node to find
+     * @return The node ID, or 0 if not found
+     */
+    uint32 GetNodeIdByName(const FName& NodeName) const;
+
+    /**
+     * Gets dependencies for a node
+     * @param NodeId The ID of the node
+     * @return Array of dependency edges
+     */
+    TArray<FDependencyEdge> GetDependencies(uint32 NodeId) const;
+
+    /**
+     * Gets a node name by ID
+     * @param NodeId The ID of the node
+     * @return The node name, or NAME_None if not found
+     */
+    FName GetNodeNameById(uint32 NodeId) const;
+
 private:
     /** Map of nodes by ID */
     TMap<uint32, FDependencyNode> Nodes;

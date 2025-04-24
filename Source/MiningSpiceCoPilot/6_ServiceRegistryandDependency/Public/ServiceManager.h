@@ -14,6 +14,10 @@
 #include "Containers/Queue.h"
 #include "HAL/ThreadSafeCounter.h"
 
+// Forward declarations
+class FServiceHealthMonitor;
+class FServiceDebugVisualizer;
+
 /**
  * Service state enumeration
  */
@@ -76,6 +80,24 @@ struct FServiceMetrics
         , LastFailureTime(0.0)
         , LastRecoveryTime(0.0)
     {
+    }
+    
+    /** Copy assignment operator */
+    FServiceMetrics& operator=(const FServiceMetrics& Other)
+    {
+        if (this != &Other)
+        {
+            SuccessfulOperations.Set(Other.SuccessfulOperations.GetValue());
+            FailedOperations.Set(Other.FailedOperations.GetValue());
+            TotalOperationTimeMs.Set(Other.TotalOperationTimeMs.GetValue());
+            MaxOperationTimeMs.Set(Other.MaxOperationTimeMs.GetValue());
+            MemoryUsageBytes.Set(Other.MemoryUsageBytes.GetValue());
+            ActiveInstances.Set(Other.ActiveInstances.GetValue());
+            LastHealthCheckTime = Other.LastHealthCheckTime;
+            LastFailureTime = Other.LastFailureTime;
+            LastRecoveryTime = Other.LastRecoveryTime;
+        }
+        return *this;
     }
     
     /** Resets all metrics */
@@ -178,6 +200,10 @@ struct FServiceConfiguration
  */
 class MININGSPICECOPILOT_API FServiceManager
 {
+    // Add friend class declarations
+    friend class FServiceHealthMonitor;
+    friend class FServiceDebugVisualizer;
+
 public:
     /** Default constructor */
     FServiceManager();
@@ -201,6 +227,15 @@ public:
      * @return True if initialized
      */
     bool IsInitialized() const;
+    
+    /**
+     * Record a service operation for metrics tracking
+     * @param ServiceKey Service identifier
+     * @param bSuccess Whether the operation was successful
+     * @param DurationMs Duration of the operation in milliseconds
+     * @param MemoryUsed Memory used by the operation in bytes
+     */
+    void RecordServiceOperation(const FName& ServiceKey, bool bSuccess, float DurationMs, uint64 MemoryUsed = 0);
     
     /**
      * Register a service with the manager
@@ -524,35 +559,41 @@ public:
      */
     static FServiceManager& Get();
 
-private:
     /**
-     * Create a unique key for a service
+     * Get all service keys
+     * @param OutKeys Array to store the keys
+     */
+    void GetAllServiceKeys(TArray<FName>& OutKeys) const;
+
+    /**
+     * Create a key for a service
      * @param InInterfaceType Type information for the service interface
-     * @param InZoneID Zone identifier for the service
-     * @param InRegionID Region identifier for the service
-     * @return Unique key for the service
+     * @param InZoneID Zone identifier
+     * @param InRegionID Region identifier
+     * @return Name identifier for the service
      */
     FName CreateServiceKey(const UClass* InInterfaceType, int32 InZoneID, int32 InRegionID) const;
     
     /**
-     * Get a service instance by key
+     * Get a service instance by its key
      * @param InKey Service key
-     * @return Pointer to the service instance or nullptr if not found
+     * @return Pointer to the service instance, or nullptr if not found
      */
     FServiceInstance* GetServiceInstanceByKey(const FName& InKey);
     
     /**
-     * Get a const service instance by key
+     * Get a const service instance by its key
      * @param InKey Service key
-     * @return Const pointer to the service instance or nullptr if not found
+     * @return Const pointer to the service instance, or nullptr if not found
      */
     const FServiceInstance* GetServiceInstanceByKey(const FName& InKey) const;
-    
+
+private:
     /**
-     * Determine service initialization order based on dependencies
-     * @param OutInitializationOrder Array to receive the initialization order
-     * @param OutErrors Array to receive error messages
-     * @return True if initialization order was determined successfully
+     * Determine initialization order for services
+     * @param OutInitializationOrder Array to store the ordered service keys
+     * @param OutErrors Array to store error messages
+     * @return True if order was determined successfully
      */
     bool DetermineServiceOrder(TArray<FName>& OutInitializationOrder, TArray<FString>& OutErrors);
     
@@ -564,22 +605,22 @@ private:
     bool StartServicesInOrder(const TArray<FName>& InOrder);
     
     /**
-     * Stop services in the reverse specified order
-     * @param InOrder Array of service keys in initialization order
+     * Stop services in the specified order
+     * @param InOrder Array of service keys in shutdown order
      * @return True if all services were stopped successfully
      */
     bool StopServicesInOrder(const TArray<FName>& InOrder);
     
     /**
-     * Save service state for recovery
+     * Save the state of a service instance
      * @param InInstance Service instance to save state for
      * @return True if state was saved successfully
      */
     bool SaveServiceState(FServiceInstance& InInstance);
     
     /**
-     * Restore service state after recovery
-     * @param InInstance Service instance to restore state for
+     * Restore the state of a service instance
+     * @param InInstance Service instance to restore state to
      * @return True if state was restored successfully
      */
     bool RestoreServiceState(FServiceInstance& InInstance);
@@ -590,14 +631,14 @@ private:
     void CleanupServicePools();
     
     /**
-     * Update service metrics for all services
+     * Update metrics for all services
      */
     void UpdateAllServiceMetrics();
     
     /**
-     * Create a service factory and register dependencies
+     * Create factory for a service type and its dependencies
      * @param InInterfaceType Type information for the service interface
-     * @return True if factory was created successfully
+     * @return True if factory and dependencies were created successfully
      */
     bool CreateServiceFactoryAndDependencies(const UClass* InInterfaceType);
 

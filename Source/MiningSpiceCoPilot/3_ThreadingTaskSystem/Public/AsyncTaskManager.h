@@ -7,6 +7,12 @@
 #include "HAL/ThreadSafeCounter.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Async/AsyncWork.h"
+#include "HAL/ThreadSafeBool.h"
+#include "HAL/CriticalSection.h"
+#include "Templates/Function.h"
+#include "Containers/Queue.h"
+// #include "Misc/Ticker.h"
+#include "Tickable.h" // Replace with Tickable.h which should contain the ticker functionality
 
 // Forward declarations 
 class FAsyncOperationImpl;
@@ -226,7 +232,7 @@ private:
  * Provides asynchronous task management for long-running operations
  * with progress tracking and cancellation support
  */
-class MININGSPICECOPILOT_API FAsyncTaskManager : public IAsyncOperation
+class MININGSPICECOPILOT_API FAsyncTaskManager : public IAsyncOperation, public FTickableGameObject
 {
 public:
     /** Constructor */
@@ -275,6 +281,13 @@ public:
     /** Creates a delta between two progress updates */
     static FString CreateProgressDelta(const FAsyncProgress& Previous, const FAsyncProgress& Current);
 
+    //~ Begin FTickableGameObject Interface
+    virtual void Tick(float DeltaTime) override;
+    virtual TStatId GetStatId() const override;
+    virtual ETickableTickType GetTickableTickType() const override;
+    virtual bool IsTickable() const override;
+    //~ End FTickableGameObject Interface
+
 public:
     /** Singleton instance */
     static FAsyncTaskManager* Instance;
@@ -299,7 +312,7 @@ private:
     FThreadSafeCounter NextOperationId;
     
     /** Timer handle for periodic updates */
-    FTSTicker::FDelegateHandle UpdateTimerHandle;
+    FDelegateHandle UpdateTimerHandle;
     
     /** Generates a unique operation ID */
     uint64 GenerateOperationId();
@@ -312,4 +325,7 @@ private:
     
     /** Ticker callback for updating operations */
     bool TickUpdateOperations(float DeltaTime);
+
+    /** Update interval in seconds */
+    float TickInterval;
 };

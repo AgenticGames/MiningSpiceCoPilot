@@ -24,8 +24,7 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/World.h"
 #include "ThreadSafety.h"
-
-DEFINE_LOG_CATEGORY_STATIC(LogMaterialRegistry, Log, All);
+#include "Logging/LogMining.h" // Include LogMining.h to access the log categories
 
 // Helper function to mimic TMultiMap's MultiFind functionality for regular TMap with array values
 template<typename KeyType, typename ValueType, typename Allocator>

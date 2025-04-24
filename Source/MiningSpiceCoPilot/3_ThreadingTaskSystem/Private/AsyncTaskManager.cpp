@@ -2,16 +2,27 @@
 
 #include "AsyncTaskManager.h"
 #include "Misc/ScopeLock.h"
-#include "HAL/PlatformTime.h"
+#include "Misc/Paths.h"
 #include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
+#include "HAL/ThreadSafeCounter.h"
+#include "Misc/Paths.h"
+#include "Misc/ScopeLock.h"
 #include "Containers/Queue.h"
-#include "Misc/App.h"
+#include "Misc/CoreDelegates.h"
+#include "Misc/Timespan.h"
+#include "Async/Async.h"
+#include "Misc/ScopeExit.h"
+#include "Misc/CoreDelegates.h"
+#include "Tickable.h"
 #include "PriorityTaskQueue.h"
 #include "ThreadSafeOperationQueue.h"
 #include "Async/Async.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Stats/Stats.h"
 #include "ProfilingDebugging/CsvProfiler.h"
+#include "Async/AsyncWork.h"
+#include "CoreGlobals.h"
 
 // Stats declarations
 DECLARE_CYCLE_STAT(TEXT("Async Operation Execute"), STAT_AsyncOperation_Execute, STATGROUP_Threading);
@@ -395,12 +406,10 @@ bool FAsyncTaskManager::Initialize()
     bIsInitialized = true;
     NextOperationId.Set(1);
     
-    // Register ticker delegate for progress updates
-    UpdateTimerHandle = FTSTicker::GetCoreTicker().AddTicker(
-        FTickerDelegate::CreateRaw(this, &FAsyncTaskManager::TickUpdateOperations),
-        0.1f // 100ms interval
-    );
-    // Save the ticker handle as FTSTicker::FDelegateHandle type
+    // No need for FTicker here since we inherit from FTickableGameObject
+    // and implement Tick() in our class
+    // Instead, we'll just set the update interval
+    TickInterval = 0.1f; // 100ms interval
     
     // Register built-in operation types
     // This would be expanded with mining-specific operations in a real implementation
@@ -415,11 +424,7 @@ void FAsyncTaskManager::Shutdown()
         return;
     }
     
-    // Unregister ticker
-    if (UpdateTimerHandle.IsValid())
-    {
-        FTSTicker::GetCoreTicker().RemoveTicker(UpdateTimerHandle);
-    }
+    // No need to unregister ticker, FTickableGameObject handles this
     
     // Clean up operations
     CleanupCompletedOperations(0.0);
@@ -1020,11 +1025,54 @@ void FAsyncTaskManager::UpdateActiveOperationsMap(const FString& Type, uint64 Id
     }
 }
 
-// Tick callback for updating operations
 bool FAsyncTaskManager::TickUpdateOperations(float DeltaTime)
 {
+    SCOPE_CYCLE_COUNTER(STAT_AsyncManager_Update);
+    
+    // Skip if not initialized
+    if (!bIsInitialized)
+    {
+        return false;
+    }
+    
+    // Update any active operations
     UpdateOperations();
+    
+    // Cleanup old completed operations periodically
+    static float TimeUntilCleanup = 60.0f; // Cleanup every minute
+    TimeUntilCleanup -= DeltaTime;
+    
+    if (TimeUntilCleanup <= 0.0f)
+    {
+        CleanupCompletedOperations(300.0); // Remove operations completed more than 5 minutes ago
+        TimeUntilCleanup = 60.0f;
+    }
+    
     return true;
+}
+
+// FTickableGameObject implementation
+void FAsyncTaskManager::Tick(float DeltaTime)
+{
+    if (bIsInitialized)
+    {
+        TickUpdateOperations(DeltaTime);
+    }
+}
+
+TStatId FAsyncTaskManager::GetStatId() const
+{
+    RETURN_QUICK_DECLARE_CYCLE_STAT(FAsyncTaskManager, STATGROUP_Tickables);
+}
+
+ETickableTickType FAsyncTaskManager::GetTickableTickType() const
+{
+    return ETickableTickType::Always;
+}
+
+bool FAsyncTaskManager::IsTickable() const
+{
+    return bIsInitialized;
 }
 
 //----------------------------------------------------------------------
