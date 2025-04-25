@@ -13,6 +13,10 @@ class AMiningSpiceCoPilotGameMode : public AGameModeBase
 
 public:
 	AMiningSpiceCoPilotGameMode();
+    
+    // Run the service registry tests from Blueprint or console command
+    UFUNCTION(Exec, BlueprintCallable, Category = "Testing")
+    void RunServiceRegistryTests();
 };
 
 

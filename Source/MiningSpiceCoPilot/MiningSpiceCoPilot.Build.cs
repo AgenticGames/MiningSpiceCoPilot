@@ -27,6 +27,9 @@ public class MiningSpiceCoPilot : ModuleRules
             
             // Logging
             Path.Combine(ModuleDirectory, "Public/Logging"),
+            
+            // Test harness
+            Path.Combine(ModuleDirectory, "Public"),
 		});
 		
 		// Add private include paths
@@ -44,6 +47,9 @@ public class MiningSpiceCoPilot : ModuleRules
             
             // Logging
             Path.Combine(ModuleDirectory, "Private/Logging"),
+            
+            // Test harness
+            Path.Combine(ModuleDirectory, "Private"),
 		});
 
 		PublicDependencyModuleNames.AddRange(new string[] { 
@@ -56,7 +62,9 @@ public class MiningSpiceCoPilot : ModuleRules
 			"JsonUtilities", // Add JsonUtilities for working with JSON
 			"RHI",
 			"RenderCore",
-			"ApplicationCore" // Additional platform abstraction
+			"ApplicationCore", // Additional platform abstraction
+			"SlateCore", // Add SlateCore for UI components
+			"Slate" // Add Slate for UI components
 		});
 		
 		PrivateDependencyModuleNames.AddRange(new string[] {
@@ -68,7 +76,10 @@ public class MiningSpiceCoPilot : ModuleRules
 		
 		if (Target.bBuildEditor)
 		{
-			PrivateDependencyModuleNames.Add("UnrealEd");
+			PrivateDependencyModuleNames.AddRange(new string[] {
+                "UnrealEd",
+                "WorkspaceMenuStructure", // For tab manager access
+            });
 		}
         
         // Ensure strict include order
