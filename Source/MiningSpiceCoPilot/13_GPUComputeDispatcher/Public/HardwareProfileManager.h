@@ -19,6 +19,8 @@
 #include "Math/RandomStream.h"
 #include "../../3_ThreadingTaskSystem/Public/ThreadSafety.h"
 #include "../../1_CoreRegistry/Public/Interfaces/IService.h"
+#include "../../1_CoreRegistry/Public/SDFTypeRegistry.h"
+#include "SDFOperationTypeCompatibility.h"
 
 // Forward declarations
 class FServiceLocator;
@@ -36,22 +38,6 @@ enum class EGPUVendor : uint8
     ImgTec,
     Qualcomm,
     Other
-};
-
-/** Enum representing different SDF operation types */
-UENUM()
-enum class ESDFOperationType : uint8
-{
-    Union,              // CSG Union operation
-    Subtraction,        // CSG Subtraction operation
-    Intersection,       // CSG Intersection operation
-    Smoothing,          // Smoothing operation
-    Evaluation,         // Field evaluation
-    Gradient,           // Gradient calculation
-    NarrowBandUpdate,   // Narrow-band update
-    MaterialTransition, // Material transition operations
-    VolumeRender,       // Volume rendering
-    Custom              // Custom operations
 };
 
 /** Enum representing different memory strategies */
@@ -120,7 +106,7 @@ struct FSDFOperationMetrics
 struct FSDFOperationProfile
 {
     /** Operation type */
-    ESDFOperationType OperationType;
+    int32 OperationType;
     
     /** Optimal work group size in X dimension */
     int32 WorkGroupSizeX;
@@ -157,7 +143,7 @@ struct FSDFOperationProfile
     
     /** Constructor with default values */
     FSDFOperationProfile()
-        : OperationType(ESDFOperationType::Union)
+        : OperationType(static_cast<int32>(ESDFOperationType::Union))
         , WorkGroupSizeX(8)
         , WorkGroupSizeY(8)
         , WorkGroupSizeZ(4)
@@ -170,8 +156,22 @@ struct FSDFOperationProfile
     {}
     
     /** Constructor with operation type */
-    FSDFOperationProfile(ESDFOperationType InOperationType)
+    FSDFOperationProfile(int32 InOperationType)
         : OperationType(InOperationType)
+        , WorkGroupSizeX(8)
+        , WorkGroupSizeY(8)
+        , WorkGroupSizeZ(4)
+        , CPUFallbackThresholdMs(50.0f)
+        , MemoryStrategy(EMemoryStrategy::Adaptive)
+        , Precision(EComputePrecision::Full)
+        , bUseNarrowBand(true)
+        , NarrowBandThreshold(5.0f)
+        , bPrioritizeForAsyncCompute(false)
+    {}
+    
+    /** Constructor with operation type enum */
+    FSDFOperationProfile(ESDFOperationType InOperationType)
+        : OperationType(static_cast<int32>(InOperationType))
         , WorkGroupSizeX(8)
         , WorkGroupSizeY(8)
         , WorkGroupSizeZ(4)
@@ -303,32 +303,38 @@ struct FHardwareProfile
     void Serialize(FArchive& Ar);
 };
 
-/** Benchmark result for an SDF operation */
+/** Structure containing benchmark results */
 struct FBenchmarkResult
 {
     /** Operation type */
     ESDFOperationType OperationType;
     
-    /** Work group size tested */
+    /** Work group size */
     FIntVector WorkGroupSize;
     
-    /** Memory strategy tested */
+    /** Memory strategy */
     EMemoryStrategy MemoryStrategy;
     
-    /** Compute precision tested */
+    /** Precision setting */
     EComputePrecision Precision;
+    
+    /** Number of iterations */
+    int32 IterationCount;
+    
+    /** Dataset size in bytes */
+    int32 DatasetSize;
     
     /** Average execution time in milliseconds */
     float AverageExecutionTimeMs;
     
+    /** Minimum execution time in milliseconds */
+    float MinExecutionTimeMs;
+    
+    /** Maximum execution time in milliseconds */
+    float MaxExecutionTimeMs;
+    
     /** Standard deviation of execution time */
     float StdDeviation;
-    
-    /** Number of iterations run */
-    int32 IterationCount;
-    
-    /** Benchmark dataset size (number of voxels) */
-    int32 DatasetSize;
     
     /** Constructor with default values */
     FBenchmarkResult()
@@ -336,10 +342,12 @@ struct FBenchmarkResult
         , WorkGroupSize(8, 8, 4)
         , MemoryStrategy(EMemoryStrategy::Adaptive)
         , Precision(EComputePrecision::Full)
-        , AverageExecutionTimeMs(0.0f)
-        , StdDeviation(0.0f)
         , IterationCount(0)
         , DatasetSize(0)
+        , AverageExecutionTimeMs(0.0f)
+        , MinExecutionTimeMs(0.0f)
+        , MaxExecutionTimeMs(0.0f)
+        , StdDeviation(0.0f)
     {}
 };
 
@@ -371,40 +379,82 @@ public:
     const FHardwareProfile& GetCurrentProfile() const;
     
     /** Get optimal work group size for an operation */
-    FIntVector GetOptimalWorkGroupSize(ESDFOperationType OperationType) const;
+    FIntVector GetOptimalWorkGroupSize(int32 OperationType) const;
     
     /** Get optimal memory strategy for an operation */
-    EMemoryStrategy GetOptimalMemoryStrategy(ESDFOperationType OperationType) const;
+    EMemoryStrategy GetOptimalMemoryStrategy(int32 OperationType) const;
     
     /** Get optimal compute precision for an operation */
-    EComputePrecision GetOptimalPrecision(ESDFOperationType OperationType) const;
+    EComputePrecision GetOptimalPrecision(int32 OperationType) const;
     
     /** Get CPU fallback threshold for an operation */
-    float GetCPUFallbackThreshold(ESDFOperationType OperationType) const;
+    float GetCPUFallbackThreshold(int32 OperationType) const;
     
     /** Check if an operation should use narrow band optimization */
-    bool ShouldUseNarrowBand(ESDFOperationType OperationType) const;
+    bool ShouldUseNarrowBand(int32 OperationType) const;
     
     /** Get narrow band threshold for an operation */
-    float GetNarrowBandThreshold(ESDFOperationType OperationType) const;
+    float GetNarrowBandThreshold(int32 OperationType) const;
     
     /** Check if an operation should use async compute */
-    bool ShouldUseAsyncCompute(ESDFOperationType OperationType) const;
+    bool ShouldUseAsyncCompute(int32 OperationType) const;
     
-    /** Get a custom parameter value for an operation */
-    float GetCustomParameter(ESDFOperationType OperationType, const FName& ParameterName, float DefaultValue = 0.0f) const;
+    /**
+     * Get a custom parameter value for an operation
+     * @param OperationType The type of operation
+     * @param ParameterName Name of the parameter
+     * @param DefaultValue Default value to use if parameter is not set
+     * @return The parameter value
+     */
+    float GetCustomParameter(int32 OperationType, const FName& ParameterName, float DefaultValue = 0.0f) const;
+    
+    /**
+     * Set a custom parameter value for an operation
+     * @param OperationType The type of operation
+     * @param ParameterName Name of the parameter
+     * @param Value Value to set
+     */
+    void SetCustomParameter(int32 OperationType, const FName& ParameterName, float Value);
     
     /** Get the GPU capability information */
     const FGPUCapabilityInfo& GetGPUCapabilityInfo() const;
     
-    /** Record performance for an SDF operation */
-    void RecordOperationPerformance(ESDFOperationType OperationType, float ExecutionTimeMs);
+    /**
+     * Record performance metrics for an operation
+     * @param OperationType The type of operation
+     * @param ExecutionTimeMs Execution time in milliseconds
+     */
+    void RecordOperationPerformance(int32 OperationType, float ExecutionTimeMs);
     
-    /** Get performance metrics for an SDF operation */
-    const FSDFOperationMetrics& GetOperationMetrics(ESDFOperationType OperationType) const;
+    /**
+     * Get performance metrics for an operation
+     * @param OperationType The type of operation
+     * @return The performance metrics
+     */
+    const FSDFOperationMetrics& GetOperationMetrics(int32 OperationType) const;
     
-    /** Run benchmark for a specific operation */
-    TArray<FBenchmarkResult> RunBenchmark(ESDFOperationType OperationType, int32 IterationCount = 10, bool bFullParameterSpace = false);
+    /**
+     * Run benchmark for a specific operation
+     * @param OperationType Type of operation to benchmark
+     * @param IterationCount Number of iterations for each benchmark
+     * @param bFullParameterSpace Whether to test all parameter combinations
+     * @return Array of benchmark results
+     */
+    TArray<FBenchmarkResult> RunBenchmark(
+        int32 OperationType,
+        int32 IterationCount = 10,
+        bool bFullParameterSpace = false);
+    
+    /**
+     * Run benchmark for a specific operation using specific parameters
+     */
+    FBenchmarkResult BenchmarkWithParameters(
+        int32 OperationType,
+        const FIntVector& WorkGroupSize,
+        EMemoryStrategy MemoryStrategy,
+        EComputePrecision Precision,
+        int32 IterationCount = 10,
+        int32 DatasetSize = 1024 * 1024);
     
     /** Run comprehensive benchmarks for all operations */
     void RunComprehensiveBenchmarks(int32 IterationCount = 10);
@@ -435,6 +485,57 @@ public:
     
     /** Register with the service locator */
     void RegisterWithServiceLocator();
+    
+    /** Additional method signatures for ESDFOperationType */
+    /** Get optimal work group size for an operation */
+    FIntVector GetOptimalWorkGroupSize(ESDFOperationType OperationType) const;
+    
+    /** Get optimal memory strategy for an operation */
+    EMemoryStrategy GetOptimalMemoryStrategy(ESDFOperationType OperationType) const;
+    
+    /** Get optimal compute precision for an operation */
+    EComputePrecision GetOptimalPrecision(ESDFOperationType OperationType) const;
+    
+    /** Get CPU fallback threshold for an operation */
+    float GetCPUFallbackThreshold(ESDFOperationType OperationType) const;
+    
+    /** Check if an operation should use narrow band optimization */
+    bool ShouldUseNarrowBand(ESDFOperationType OperationType) const;
+    
+    /** Get narrow band threshold for an operation */
+    float GetNarrowBandThreshold(ESDFOperationType OperationType) const;
+    
+    /** Check if an operation should use async compute */
+    bool ShouldUseAsyncCompute(ESDFOperationType OperationType) const;
+    
+    /** Get a custom parameter value for an operation */
+    float GetCustomParameter(ESDFOperationType OperationType, const FName& ParameterName, float DefaultValue = 0.0f) const;
+    
+    /** Set a custom parameter value for an operation */
+    void SetCustomParameter(ESDFOperationType OperationType, const FName& ParameterName, float Value);
+    
+    /** Record performance metrics for an operation */
+    void RecordOperationPerformance(ESDFOperationType OperationType, float ExecutionTimeMs);
+    
+    /** Get performance metrics for an operation */
+    const FSDFOperationMetrics& GetOperationMetrics(ESDFOperationType OperationType) const;
+    
+    /** Run benchmark for a specific operation */
+    TArray<FBenchmarkResult> RunBenchmark(
+        ESDFOperationType OperationType,
+        int32 IterationCount = 10,
+        bool bFullParameterSpace = false);
+    
+    /**
+     * Run benchmark for a specific operation using specific parameters (ESDFOperationType version)
+     */
+    FBenchmarkResult BenchmarkWithParameters(
+        ESDFOperationType OperationType,
+        const FIntVector& WorkGroupSize,
+        EMemoryStrategy MemoryStrategy,
+        EComputePrecision Precision,
+        int32 IterationCount = 10,
+        int32 DatasetSize = 1024 * 1024);
     
 private:
     /** Detect current GPU capabilities */
@@ -475,11 +576,6 @@ private:
     
     /** Get the full path for a profile file */
     FString GetProfileFilePath(const FString& ProfileName) const;
-    
-    /** Run a benchmark for specific parameters */
-    FBenchmarkResult BenchmarkWithParameters(ESDFOperationType OperationType, const FIntVector& WorkGroupSize, 
-                                            EMemoryStrategy MemoryStrategy, EComputePrecision Precision, 
-                                            int32 IterationCount, int32 DatasetSize);
     
     /** Get a thread-safe copy of the current profile */
     FHardwareProfile GetProfileCopy() const;

@@ -24,25 +24,43 @@
 enum class ESDFOperationType : uint8
 {
     /** Union of two SDF fields */
-    Union,
+    Union = 0,
     
     /** Subtraction of two SDF fields */
-    Subtraction,
+    Subtraction = 1,
     
     /** Intersection of two SDF fields */
-    Intersection,
+    Intersection = 2,
     
     /** Smooth union of two SDF fields */
-    SmoothUnion,
+    SmoothUnion = 3,
     
     /** Smooth subtraction of two SDF fields */
-    SmoothSubtraction,
+    SmoothSubtraction = 4,
     
     /** Smooth intersection of two SDF fields */
-    SmoothIntersection,
+    SmoothIntersection = 5,
     
     /** Custom operation type */
-    Custom
+    Custom = 6,
+    
+    /** Smoothing operation */
+    Smoothing = 7,
+    
+    /** Evaluation operation */
+    Evaluation = 8,
+    
+    /** Gradient computation */
+    Gradient = 9,
+    
+    /** Narrow band update operation */
+    NarrowBandUpdate = 10,
+    
+    /** Material transition operation */
+    MaterialTransition = 11,
+    
+    /** Volume rendering operation */
+    VolumeRender = 12
 };
 
 /**

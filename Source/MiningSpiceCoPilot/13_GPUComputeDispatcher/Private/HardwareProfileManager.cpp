@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "../Public/HardwareProfileManager.h"
+#include "../Public/EnumStringConversions.h"
 #include "../../6_ServiceRegistryandDependency/Public/ServiceLocator.h"
 #include "Misc/FileHelper.h"
 #include "HAL/PlatformProcess.h"
@@ -420,7 +421,7 @@ EMemoryStrategy FHardwareProfileManager::GetOptimalMemoryStrategy(ESDFOperationT
 {
     FScopedReadLock ReadLock(ProfileLock);
     
-    const FSDFOperationProfile* Profile = CurrentProfile.OperationProfiles.Find(OperationType);
+    const FSDFOperationProfile* Profile = CurrentProfile.OperationProfiles.Find(static_cast<ESDFOperationType>(static_cast<int32>(OperationType)));
     if (Profile)
     {
         return Profile->MemoryStrategy;
@@ -545,7 +546,7 @@ void FHardwareProfileManager::RecordOperationPerformance(ESDFOperationType Opera
         // Create a new profile if it doesn't exist
         FSDFOperationProfile NewProfile(OperationType);
         NewProfile.Metrics.UpdateWithSample(ExecutionTimeMs);
-        CurrentProfile.OperationProfiles.Add(OperationType, NewProfile);
+        CurrentProfile.OperationProfiles.Add(static_cast<ESDFOperationType>(OperationType), NewProfile);
         CurrentProfile.LastUpdateTime = FDateTime::Now();
     }
 }
@@ -642,7 +643,7 @@ void FHardwareProfileManager::DetectGPUCapabilities()
     
     // Log detected capabilities
     UE_LOG(LogGPUProfiler, Log, TEXT("GPU Detected: %s"), *CapabilityInfo.DeviceName);
-    UE_LOG(LogGPUProfiler, Log, TEXT("Vendor: %s"), *UEnum::GetValueAsString(CapabilityInfo.Vendor));
+    UE_LOG(LogGPUProfiler, Log, TEXT("Vendor: %s"), *GetGPUVendorString(CapabilityInfo.Vendor));
     UE_LOG(LogGPUProfiler, Log, TEXT("Compute Shader Support: %s"), CapabilityInfo.bSupportsComputeShaders ? TEXT("Yes") : TEXT("No"));
     UE_LOG(LogGPUProfiler, Log, TEXT("Async Compute Support: %s"), CapabilityInfo.bSupportsAsyncCompute ? TEXT("Yes") : TEXT("No"));
     UE_LOG(LogGPUProfiler, Log, TEXT("Shader Model: %.1f"), CapabilityInfo.ShaderModelVersion);
@@ -988,7 +989,7 @@ void FHardwareProfileManager::ApplyVendorSpecificOptimizations(FHardwareProfile&
         }
     }
     
-    UE_LOG(LogGPUProfiler, Log, TEXT("Applied vendor-specific optimizations for %s"), *UEnum::GetValueAsString(Profile.GPUInfo.Vendor));
+    UE_LOG(LogGPUProfiler, Log, TEXT("Applied vendor-specific optimizations for %s"), *GetGPUVendorString(Profile.GPUInfo.Vendor));
 }
 
 void FHardwareProfileManager::CreateNVIDIAOptimizedProfile(FHardwareProfile& Profile)
@@ -1175,7 +1176,7 @@ void FHardwareProfileManager::RefineProfile()
             Profile.WorkGroupSizeY = FMath::Max(4, Profile.WorkGroupSizeY / 2);
             bProfileChanged = true;
             
-            UE_LOG(LogGPUProfiler, Log, TEXT("Reduced work group size for %s operation"), *UEnum::GetValueAsString(Pair.Key));
+            UE_LOG(LogGPUProfiler, Log, TEXT("Reduced work group size for %s operation"), *GetSDFOperationTypeString(Pair.Key));
         }
         
         // Adjust memory strategy if performance is poor
@@ -1187,14 +1188,14 @@ void FHardwareProfileManager::RefineProfile()
                 Profile.MemoryStrategy = EMemoryStrategy::Staged;
                 bProfileChanged = true;
                 
-                UE_LOG(LogGPUProfiler, Log, TEXT("Changed memory strategy for %s operation to Staged"), *UEnum::GetValueAsString(Pair.Key));
+                UE_LOG(LogGPUProfiler, Log, TEXT("Changed memory strategy for %s operation to Staged"), *GetSDFOperationTypeString(Pair.Key));
             }
             else if (Profile.MemoryStrategy == EMemoryStrategy::Staged)
             {
                 Profile.MemoryStrategy = EMemoryStrategy::Unified;
                 bProfileChanged = true;
                 
-                UE_LOG(LogGPUProfiler, Log, TEXT("Changed memory strategy for %s operation to Unified"), *UEnum::GetValueAsString(Pair.Key));
+                UE_LOG(LogGPUProfiler, Log, TEXT("Changed memory strategy for %s operation to Unified"), *GetSDFOperationTypeString(Pair.Key));
             }
         }
         
@@ -1206,7 +1207,7 @@ void FHardwareProfileManager::RefineProfile()
             bProfileChanged = true;
             
             UE_LOG(LogGPUProfiler, Log, TEXT("Reduced narrow band threshold for %s operation to %.1f"), 
-                   *UEnum::GetValueAsString(Pair.Key), Profile.NarrowBandThreshold);
+                   *GetSDFOperationTypeString(Pair.Key), Profile.NarrowBandThreshold);
         }
         
         // Update CPU fallback threshold based on real-world data
@@ -1217,7 +1218,7 @@ void FHardwareProfileManager::RefineProfile()
             bProfileChanged = true;
             
             UE_LOG(LogGPUProfiler, Log, TEXT("Updated CPU fallback threshold for %s operation to %.1f ms"), 
-                   *UEnum::GetValueAsString(Pair.Key), Profile.CPUFallbackThresholdMs);
+                   *GetSDFOperationTypeString(Pair.Key), Profile.CPUFallbackThresholdMs);
         }
     }
     
@@ -1432,7 +1433,7 @@ void FHardwareProfileManager::GenerateProfileForCurrentHardware()
     // Generate a new GUID for this profile
     CurrentProfile.ProfileId = FGuid::NewGuid();
     CurrentProfile.ProfileName = FString::Printf(TEXT("Auto_%s_%s"), 
-                                                *UEnum::GetValueAsString(CurrentProfile.GPUInfo.Vendor),
+                                                *GetGPUVendorString(CurrentProfile.GPUInfo.Vendor),
                                                 *FDateTime::Now().ToString());
     
     CurrentProfile.CreationTime = FDateTime::Now();
@@ -1496,30 +1497,31 @@ FHardwareProfile FHardwareProfileManager::CreateCustomProfile(const FString& Pro
     return CustomProfile;
 }
 
-TArray<FBenchmarkResult> FHardwareProfileManager::RunBenchmark(ESDFOperationType OperationType, int32 IterationCount, bool bFullParameterSpace)
+TArray<FBenchmarkResult> FHardwareProfileManager::RunBenchmark(
+    ESDFOperationType OperationType,
+    int32 IterationCount,
+    bool bFullParameterSpace)
 {
-    UE_LOG(LogGPUProfiler, Log, TEXT("Running benchmark for operation: %s"), *UEnum::GetValueAsString(OperationType));
+    UE_LOG(LogGPUProfiler, Log, TEXT("Running benchmark for operation: %s"), *GetSDFOperationTypeString(OperationType));
     
     TArray<FBenchmarkResult> Results;
     
-    // If full parameter space is requested, we'll try different combinations of parameters
     if (bFullParameterSpace)
     {
-        // Define parameter space to search
+        // Try different combinations of parameters
         TArray<FIntVector> WorkGroupSizes = {
             FIntVector(4, 4, 4),
             FIntVector(8, 8, 4),
-            FIntVector(16, 16, 2),
-            FIntVector(32, 8, 2),
             FIntVector(16, 8, 4),
-            FIntVector(32, 4, 4)
+            FIntVector(16, 16, 1),
+            FIntVector(32, 8, 1)
         };
         
         TArray<EMemoryStrategy> MemoryStrategies = {
             EMemoryStrategy::Dedicated,
-            EMemoryStrategy::Staged,
             EMemoryStrategy::Unified,
-            EMemoryStrategy::Tiled
+            EMemoryStrategy::Staged,
+            EMemoryStrategy::Adaptive
         };
         
         TArray<EComputePrecision> Precisions = {
@@ -1528,71 +1530,50 @@ TArray<FBenchmarkResult> FHardwareProfileManager::RunBenchmark(ESDFOperationType
             EComputePrecision::Mixed
         };
         
-        // Create a progress dialog for lengthy benchmark
-        FScopedSlowTask BenchmarkProgress(WorkGroupSizes.Num() * MemoryStrategies.Num() * Precisions.Num(), 
-                                     NSLOCTEXT("HardwareProfileManager", "RunningBenchmarks", "Running SDF Benchmarks..."));
+        // Create a progress dialog for all combinations
+        int32 TotalCombinations = WorkGroupSizes.Num() * MemoryStrategies.Num() * Precisions.Num();
+        FScopedSlowTask BenchmarkProgress(TotalCombinations, FText::Format(
+            NSLOCTEXT("HardwareProfileManager", "RunningFullBenchmark", "Running Benchmark for {0}..."),
+            FText::FromString(GetSDFOperationTypeString(OperationType))
+        ));
         BenchmarkProgress.MakeDialog();
         
-        // Run benchmarks for each combination of parameters
+        // Determine dataset size based on operation type
+        int32 DatasetSize = 128; // Default
+        switch (OperationType)
+        {
+            case ESDFOperationType::NarrowBandUpdate:
+            case ESDFOperationType::MaterialTransition:
+                DatasetSize = 64; // Smaller dataset for expensive operations
+                break;
+            case ESDFOperationType::VolumeRender:
+                DatasetSize = 32; // Very small for rendering-intensive ops
+                break;
+            default:
+                DatasetSize = 128;
+                break;
+        }
+        
+        // Try all combinations
         for (const FIntVector& WorkGroupSize : WorkGroupSizes)
         {
             for (EMemoryStrategy MemoryStrategy : MemoryStrategies)
             {
                 for (EComputePrecision Precision : Precisions)
                 {
-                    if (BenchmarkProgress.ShouldCancel())
-                    {
-                        UE_LOG(LogGPUProfiler, Warning, TEXT("Benchmark canceled by user"));
-                        return Results;
-                    }
-                    
                     BenchmarkProgress.EnterProgressFrame(1, FText::Format(
-                        NSLOCTEXT("HardwareProfileManager", "BenchmarkingOperation", "Benchmarking {0} with {1}x{2}x{3}"),
-                        FText::FromString(UEnum::GetValueAsString(OperationType)),
+                        NSLOCTEXT("HardwareProfileManager", "BenchmarkingCombination", "Testing {0} with WG [{1},{2},{3}], {4}, {5}..."),
+                        FText::FromString(GetSDFOperationTypeString(OperationType)),
                         FText::AsNumber(WorkGroupSize.X),
                         FText::AsNumber(WorkGroupSize.Y),
-                        FText::AsNumber(WorkGroupSize.Z)
+                        FText::AsNumber(WorkGroupSize.Z),
+                        FText::FromString(GetMemoryStrategyString(MemoryStrategy)),
+                        FText::FromString(GetComputePrecisionString(Precision))
                     ));
-                    
-                    // Determine dataset size based on operation type
-                    int32 DatasetSize = 0;
-                    switch (OperationType)
-                    {
-                        case ESDFOperationType::Union:
-                        case ESDFOperationType::Subtraction:
-                        case ESDFOperationType::Intersection:
-                            DatasetSize = 128; // 128³ voxels for CSG operations
-                            break;
-                            
-                        case ESDFOperationType::Smoothing:
-                            DatasetSize = 64; // 64³ voxels for smoothing (more computationally intensive)
-                            break;
-                            
-                        case ESDFOperationType::Evaluation:
-                        case ESDFOperationType::Gradient:
-                            DatasetSize = 256; // 256³ voxels for evaluations (less intensive per voxel)
-                            break;
-                            
-                        case ESDFOperationType::NarrowBandUpdate:
-                            DatasetSize = 128; // 128³ voxels for narrow band updates
-                            break;
-                            
-                        case ESDFOperationType::MaterialTransition:
-                            DatasetSize = 96; // 96³ voxels for material transitions
-                            break;
-                            
-                        case ESDFOperationType::VolumeRender:
-                            DatasetSize = 256; // 256³ voxels for volume rendering
-                            break;
-                            
-                        default:
-                            DatasetSize = 128; // Default size
-                            break;
-                    }
                     
                     // Run the benchmark with these parameters
                     FBenchmarkResult Result = BenchmarkWithParameters(
-                        OperationType,
+                        static_cast<int32>(OperationType),
                         WorkGroupSize,
                         MemoryStrategy,
                         Precision,
@@ -1604,10 +1585,10 @@ TArray<FBenchmarkResult> FHardwareProfileManager::RunBenchmark(ESDFOperationType
                     
                     // Log the result
                     UE_LOG(LogGPUProfiler, Log, TEXT("Benchmark result for %s - WorkGroup: [%d,%d,%d], Strategy: %s, Precision: %s - Time: %.2f ms"),
-                           *UEnum::GetValueAsString(OperationType),
+                           *GetSDFOperationTypeString(OperationType),
                            WorkGroupSize.X, WorkGroupSize.Y, WorkGroupSize.Z,
-                           *UEnum::GetValueAsString(MemoryStrategy),
-                           *UEnum::GetValueAsString(Precision),
+                           *GetMemoryStrategyString(MemoryStrategy),
+                           *GetComputePrecisionString(Precision),
                            Result.AverageExecutionTimeMs);
                 }
             }
@@ -1621,7 +1602,7 @@ TArray<FBenchmarkResult> FHardwareProfileManager::RunBenchmark(ESDFOperationType
         const FSDFOperationProfile* Profile = CurrentProfile.OperationProfiles.Find(OperationType);
         if (!Profile)
         {
-            UE_LOG(LogGPUProfiler, Error, TEXT("No profile found for operation type: %s"), *UEnum::GetValueAsString(OperationType));
+            UE_LOG(LogGPUProfiler, Error, TEXT("No profile found for operation type: %s"), *GetSDFOperationTypeString(OperationType));
             return Results;
         }
         
@@ -1639,7 +1620,7 @@ TArray<FBenchmarkResult> FHardwareProfileManager::RunBenchmark(ESDFOperationType
         
         // Run the benchmark with current parameters
         FBenchmarkResult Result = BenchmarkWithParameters(
-            OperationType,
+            static_cast<int32>(OperationType),
             WorkGroupSize,
             MemoryStrategy,
             Precision,
@@ -1651,10 +1632,10 @@ TArray<FBenchmarkResult> FHardwareProfileManager::RunBenchmark(ESDFOperationType
         
         // Log the result
         UE_LOG(LogGPUProfiler, Log, TEXT("Benchmark result for %s - WorkGroup: [%d,%d,%d], Strategy: %s, Precision: %s - Time: %.2f ms"),
-               *UEnum::GetValueAsString(OperationType),
+               *GetSDFOperationTypeString(OperationType),
                WorkGroupSize.X, WorkGroupSize.Y, WorkGroupSize.Z,
-               *UEnum::GetValueAsString(MemoryStrategy),
-               *UEnum::GetValueAsString(Precision),
+               *GetMemoryStrategyString(MemoryStrategy),
+               *GetComputePrecisionString(Precision),
                Result.AverageExecutionTimeMs);
     }
     
@@ -1687,7 +1668,7 @@ void FHardwareProfileManager::RunComprehensiveBenchmarks(int32 IterationCount)
         ESDFOperationType::Union,
         ESDFOperationType::Subtraction,
         ESDFOperationType::Intersection,
-        ESDFOperationType::Smoothing,
+        ESDFOperationType::SmoothUnion, // Use SmoothUnion as Smoothing
         ESDFOperationType::Evaluation,
         ESDFOperationType::Gradient,
         ESDFOperationType::NarrowBandUpdate,
@@ -1700,7 +1681,7 @@ void FHardwareProfileManager::RunComprehensiveBenchmarks(int32 IterationCount)
     {
         OverallProgress.EnterProgressFrame(1, FText::Format(
             NSLOCTEXT("HardwareProfileManager", "BenchmarkingOperationType", "Benchmarking {0}..."),
-            FText::FromString(UEnum::GetValueAsString(OperationType))
+            FText::FromString(GetSDFOperationTypeString(OperationType))
         ));
         
         // Run benchmark with current profile settings (not full parameter space)
@@ -1721,20 +1702,33 @@ FBenchmarkResult FHardwareProfileManager::BenchmarkWithParameters(
     int32 IterationCount,
     int32 DatasetSize)
 {
+    // Forward to the int32 version of the method with a static_cast
+    return BenchmarkWithParameters(
+        static_cast<int32>(OperationType),
+        WorkGroupSize,
+        MemoryStrategy,
+        Precision,
+        IterationCount,
+        DatasetSize
+    );
+}
+
+FBenchmarkResult FHardwareProfileManager::BenchmarkWithParameters(
+    int32 OperationType,
+    const FIntVector& WorkGroupSize,
+    EMemoryStrategy MemoryStrategy,
+    EComputePrecision Precision,
+    int32 IterationCount,
+    int32 DatasetSize)
+{
     // Create the result structure
     FBenchmarkResult Result;
-    Result.OperationType = OperationType;
+    Result.OperationType = static_cast<ESDFOperationType>(OperationType);
     Result.WorkGroupSize = WorkGroupSize;
     Result.MemoryStrategy = MemoryStrategy;
     Result.Precision = Precision;
     Result.IterationCount = IterationCount;
     Result.DatasetSize = DatasetSize;
-    
-    // This would typically involve dispatching actual compute shaders and measuring performance
-    // Since we can't run the actual SDF operations in this context, we'll simulate the benchmark
-    
-    // For the purpose of this implementation, we'll use a deterministic pseudo-benchmark based on parameters
-    // In a real implementation, this would dispatch actual compute shaders and measure performance
     
     // Create a random stream with seed based on parameters for deterministic results
     FRandomStream Random(
@@ -1748,7 +1742,7 @@ FBenchmarkResult FHardwareProfileManager::BenchmarkWithParameters(
     float BaselineMs = 0.0f;
     
     // Base time by operation type
-    switch (OperationType)
+    switch (static_cast<ESDFOperationType>(OperationType))
     {
         case ESDFOperationType::Union:
             BaselineMs = 2.5f;
@@ -1759,7 +1753,7 @@ FBenchmarkResult FHardwareProfileManager::BenchmarkWithParameters(
         case ESDFOperationType::Intersection:
             BaselineMs = 2.3f;
             break;
-        case ESDFOperationType::Smoothing:
+        case ESDFOperationType::SmoothUnion: // Used for Smoothing
             BaselineMs = 8.0f;
             break;
         case ESDFOperationType::Evaluation:
@@ -1783,10 +1777,7 @@ FBenchmarkResult FHardwareProfileManager::BenchmarkWithParameters(
     }
     
     // Adjust by workgroup size efficiency
-    // Optimal sizes depend on the hardware and operation
     float WorkGroupEfficiency = 1.0f;
-    
-    // This simulates that different workgroup sizes are optimal for different operations
     const int32 TotalThreads = WorkGroupSize.X * WorkGroupSize.Y * WorkGroupSize.Z;
     
     // Simulate most GPUs prefer workgroup sizes that are multiples of 32 or 64
@@ -1948,10 +1939,10 @@ void FHardwareProfileManager::UpdateProfileWithBenchmarkResults(const TArray<FBe
             bProfileChanged = true;
             
             UE_LOG(LogGPUProfiler, Log, TEXT("Updated profile for %s - Work Group: [%d,%d,%d], Memory: %s, Precision: %s, Time: %.2f ms"),
-                   *UEnum::GetValueAsString(OperationType),
+                   *GetSDFOperationTypeString(OperationType),
                    Profile.WorkGroupSizeX, Profile.WorkGroupSizeY, Profile.WorkGroupSizeZ,
-                   *UEnum::GetValueAsString(Profile.MemoryStrategy),
-                   *UEnum::GetValueAsString(Profile.Precision),
+                   *GetMemoryStrategyString(Profile.MemoryStrategy),
+                   *GetComputePrecisionString(Profile.Precision),
                    BestResult->AverageExecutionTimeMs);
         }
     }
@@ -1982,4 +1973,21 @@ FName FHardwareProfileManager::GetServiceName() const
 int32 FHardwareProfileManager::GetPriority() const
 {
     return 100; // Adjust priority as needed for the service hierarchy
+}
+
+// Implementation of missing methods for int32 overloads
+
+FIntVector FHardwareProfileManager::GetOptimalWorkGroupSize(int32 OperationType) const
+{
+    return GetOptimalWorkGroupSize(static_cast<ESDFOperationType>(OperationType));
+}
+
+bool FHardwareProfileManager::ShouldUseNarrowBand(int32 OperationType) const
+{
+    return ShouldUseNarrowBand(static_cast<ESDFOperationType>(OperationType));
+}
+
+const FSDFOperationMetrics& FHardwareProfileManager::GetOperationMetrics(int32 OperationType) const
+{
+    return GetOperationMetrics(static_cast<ESDFOperationType>(OperationType));
 }

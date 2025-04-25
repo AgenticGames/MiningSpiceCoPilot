@@ -1,10 +1,13 @@
-#include "MemoryDefragmenter.h"
+#include "../Public/MemoryDefragmenter.h"
 #include "CoreMinimal.h"
-#include "Interfaces/IMemoryManager.h"
-#include "Interfaces/IPoolAllocator.h"
-#include "Interfaces/IMemoryTracker.h"
+#include "../Public/Interfaces/IMemoryManager.h"
+#include "../Public/Interfaces/IPoolAllocator.h"
+#include "../Public/Interfaces/IMemoryTracker.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/ScopeLock.h"
+
+// Add include for FEvent
+#include "HAL/Event.h"
 
 FMemoryDefragmenter::FMemoryDefragmenter(IMemoryManager* InMemoryManager)
     : MemoryManager(InMemoryManager)
