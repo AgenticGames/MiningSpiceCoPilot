@@ -5,6 +5,8 @@
 #include "HAL/PlatformTime.h"
 #include "HAL/PlatformAffinity.h"
 #include "HAL/ThreadManager.h"
+#include "HAL/RunnableThread.h"
+#include "HAL/Runnable.h"
 #include "Containers/Queue.h"
 #include "Misc/ScopeLock.h"
 #include "Misc/OutputDeviceRedirector.h"
