@@ -24,6 +24,7 @@ public class MiningSpiceCoPilot : ModuleRules
 			Path.Combine(ModuleDirectory, "2.1_TieredCompression/Public"),
 			Path.Combine(ModuleDirectory, "2.2_RegionHibernation/Public"),
 			Path.Combine(ModuleDirectory, "2.3_ZoneBasedConcurrentMining/Public"),
+			Path.Combine(ModuleDirectory, "13_GPUComputeDispatcher/Public"),
             
             // Logging
             Path.Combine(ModuleDirectory, "Public/Logging"),
@@ -41,6 +42,7 @@ public class MiningSpiceCoPilot : ModuleRules
 			Path.Combine(ModuleDirectory, "2.1_TieredCompression/Private"),
 			Path.Combine(ModuleDirectory, "2.2_RegionHibernation/Private"),
 			Path.Combine(ModuleDirectory, "2.3_ZoneBasedConcurrentMining/Private"),
+			Path.Combine(ModuleDirectory, "13_GPUComputeDispatcher/Private"),
             
             // Logging
             Path.Combine(ModuleDirectory, "Private/Logging"),
@@ -56,6 +58,7 @@ public class MiningSpiceCoPilot : ModuleRules
 			"JsonUtilities", // Add JsonUtilities for working with JSON
 			"RHI",
 			"RenderCore",
+			"Renderer", // Add Renderer instead of RenderGraph for UE5.5
 			"ApplicationCore" // Additional platform abstraction
 		});
 		
@@ -63,7 +66,8 @@ public class MiningSpiceCoPilot : ModuleRules
 			"Slate",
 			"SlateCore",
 			"Projects",   // For project settings and access
-			"EngineSettings" // For engine configuration access
+			"EngineSettings", // For engine configuration access
+			"RHICore" // Add RHICore for additional rendering support
 		});
 		
 		if (Target.bBuildEditor)
@@ -72,7 +76,7 @@ public class MiningSpiceCoPilot : ModuleRules
 		}
         
         // Ensure strict include order
-        bEnforceIWYU = true;
+        IWYUSupport = IWYUSupport.Full;
         
         // Use Unity builds to improve compilation times
         bUseUnity = true;

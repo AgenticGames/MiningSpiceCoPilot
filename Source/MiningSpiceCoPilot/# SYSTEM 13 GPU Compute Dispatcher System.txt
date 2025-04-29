@@ -1,0 +1,143 @@
+# MINING SYSTEM IMPLEMENTATION
+# SYSTEM 13 OF 153: GPU Compute Dispatcher System
+Reference: Computational Systems - GPU Compute Dispatcher
+Category: Computational Systems
+
+PURPOSE
+Provide efficient GPU compute workload distribution specifically optimized for SDF operations, implementing adaptive CPU/GPU workload balancing, specialized compute shaders for mining operations, and intelligent batching for SDF field updates with hardware-specific optimizations to ensure optimal performance across different devices while maintaining 60+ FPS during complex mining operations.
+
+ARCHITECTURAL POSITION
+- Category: Computational Systems
+- Dependencies: Core Registry (1), Memory Management (2), Threading (3)
+- Dependent Systems: SVO+SDF Volume (25), Multi-Channel Distance Field (26), Mining Operations (44)
+
+KEY REQUIREMENTS
+- Specialized compute shader dispatch for SDF field operations (union, subtraction, intersection)
+- Adaptive workload distribution between CPU and GPU based on operation characteristics and hardware
+- Efficient batching of similar SDF operations for reduced dispatch overhead
+- Real-time performance monitoring to guide distribution decisions with learning capability
+- Hardware-specific optimization profiles with runtime refinement
+- Narrow-band SDF update prioritization with importance-based scheduling
+- Zero-copy memory architecture for GPU/CPU field data sharing
+- Resource state tracking to minimize barriers during SDF operations
+- Support for multi-channel SDF fields with material-specific operations
+- Performance-driven fallback to CPU implementation when appropriate
+
+CORE COMPONENTS
+
+FGPUDispatcher : public IComputeDispatcher
+- Compute shader dispatch management for SDF operations
+- Adaptive CPU/GPU workload balancing with real-time performance feedback
+- SDF field operation batching with spatial coherence
+- Command list generation using Unreal's RDG for SDF operations
+- Performance monitoring integration with System (8)
+- SDF operation-specific dispatch strategies (narrow band vs. full field)
+- Thread-safe dispatch queue management
+- Dynamic workload redistribution based on hardware utilization
+- Performance pattern learning for improved distribution decisions
+- Specialized dispatch for different mining tools and materials
+
+FHardwareProfileManager
+- Hardware capability detection and profile management for SDF operations
+- Device-specific optimization strategies for field operations
+- Profile selection based on GPU compute capabilities
+- Performance history tracking for profile refinement
+- Custom profile creation for specific hardware combinations
+- SDF operation-specific optimization parameters
+- Profile versioning and compatibility management
+- Platform-specific optimizations (PC, console, mobile)
+- Benchmark-based profile generation for SDF operations
+- Runtime profile adjustment based on performance metrics
+
+FWorkloadDistributor
+- Dynamic workload distribution for SDF operations
+- Operation classification for CPU vs. GPU routing
+- Hybrid processing coordination for complex operations
+- Split-field processing for large SDF updates
+- Narrow-band prioritization for interface regions
+- Performance feedback integration for strategy refinement
+- Hot path selection for common SDF operations
+- Material-aware distribution for multi-channel fields
+- Learning-based distribution refinement over time
+- Dynamic redistribution during hardware utilization changes
+
+FSDFComputeKernelManager
+- Specialized compute shader management for SDF operations
+- Mining tool-specific kernels (drill, explosive, precision)
+- Material-aware kernel specialization for different properties
+- Multi-channel SDF kernel variants for material interactions
+- Kernel permutation management for different combinations
+- Shader compilation and caching for SDF operations
+- Dynamic parameter generation for kernel dispatch
+- Optimized kernels for narrow-band updates
+- Performance-scaled kernel variants for different hardware
+- Kernel fusion for common operation sequences
+
+FAsyncComputeCoordinator
+- Asynchronous compute scheduling for non-critical SDF updates
+- Queue management for different operation priorities
+- Dependency tracking for SDF update sequences
+- Completion notification and synchronization
+- Integration with AsyncTaskManager from System (3)
+- Frame budget allocation for async compute
+- Background processing for distant field updates
+- Temporal distribution of update propagation
+- Priority-based preemption for critical operations
+- Command list generation for async compute queues
+
+REQUIRED FILES
+[From Source/MiningSpiceCoPilot/13_GPUComputeDispatcher/]
+Public/Interfaces/
+- IComputeDispatcher.h
+- IWorkloadDistributor.h
+
+Public/
+- GPUDispatcher.h
+- HardwareProfileManager.h
+- WorkloadDistributor.h
+- SDFComputeKernelManager.h
+- AsyncComputeCoordinator.h
+
+Private/
+- GPUDispatcher.cpp
+- HardwareProfileManager.cpp
+- WorkloadDistributor.cpp
+- SDFComputeKernelManager.cpp
+- AsyncComputeCoordinator.cpp
+
+// Additional critical headers for SDF GPU compute
+#include "RenderGraphResources.h"
+#include "RenderGraphBuilder.h"
+#include "ShaderParameterStruct.h"
+#include "RHICommandList.h"
+#include "ShaderCore.h"
+#include "PipelineStateCache.h"
+#include "ShaderParameterUtils.h"
+#include "ComputeShaderUtils.h"
+
+IMPLEMENTATION NOTES
+- Implement specialized compute shaders for SDF operations (CSG, evaluation, gradient calculation)
+- Design adaptive workload distribution that considers operation complexity, spatial locality, and hardware
+- Create intelligent batching system for similar SDF operations with spatial coherence
+- Implement performance monitoring and learning for improved distribution decisions over time
+- Design hardware-specific optimization profiles with runtime refinement
+- Support narrow-band prioritization for interface regions with higher precision requirements
+- Create zero-copy memory architecture for efficient CPU/GPU data sharing of SDF fields
+- Implement resource state tracking to minimize barriers during SDF operations
+- Design specialized dispatch strategies for different mining tools and materials
+- Support multi-channel SDF fields with material-specific operations
+- Create benchmark-based profile generation for unknown hardware combinations
+- Implement efficient batching of SDF operations using Unreal's Render Dependency Graph (RDG)
+- Design dynamic parameter generation for compute shader dispatch
+- Support hybrid processing with workload splitting between CPU and GPU
+- Create performance pattern learning that improves distribution decisions over time
+- Implement asynchronous compute for non-critical SDF updates
+- Design priority-based scheduling for critical vs. background SDF operations
+- Support cross-region SDF operations with boundary coordination
+- Create specialized kernels for common mining patterns (drilling, explosives, precision tools)
+- Implement kernel fusion for complex operation sequences to reduce dispatch overhead
+- Design frame budget allocation for SDF compute operations
+- Support fallback to CPU implementation for hardware without compute capabilities
+- Create visualization tools for compute workload distribution and performance
+- Implement dynamic batch sizing based on operation complexity and hardware capabilities
+- Design material-aware kernel specialization for different material properties

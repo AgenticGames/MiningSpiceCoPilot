@@ -1,0 +1,381 @@
+//------------------------------------------------------------------------------
+// SDF Operations Compute Shader
+// This file contains compute shaders for various SDF operations
+//------------------------------------------------------------------------------
+
+#include "/Engine/Public/Platform.ush"
+#include "/Engine/Private/Common.ush"
+
+// SDF Operation Parameters
+RWStructuredBuffer<float> OutputField;
+StructuredBuffer<float> InputField1;
+StructuredBuffer<float> InputField2;
+StructuredBuffer<float> MaterialField;
+
+uint OperationType;
+float3 VolumeSize;
+float3 VolumeOrigin;
+float3 CellSize;
+float3 BoundsMin;
+float3 BoundsMax;
+uint VolumeWidth;
+uint VolumeHeight;
+uint VolumeDepth;
+float Strength;
+float BlendWeight;
+float SmoothingRadius;
+uint MaterialChannelId;
+uint ChannelCount;
+uint Flags;
+float4x4 Transform;
+float NarrowBandThreshold;
+uint UseNarrowBand;
+uint UseHighPrecision;
+
+// Helper functions for SDF operations
+float SDF_Union(float a, float b)
+{
+    return min(a, b);
+}
+
+float SDF_Difference(float a, float b)
+{
+    return max(a, -b);
+}
+
+float SDF_Intersection(float a, float b)
+{
+    return max(a, b);
+}
+
+float SDF_SmoothUnion(float a, float b, float k)
+{
+    float h = max(k - abs(a - b), 0.0) / k;
+    return min(a, b) - h * h * k * 0.25;
+}
+
+float SDF_SmoothDifference(float a, float b, float k)
+{
+    float h = max(k - abs(a + b), 0.0) / k;
+    return max(a, -b) + h * h * k * 0.25;
+}
+
+float SDF_SmoothIntersection(float a, float b, float k)
+{
+    float h = max(k - abs(a - b), 0.0) / k;
+    return max(a, b) + h * h * k * 0.25;
+}
+
+// Get 3D index from flattened array index
+uint3 GetIndex3D(uint index)
+{
+    uint z = index / (VolumeWidth * VolumeHeight);
+    uint y = (index - z * VolumeWidth * VolumeHeight) / VolumeWidth;
+    uint x = index - z * VolumeWidth * VolumeHeight - y * VolumeWidth;
+    return uint3(x, y, z);
+}
+
+// Get flattened array index from 3D index
+uint GetFlatIndex(uint3 index)
+{
+    return index.z * VolumeWidth * VolumeHeight + index.y * VolumeWidth + index.x;
+}
+
+// Check if index is within bounds
+bool IsInBounds(uint3 index)
+{
+    return index.x >= 0 && index.x < VolumeWidth &&
+           index.y >= 0 && index.y < VolumeHeight &&
+           index.z >= 0 && index.z < VolumeDepth;
+}
+
+// Check if position is within operation bounds
+bool IsInOperationBounds(float3 worldPos)
+{
+    return worldPos.x >= BoundsMin.x && worldPos.x <= BoundsMax.x &&
+           worldPos.y >= BoundsMin.y && worldPos.y <= BoundsMax.y &&
+           worldPos.z >= BoundsMin.z && worldPos.z <= BoundsMax.z;
+}
+
+// Get world position from voxel index
+float3 GetWorldPosition(uint3 index)
+{
+    return VolumeOrigin + float3(index) * CellSize;
+}
+
+//------------------------------------------------------------------------------
+// Union Operation
+//------------------------------------------------------------------------------
+[numthreads(8, 8, 1)]
+void UnionOperation(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    // Calculate 3D index
+    uint3 index = DispatchThreadID;
+    
+    // Check if within volume bounds
+    if (!IsInBounds(index))
+    {
+        return;
+    }
+    
+    // Get world position
+    float3 worldPos = GetWorldPosition(index);
+    
+    // Check if within operation bounds
+    if (!IsInOperationBounds(worldPos))
+    {
+        return;
+    }
+    
+    // Get array index
+    uint flatIndex = GetFlatIndex(index);
+    
+    // Get current distance values
+    float distA = InputField1[flatIndex];
+    float distB = InputField2[flatIndex];
+    
+    // Apply operation
+    float result;
+    
+    if (Flags & (1 << 0)) // Use smooth union
+    {
+        result = SDF_SmoothUnion(distA, distB, SmoothingRadius);
+    }
+    else
+    {
+        result = SDF_Union(distA, distB);
+    }
+    
+    // Apply strength
+    result = lerp(distA, result, Strength);
+    
+    // Write result
+    OutputField[flatIndex] = result;
+}
+
+//------------------------------------------------------------------------------
+// Difference Operation
+//------------------------------------------------------------------------------
+[numthreads(8, 8, 1)]
+void DifferenceOperation(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    // Calculate 3D index
+    uint3 index = DispatchThreadID;
+    
+    // Check if within volume bounds
+    if (!IsInBounds(index))
+    {
+        return;
+    }
+    
+    // Get world position
+    float3 worldPos = GetWorldPosition(index);
+    
+    // Check if within operation bounds
+    if (!IsInOperationBounds(worldPos))
+    {
+        return;
+    }
+    
+    // Get array index
+    uint flatIndex = GetFlatIndex(index);
+    
+    // Get current distance values
+    float distA = InputField1[flatIndex];
+    float distB = InputField2[flatIndex];
+    
+    // Apply operation
+    float result;
+    
+    if (Flags & (1 << 0)) // Use smooth difference
+    {
+        result = SDF_SmoothDifference(distA, distB, SmoothingRadius);
+    }
+    else
+    {
+        result = SDF_Difference(distA, distB);
+    }
+    
+    // Apply strength
+    result = lerp(distA, result, Strength);
+    
+    // Write result
+    OutputField[flatIndex] = result;
+}
+
+//------------------------------------------------------------------------------
+// Intersection Operation
+//------------------------------------------------------------------------------
+[numthreads(8, 8, 1)]
+void IntersectionOperation(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    // Calculate 3D index
+    uint3 index = DispatchThreadID;
+    
+    // Check if within volume bounds
+    if (!IsInBounds(index))
+    {
+        return;
+    }
+    
+    // Get world position
+    float3 worldPos = GetWorldPosition(index);
+    
+    // Check if within operation bounds
+    if (!IsInOperationBounds(worldPos))
+    {
+        return;
+    }
+    
+    // Get array index
+    uint flatIndex = GetFlatIndex(index);
+    
+    // Get current distance values
+    float distA = InputField1[flatIndex];
+    float distB = InputField2[flatIndex];
+    
+    // Apply operation
+    float result;
+    
+    if (Flags & (1 << 0)) // Use smooth intersection
+    {
+        result = SDF_SmoothIntersection(distA, distB, SmoothingRadius);
+    }
+    else
+    {
+        result = SDF_Intersection(distA, distB);
+    }
+    
+    // Apply strength
+    result = lerp(distA, result, Strength);
+    
+    // Write result
+    OutputField[flatIndex] = result;
+}
+
+//------------------------------------------------------------------------------
+// Smoothing Operation
+//------------------------------------------------------------------------------
+[numthreads(8, 8, 1)]
+void SmoothingOperation(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    // Calculate 3D index
+    uint3 index = DispatchThreadID;
+    
+    // Check if within volume bounds
+    if (!IsInBounds(index))
+    {
+        return;
+    }
+    
+    // Get world position
+    float3 worldPos = GetWorldPosition(index);
+    
+    // Check if within operation bounds
+    if (!IsInOperationBounds(worldPos))
+    {
+        return;
+    }
+    
+    // Get array index
+    uint flatIndex = GetFlatIndex(index);
+    
+    // Get current distance value
+    float dist = InputField1[flatIndex];
+    
+    // Skip if outside narrow band (if enabled)
+    if (UseNarrowBand && abs(dist) > NarrowBandThreshold)
+    {
+        OutputField[flatIndex] = dist;
+        return;
+    }
+    
+    // Apply Gaussian smoothing (simple 3x3x3 kernel)
+    float sum = 0.0;
+    float weight = 0.0;
+    
+    for (int z = -1; z <= 1; z++)
+    {
+        for (int y = -1; y <= 1; y++)
+        {
+            for (int x = -1; x <= 1; x++)
+            {
+                uint3 sampleIndex = index + uint3(x, y, z);
+                
+                if (IsInBounds(sampleIndex))
+                {
+                    uint sampleFlatIndex = GetFlatIndex(sampleIndex);
+                    float sampleDist = InputField1[sampleFlatIndex];
+                    
+                    // Gaussian weight based on distance
+                    float w = exp(-(x*x + y*y + z*z) / (2.0 * SmoothingRadius * SmoothingRadius));
+                    
+                    sum += sampleDist * w;
+                    weight += w;
+                }
+            }
+        }
+    }
+    
+    // Normalize
+    float result = sum / max(weight, 0.001);
+    
+    // Apply strength
+    result = lerp(dist, result, Strength);
+    
+    // Write result
+    OutputField[flatIndex] = result;
+}
+
+//------------------------------------------------------------------------------
+// Material Blend Operation
+//------------------------------------------------------------------------------
+[numthreads(8, 8, 1)]
+void MaterialBlendOperation(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    // Calculate 3D index
+    uint3 index = DispatchThreadID;
+    
+    // Check if within volume bounds
+    if (!IsInBounds(index))
+    {
+        return;
+    }
+    
+    // Get world position
+    float3 worldPos = GetWorldPosition(index);
+    
+    // Check if within operation bounds
+    if (!IsInOperationBounds(worldPos))
+    {
+        return;
+    }
+    
+    // Get array index
+    uint flatIndex = GetFlatIndex(index);
+    
+    // Get current distance value
+    float dist = InputField1[flatIndex];
+    
+    // Skip if outside narrow band (if enabled)
+    if (UseNarrowBand && abs(dist) > NarrowBandThreshold)
+    {
+        OutputField[flatIndex] = dist;
+        return;
+    }
+    
+    // Get material channel index
+    uint channelIndex = flatIndex * ChannelCount + MaterialChannelId;
+    
+    // Get current material value
+    float materialValue = MaterialField[channelIndex];
+    
+    // Blend material based on distance field
+    float blendFactor = 1.0 - saturate((dist + NarrowBandThreshold) / (2.0 * NarrowBandThreshold));
+    float newMaterialValue = materialValue + BlendWeight * blendFactor;
+    
+    // Apply material blend
+    // In a real implementation, this would update the material channel directly
+    // For this example, we'll just modify the distance field
+    OutputField[flatIndex] = dist - (newMaterialValue - materialValue) * Strength;
+}

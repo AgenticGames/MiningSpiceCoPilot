@@ -1,0 +1,157 @@
+MiningSpiceCoPilot
+├── Source/
+│   └── MiningSpiceCoPilot/
+│       ├── 1_CoreRegistry/
+│       │   ├── Private/
+│       │   │   ├── 1_CoreServiceLocator.cpp
+│       │   │   ├── 1_MaterialRegistry.cpp
+│       │   │   ├── 1_SDFTypeRegistry.cpp
+│       │   │   ├── 1_SVOTypeRegistry.cpp
+│       │   │   ├── 1_ZoneTypeRegistry.cpp
+│       │   │   ├── TypeRegistrationOperation.cpp
+│       │   │   └── TypeRegistrationOperation.h
+│       │   └── Public/
+│       │       ├── Interfaces/
+│       │       ├── CommonServiceTypes.h
+│       │       ├── CoreServiceLocator.h
+│       │       ├── FMaterialPropertyDependency.h
+│       │       ├── MaterialRegistry.h
+│       │       ├── RegistryLockLevelEnum.h
+│       │       ├── SDFTypeRegistry.h
+│       │       ├── SVONodeTypes.h
+│       │       ├── SVOTypeRegistry.h
+│       │       ├── TypeRegistry.h
+│       │       ├── TypeVersionMigrationInfo.h
+│       │       └── ZoneTypeRegistry.h
+│       ├── 2_MemoryManagement/
+│       │   ├── Private/
+│       │   └── Public/
+│       │       └── Interfaces/
+│       │           ├── IBufferProvider.h
+│       │           ├── IMemoryManager.h
+│       │           ├── IMemoryTracker.h
+│       │           └── IPoolAllocator.h
+│       ├── 2.1_TieredCompression/
+│       │   ├── Private/
+│       │   │   ├── CompressionMetricsCollector.cpp
+│       │   │   ├── CompressionStrategySelector.cpp
+│       │   │   ├── CompressionTransitionManager.cpp
+│       │   │   ├── OctreeCompressionSystem.cpp
+│       │   │   ├── RegionActivityTracker.cpp
+│       │   │   ├── SDFCompressionSystem.cpp
+│       │   │   └── TieredCompressionManager.cpp
+│       │   └── Public/
+│       │       ├── Interfaces/
+│       │       │   ├── ICompressionManager.h
+│       │       │   └── IOctreeCompressionSystem.h
+│       │       ├── CompressionMetricsCollector.h
+│       │       ├── CompressionStrategySelector.h
+│       │       ├── CompressionTransitionManager.h
+│       │       ├── OctreeCompressionSystem.h
+│       │       ├── RegionActivityTracker.h
+│       │       ├── SDFCompressionSystem.h
+│       │       └── TieredCompressionManager.h
+│       ├── 2.2_RegionHibernation/
+│       │   ├── Private/
+│       │   │   ├── HibernationCache.cpp
+│       │   │   ├── PrioritizedReactivationCoordinator.cpp
+│       │   │   ├── RegionHibernationManager.cpp
+│       │   │   ├── SVOSDFHibernationSerializer.cpp
+│       │   │   └── TopologicalReactivationPredictor.cpp
+│       │   └── Public/
+│       │       └── Interfaces/
+│       │           ├── HibernationCache.h
+│       │           ├── PrioritizedReactivationCoordinator.h
+│       │           ├── RegionHibernationManager.h
+│       │           ├── SVOSDFHibernationSerializer.h
+│       │           └── TopologicalReactivationPredictor.h
+│       ├── 2.3_ZoneBasedConcurrentMining/
+│       │   ├── Private/
+│       │   │   ├── ConflictHistoryAnalyzer.cpp
+│       │   │   ├── MaterialVersionTable.cpp
+│       │   │   ├── TransactionManager.cpp
+│       │   │   ├── TransactionReadSet.cpp
+│       │   │   └── ZoneManager.cpp
+│       │   └── Public/
+│       │       └── Interfaces/
+│       │           ├── ConflictHistoryAnalyzer.h
+│       │           ├── MaterialVersionTable.h
+│       │           ├── TransactionManager.h
+│       │           ├── TransactionReadSet.h
+│       │           └── ZoneManager.h
+│       ├── 3_ThreadingTaskSystem/
+│       │   ├── Private/
+│       │   │   ├── Interfaces/
+│       │   │   ├── AsyncTaskManager.cpp
+│       │   │   ├── ParallelExecutor.cpp
+│       │   │   ├── PriorityTaskQueue.cpp
+│       │   │   ├── TaskScheduler.cpp
+│       │   │   ├── ThreadSafety.cpp
+│       │   │   ├── ThreadSafeOperationQueue.cpp
+│       │   │   ├── TransactionManager.cpp
+│       │   │   └── ZoneManager.cpp
+│       │   └── Public/
+│       │       ├── Interfaces/
+│       │       │   ├── IAsyncOperation.h
+│       │       │   ├── ITaskScheduler.h
+│       │       │   ├── IThreadSafeQueue.h
+│       │       │   └── ITransactionManager.h
+│       │       ├── TaskSystem/
+│       │       ├── Utils/
+│       │       ├── AsyncTaskManager.h
+│       │       ├── AsyncTaskTypes.h
+│       │       ├── NumaHelpers.h
+│       │       ├── ParallelConfig.h
+│       │       ├── ParallelExecutor.h
+│       │       ├── PlatformMiscExtensions.h
+│       │       ├── PriorityTaskQueue.h
+│       │       ├── TaskDependencyVisualizer.h
+│       │       ├── TaskHelpers.h
+│       │       ├── TaskScheduler.h
+│       │       ├── ThreadSafety.h
+│       │       ├── ThreadSafeOperationQueue.h
+│       │       ├── ThreadSafetyInterface.h
+│       │       ├── TransactionManager.h
+│       │       └── ZoneManager.h
+│       ├── 6_ServiceRegistryandDependency/
+│       │   ├── Private/
+│       │   │   ├── DependencyResolver.cpp
+│       │   │   ├── ServiceDebugVisualizer.cpp
+│       │   │   ├── ServiceHealthMonitor.cpp
+│       │   │   ├── ServiceLocator.cpp
+│       │   │   └── ServiceRegistryPCH.h
+│       │   └── Public/
+│       │       ├── Interfaces/
+│       │       │   ├── IMemoryAwareService.h
+│       │       │   ├── ISaveableService.h
+│       │       │   └── IServiceLocator.h
+│       │       ├── DependencyResolver.h
+│       │       ├── ServiceDebugVisualizer.h
+│       │       ├── ServiceHealthMonitor.h
+│       │       ├── ServiceLocator.h
+│       │       └── ServiceManager.h
+│       ├── GUIDE Locks/
+│       ├── Private/
+│       │   └── Logging/
+│       │       └── LogMining.cpp
+│       ├── Public/
+│       │   └── Logging/
+│       │       └── LogMining.h
+│       ├── MiningSpiceCoPilot.cpp
+│       ├── MiningSpiceCoPilot.h
+│       ├── MiningSpiceCoPilot.Build.cs
+│       ├── MiningSpiceCoPilotCharacter.cpp
+│       ├── MiningSpiceCoPilotCharacter.h
+│       ├── MiningSpiceCoPilotGameMode.cpp
+│       ├── MiningSpiceCoPilotGameMode.h
+│       ├── MiningSpiceCoPilotPickUpComponent.cpp
+│       ├── MiningSpiceCoPilotPickUpComponent.h
+│       ├── MiningSpiceCoPilotProjectile.cpp
+│       ├── MiningSpiceCoPilotProjectile.h
+│       └── MiningSpiceCoPilotWeaponComponent.cpp
+├── .gitignore
+├── .vsconfig
+├── build_log.txt
+├── build_ue_project.ps1
+├── MiningSpiceCoPilot.sln
+└── MiningSpiceCoPilot.uproject

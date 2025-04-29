@@ -1,0 +1,382 @@
+//------------------------------------------------------------------------------
+// Mining Operations Compute Shader
+// This file contains compute shaders for specialized mining operations
+//------------------------------------------------------------------------------
+
+#include "/Engine/Public/Platform.ush"
+#include "/Engine/Private/Common.ush"
+
+// SDF Operation Parameters
+RWStructuredBuffer<float> OutputField;
+StructuredBuffer<float> InputField;
+StructuredBuffer<float> MaterialField;
+StructuredBuffer<float> ToolShapeField;
+
+// Drill Parameters
+float3 DrillOrigin;
+float3 DrillDirection;
+float DrillRadius;
+float DrillLength;
+float Smoothing;
+float Strength;
+
+// Explosive Parameters
+float3 ExplosionCenter;
+float ExplosionRadius;
+float FalloffRadius;
+float NoiseFrequency;
+float NoiseAmplitude;
+uint NoiseOctaves;
+uint NoiseEnabled;
+
+// Tool Parameters
+float4x4 ToolTransform;
+uint ToolTypeId;
+
+// Volume Parameters
+float3 VolumeSize;
+float3 VolumeOrigin;
+float3 CellSize;
+float3 BoundsMin;
+float3 BoundsMax;
+uint VolumeWidth;
+uint VolumeHeight;
+uint VolumeDepth;
+
+// Material Parameters
+uint MaterialChannelId;
+uint ChannelCount;
+uint Flags;
+uint UseHighPrecision;
+
+// Helper functions
+uint3 GetIndex3D(uint index)
+{
+    uint z = index / (VolumeWidth * VolumeHeight);
+    uint y = (index - z * VolumeWidth * VolumeHeight) / VolumeWidth;
+    uint x = index - z * VolumeWidth * VolumeHeight - y * VolumeWidth;
+    return uint3(x, y, z);
+}
+
+uint GetFlatIndex(uint3 index)
+{
+    return index.z * VolumeWidth * VolumeHeight + index.y * VolumeWidth + index.x;
+}
+
+bool IsInBounds(uint3 index)
+{
+    return index.x >= 0 && index.x < VolumeWidth &&
+           index.y >= 0 && index.y < VolumeHeight &&
+           index.z >= 0 && index.z < VolumeDepth;
+}
+
+bool IsInOperationBounds(float3 worldPos)
+{
+    return worldPos.x >= BoundsMin.x && worldPos.x <= BoundsMax.x &&
+           worldPos.y >= BoundsMin.y && worldPos.y <= BoundsMax.y &&
+           worldPos.z >= BoundsMin.z && worldPos.z <= BoundsMax.z;
+}
+
+float3 GetWorldPosition(uint3 index)
+{
+    return VolumeOrigin + float3(index) * CellSize;
+}
+
+// SDF Primitive functions
+float SDF_Sphere(float3 p, float3 center, float radius)
+{
+    return length(p - center) - radius;
+}
+
+float SDF_Cylinder(float3 p, float3 start, float3 end, float radius)
+{
+    float3 pa = p - start;
+    float3 ba = end - start;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h) - radius;
+}
+
+float SDF_Box(float3 p, float3 center, float3 size)
+{
+    float3 d = abs(p - center) - size;
+    return min(max(d.x, max(d.y, d.z)), 0.0) + length(max(d, 0.0));
+}
+
+// Smooth min operation for combining SDFs
+float SmoothMin(float a, float b, float k)
+{
+    float h = max(k - abs(a - b), 0.0) / k;
+    return min(a, b) - h * h * k * 0.25;
+}
+
+// 3D Noise function (simplified Perlin noise)
+float SimpleNoise(float3 p)
+{
+    float3 i = floor(p);
+    float3 f = frac(p);
+    
+    // Smoothstep for smoother gradient
+    float3 u = f * f * (3.0 - 2.0 * f);
+    
+    // Generate random values at lattice points
+    float n000 = frac(sin(dot(i, float3(12.9898, 78.233, 37.719))) * 43758.5453);
+    float n100 = frac(sin(dot(i + float3(1, 0, 0), float3(12.9898, 78.233, 37.719))) * 43758.5453);
+    float n010 = frac(sin(dot(i + float3(0, 1, 0), float3(12.9898, 78.233, 37.719))) * 43758.5453);
+    float n110 = frac(sin(dot(i + float3(1, 1, 0), float3(12.9898, 78.233, 37.719))) * 43758.5453);
+    float n001 = frac(sin(dot(i + float3(0, 0, 1), float3(12.9898, 78.233, 37.719))) * 43758.5453);
+    float n101 = frac(sin(dot(i + float3(1, 0, 1), float3(12.9898, 78.233, 37.719))) * 43758.5453);
+    float n011 = frac(sin(dot(i + float3(0, 1, 1), float3(12.9898, 78.233, 37.719))) * 43758.5453);
+    float n111 = frac(sin(dot(i + float3(1, 1, 1), float3(12.9898, 78.233, 37.719))) * 43758.5453);
+    
+    // Interpolate random values
+    return lerp(
+        lerp(lerp(n000, n100, u.x), lerp(n010, n110, u.x), u.y),
+        lerp(lerp(n001, n101, u.x), lerp(n011, n111, u.x), u.y),
+        u.z
+    );
+}
+
+// Fractal Brownian Motion (FBM) for more detailed noise
+float FBM(float3 p, uint octaves, float frequency, float amplitude)
+{
+    float result = 0.0;
+    float amp = amplitude;
+    float freq = frequency;
+    
+    for (uint i = 0; i < octaves; i++)
+    {
+        result += SimpleNoise(p * freq) * amp;
+        
+        // Increase frequency, decrease amplitude for each octave
+        freq *= 2.0;
+        amp *= 0.5;
+    }
+    
+    return result;
+}
+
+//------------------------------------------------------------------------------
+// Drill Operation
+//------------------------------------------------------------------------------
+[numthreads(8, 8, 1)]
+void DrillOperation(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    // Calculate 3D index
+    uint3 index = DispatchThreadID;
+    
+    // Check if within volume bounds
+    if (!IsInBounds(index))
+    {
+        return;
+    }
+    
+    // Get world position
+    float3 worldPos = GetWorldPosition(index);
+    
+    // Check if within operation bounds
+    if (!IsInOperationBounds(worldPos))
+    {
+        // Keep existing value
+        uint flatIndex = GetFlatIndex(index);
+        OutputField[flatIndex] = InputField[flatIndex];
+        return;
+    }
+    
+    // Get array index
+    uint flatIndex = GetFlatIndex(index);
+    
+    // Get current distance value
+    float currentDist = InputField[flatIndex];
+    
+    // Calculate end point of drill
+    float3 drillEnd = DrillOrigin + normalize(DrillDirection) * DrillLength;
+    
+    // Calculate SDF for drill
+    float drillDist = SDF_Cylinder(worldPos, DrillOrigin, drillEnd, DrillRadius);
+    
+    // Apply smoothing if enabled
+    float result;
+    if (Smoothing > 0.0)
+    {
+        result = SmoothMin(currentDist, -drillDist, Smoothing);
+    }
+    else
+    {
+        result = min(currentDist, -drillDist);
+    }
+    
+    // Apply strength
+    result = lerp(currentDist, result, Strength);
+    
+    // Write result
+    OutputField[flatIndex] = result;
+    
+    // Update material if applicable
+    if (MaterialChannelId < ChannelCount)
+    {
+        uint materialIndex = flatIndex * ChannelCount + MaterialChannelId;
+        // Code to update material would go here
+    }
+}
+
+//------------------------------------------------------------------------------
+// Explosive Operation
+//------------------------------------------------------------------------------
+[numthreads(8, 8, 1)]
+void ExplosiveOperation(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    // Calculate 3D index
+    uint3 index = DispatchThreadID;
+    
+    // Check if within volume bounds
+    if (!IsInBounds(index))
+    {
+        return;
+    }
+    
+    // Get world position
+    float3 worldPos = GetWorldPosition(index);
+    
+    // Check if within operation bounds
+    if (!IsInOperationBounds(worldPos))
+    {
+        // Keep existing value
+        uint flatIndex = GetFlatIndex(index);
+        OutputField[flatIndex] = InputField[flatIndex];
+        return;
+    }
+    
+    // Get array index
+    uint flatIndex = GetFlatIndex(index);
+    
+    // Get current distance value
+    float currentDist = InputField[flatIndex];
+    
+    // Calculate base explosion SDF
+    float explosionDist = SDF_Sphere(worldPos, ExplosionCenter, ExplosionRadius);
+    
+    // Apply noise if enabled
+    if (NoiseEnabled > 0)
+    {
+        float noise = FBM(worldPos * NoiseFrequency, NoiseOctaves, 1.0, NoiseAmplitude);
+        explosionDist += noise * ExplosionRadius * 0.3; // Perturb the sphere based on noise
+    }
+    
+    // Apply falloff based on distance from center
+    float distanceFromCenter = length(worldPos - ExplosionCenter);
+    float falloff = 1.0 - saturate((distanceFromCenter - ExplosionRadius) / FalloffRadius);
+    
+    // Combine with existing field
+    float result;
+    if (Smoothing > 0.0)
+    {
+        result = SmoothMin(currentDist, -explosionDist * falloff, Smoothing);
+    }
+    else
+    {
+        result = min(currentDist, -explosionDist * falloff);
+    }
+    
+    // Apply strength
+    result = lerp(currentDist, result, Strength);
+    
+    // Write result
+    OutputField[flatIndex] = result;
+    
+    // Update material if applicable
+    if (MaterialChannelId < ChannelCount)
+    {
+        uint materialIndex = flatIndex * ChannelCount + MaterialChannelId;
+        // Code to update material would go here
+    }
+}
+
+//------------------------------------------------------------------------------
+// Precision Tool Operation
+//------------------------------------------------------------------------------
+[numthreads(8, 8, 1)]
+void PrecisionToolOperation(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    // Calculate 3D index
+    uint3 index = DispatchThreadID;
+    
+    // Check if within volume bounds
+    if (!IsInBounds(index))
+    {
+        return;
+    }
+    
+    // Get world position
+    float3 worldPos = GetWorldPosition(index);
+    
+    // Check if within operation bounds
+    if (!IsInOperationBounds(worldPos))
+    {
+        // Keep existing value
+        uint flatIndex = GetFlatIndex(index);
+        OutputField[flatIndex] = InputField[flatIndex];
+        return;
+    }
+    
+    // Get array index
+    uint flatIndex = GetFlatIndex(index);
+    
+    // Get current distance value
+    float currentDist = InputField[flatIndex];
+    
+    // Transform point to tool space
+    float4 toolSpacePos = mul(float4(worldPos, 1.0), ToolTransform);
+    float3 localPos = toolSpacePos.xyz / toolSpacePos.w;
+    
+    // Calculate tool SDF based on tool type
+    float toolDist;
+    
+    if (ToolTypeId == 0) // Box tool
+    {
+        toolDist = SDF_Box(localPos, float3(0,0,0), float3(0.5, 0.5, 0.5));
+    }
+    else if (ToolTypeId == 1) // Sphere tool
+    {
+        toolDist = SDF_Sphere(localPos, float3(0,0,0), 0.5);
+    }
+    else if (ToolTypeId == 2) // Cylinder tool
+    {
+        toolDist = SDF_Cylinder(localPos, float3(0,-0.5,0), float3(0,0.5,0), 0.5);
+    }
+    else // Default to sphere
+    {
+        toolDist = SDF_Sphere(localPos, float3(0,0,0), 0.5);
+    }
+    
+    // Apply high precision computation if enabled
+    if (UseHighPrecision > 0)
+    {
+        // In a real implementation, this would use more precise SDF calculations
+        // For this example, we'll just clamp to a smaller range for more precision
+        toolDist = clamp(toolDist, -1.0, 1.0);
+    }
+    
+    // Combine with existing field
+    float result;
+    if (Smoothing > 0.0)
+    {
+        result = SmoothMin(currentDist, -toolDist, Smoothing);
+    }
+    else
+    {
+        result = min(currentDist, -toolDist);
+    }
+    
+    // Apply strength
+    result = lerp(currentDist, result, Strength);
+    
+    // Write result
+    OutputField[flatIndex] = result;
+    
+    // Update material if applicable
+    if (MaterialChannelId < ChannelCount)
+    {
+        uint materialIndex = flatIndex * ChannelCount + MaterialChannelId;
+        // Code to update material would go here
+    }
+}

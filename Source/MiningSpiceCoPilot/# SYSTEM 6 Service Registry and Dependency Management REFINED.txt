@@ -194,8 +194,8 @@ FServiceDebugVisualizer
 - Runtime service reconfiguration visualization
 
 REQUIRED FILES
-[From Source/MiningSystem/Core/]
-Public/Registry/
+[From Source/MiningSpiceCoPilot/6_ServiceRegistryandDependency/]
+Public/
 - ServiceLocator.h
 - DependencyResolver.h
 - ServiceManager.h
@@ -205,7 +205,7 @@ Public/Registry/
 - ServiceHealthMonitor.h
 - ServiceDebugVisualizer.h
 
-Private/Registry/
+Private/
 - ServiceLocator.cpp
 - DependencyResolver.cpp
 - ServiceManager.cpp

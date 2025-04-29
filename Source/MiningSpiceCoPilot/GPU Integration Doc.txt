@@ -1,0 +1,1631 @@
+# GPU Compute Dispatcher System Integration Guide
+
+## Overview
+This document outlines the key integration points between the GPU Compute Dispatcher System (System 13) and existing systems, particularly the Core Registry (System 1) and Service Registry (System 6). The GPU Compute Dispatcher provides efficient GPU compute workload distribution optimized for SDF operations.
+
+## Key Dependencies
+- Core Registry (System 1)
+- Memory Management (System 2)
+- Threading and Task System (System 3)
+- Service Registry and Dependency (System 6)
+
+## 1. Core Registry Integration
+
+### Key Interfaces to Implement
+
+#### 1.1 IService Interface
+The GPU Compute Dispatcher should implement the `IService` interface (from `/1_CoreRegistry/Public/Interfaces/IService.h`):
+```cpp
+class FGPUDispatcher : public IComputeDispatcher, public IService
+{
+public:
+    // IService implementation
+    virtual bool Initialize() override;
+    virtual void Shutdown() override;
+    virtual bool IsInitialized() const override;
+    virtual FName GetServiceName() const override { return "GPUComputeDispatcher"; }
+    virtual int32 GetPriority() const override { return 10; } // Higher priority than default
+    virtual bool IsHealthy() const override;
+    
+    // IComputeDispatcher implementation
+    // ...
+};
+```
+
+#### 1.2 Service Registration
+Register the GPU Compute Dispatcher with the Service Locator during initialization:
+```cpp
+bool FGPUDispatcher::Initialize()
+{
+    // Initialize GPU resources
+    // ...
+    
+    // Register with Service Locator
+    IServiceLocator::Get().RegisterService<IComputeDispatcher>(this);
+    
+    return true;
+}
+```
+
+#### 1.3 Service Dependencies
+Declare dependencies on other services:
+```cpp
+// In module startup code or initialization function:
+IServiceLocator::Get().DeclareDependency(
+    UComputeDispatcher::StaticClass(),
+    UMemoryManager::StaticClass(), 
+    EServiceDependencyType::Required
+);
+
+IServiceLocator::Get().DeclareDependency(
+    UComputeDispatcher::StaticClass(),
+    UTaskScheduler::StaticClass(), 
+    EServiceDependencyType::Required
+);
+```
+
+### 1.4 Type Registry Integration
+If needed, register compute shader types with the registry system:
+```cpp
+// Register compute shader types
+IRegistry* ShaderRegistry = static_cast<IRegistry*>(
+    IServiceLocator::Get().ResolveService<IRegistry>(ERegistryType::ShaderRegistry)
+);
+if (ShaderRegistry)
+{
+    // Register shader types
+    uint32 SDFUnionShaderTypeId = ShaderRegistry->RegisterType("SDFUnionShader", ...);
+    // ...
+}
+```
+
+## 2. Threading System Integration
+
+### 2.1 Task Scheduling
+Use the Task Scheduler for asynchronous operations:
+```cpp
+void FAsyncComputeCoordinator::ScheduleAsyncCompute(TFunction<void()> ComputeTask, ETaskPriority Priority)
+{
+    FTaskConfig Config;
+    Config.Priority = Priority;
+    Config.Type = ETaskType::GPU;
+    Config.OptimizationFlags = EThreadOptimizationFlags::GPUAffinity;
+    
+    // Schedule the task
+    uint64 TaskId = ITaskScheduler::Get().ScheduleTask(
+        ComputeTask, 
+        Config, 
+        TEXT("AsyncGPUCompute")
+    );
+    
+    // Store task ID for management
+    PendingTasks.Add(TaskId);
+}
+```
+
+### 2.2 Hardware Detection
+Use hardware detection capabilities from the threading system:
+```cpp
+void FHardwareProfileManager::DetectHardwareCapabilities()
+{
+    // Get hardware info from task scheduler
+    const FHardwareInfo& HWInfo = ITaskScheduler::Get().GetHardwareInfo();
+    
+    // Configure profiles based on capabilities
+    if (HWInfo.GPUInfo.ComputeSupport >= EComputeSupport::Shader5_0)
+    {
+        // Use high-performance compute profile
+        CurrentProfile = CreateHighPerformanceProfile();
+    }
+    else if (HWInfo.GPUInfo.ComputeSupport >= EComputeSupport::Shader4_0)
+    {
+        // Use standard compute profile
+        CurrentProfile = CreateStandardProfile();
+    }
+    else
+    {
+        // Fallback to CPU processing
+        CurrentProfile = CreateCPUFallbackProfile();
+    }
+}
+```
+
+## 3. Memory Management Integration
+
+### 3.1 Resource Pooling
+Integrate with memory pooling for GPU resource management:
+```cpp
+void FSDFComputeKernelManager::InitializeResourcePool()
+{
+    // Get memory pool allocator
+    IPoolAllocator* PoolAllocator = IServiceLocator::Get().ResolveService<IPoolAllocator>();
+    if (PoolAllocator)
+    {
+        // Create GPU buffer pool
+        GPUBufferPool = PoolAllocator->CreatePool(
+            "GPUComputeBuffers",
+            sizeof(FComputeShaderParameter) * 1024,
+            32,  // Initial count
+            64   // Max count
+        );
+    }
+}
+```
+
+### 3.2 Zero-Copy Memory
+Implement zero-copy memory for CPU/GPU shared resources:
+```cpp
+FBufferHandle FWorkloadDistributor::AllocateZeroCopyBuffer(uint32 SizeInBytes)
+{
+    // Get buffer provider
+    IBufferProvider* BufferProvider = IServiceLocator::Get().ResolveService<IBufferProvider>();
+    if (BufferProvider)
+    {
+        return BufferProvider->AllocateBuffer(
+            SizeInBytes,
+            EBufferUsage::GPUCompute | EBufferUsage::CPURead | EBufferUsage::CPUWrite,
+            "SDFComputeBuffer"
+        );
+    }
+    return FBufferHandle();
+}
+```
+
+## 4. Implementation Checklist
+
+### 4.1 Core Classes
+- [ ] FGPUDispatcher
+- [ ] FHardwareProfileManager  
+- [ ] FWorkloadDistributor
+- [ ] FSDFComputeKernelManager
+- [ ] FAsyncComputeCoordinator
+
+### 4.2 Interface Definitions
+- [ ] IComputeDispatcher
+- [ ] IWorkloadDistributor
+
+### 4.3 Integration Points
+- [ ] Service registration with Service Locator
+- [ ] Task scheduling through Task Scheduler
+- [ ] Memory management through PoolAllocator and BufferProvider
+- [ ] Hardware profiling and adaptation
+- [ ] Compute shader management and compilation
+
+## 5. Core Registry Integration Notes
+
+### 5.1 Key Interfaces to Consider
+- IServiceLocator: For registering and resolving services
+- IRegistry: For registering compute types and managing their lifecycle
+- IService: Base interface for the dispatcher service
+- ITaskScheduler: For scheduling compute tasks and managing their execution
+
+### 5.2 Service Registration Pattern
+Follow the established pattern for service registration:
+```cpp
+// In module startup or initialization:
+FGPUDispatcher* Dispatcher = new FGPUDispatcher();
+if (Dispatcher->Initialize())
+{
+    IServiceLocator::Get().RegisterService<IComputeDispatcher>(Dispatcher);
+}
+```
+
+## 6. Memory Management Integration (System 2)
+
+### 6.1 Key Interfaces for GPU Compute Integration
+
+#### 6.1.1 IBufferProvider
+The `IBufferProvider` interface is critical for GPU compute operations, as it manages shared memory buffers between CPU and GPU:
+
+```cpp
+// In FGPUDispatcher or specialized buffer manager
+void InitializeComputeBuffers()
+{
+    // Get buffer provider from service locator
+    IBufferProvider* BufferProvider = IServiceLocator::Get().ResolveService<IBufferProvider>();
+    if (!BufferProvider)
+    {
+        UE_LOG(LogGPUDispatcher, Error, TEXT("Failed to resolve IBufferProvider"));
+        return;
+    }
+    
+    // Create SDF field buffer with GPU compute and CPU read/write capabilities
+    SDFFieldBuffer = BufferProvider->CreateBuffer(
+        SDFFieldSizeInBytes,
+        EBufferUsage::SDFField,
+        TEXT("SDF_Field_Primary"),
+        /*bZeroCopy=*/true,
+        /*bGPUWritable=*/true
+    );
+    
+    // Create material buffer
+    MaterialBuffer = BufferProvider->CreateBuffer(
+        MaterialSizeInBytes, 
+        EBufferUsage::MaterialChannels,
+        TEXT("Material_Channels_Primary"),
+        /*bZeroCopy=*/true,
+        /*bGPUWritable=*/true
+    );
+}
+```
+
+#### 6.1.2 Managing Buffer Lifecycle with IBufferProvider
+
+Implement proper buffer lifecycle management:
+
+```cpp
+class FSDFComputeBuffer
+{
+public:
+    // Constructor
+    FSDFComputeBuffer(IBufferProvider* InProvider, uint64 InSizeInBytes, const FString& InName)
+        : BufferProvider(InProvider)
+        , Buffer(nullptr)
+        , GPUResource(nullptr)
+    {
+        if (BufferProvider)
+        {
+            Buffer = BufferProvider->CreateBuffer(
+                InSizeInBytes,
+                EBufferUsage::SDFField,
+                *InName,
+                /*bZeroCopy=*/true,
+                /*bGPUWritable=*/true
+            );
+            
+            if (Buffer)
+            {
+                GPUResource = Buffer->GetGPUResource();
+            }
+        }
+    }
+    
+    // Destructor
+    ~FSDFComputeBuffer()
+    {
+        if (Buffer)
+        {
+            BufferProvider->DestroyBuffer(Buffer);
+            Buffer = nullptr;
+            GPUResource = nullptr;
+        }
+    }
+    
+    // Map for CPU access
+    void* Map(EBufferAccessMode AccessMode = EBufferAccessMode::ReadWrite)
+    {
+        return Buffer ? Buffer->Map(AccessMode) : nullptr;
+    }
+    
+    // Unmap to make changes visible to GPU
+    bool Unmap()
+    {
+        return Buffer ? Buffer->Unmap() : false;
+    }
+    
+    // Get GPU resource for compute shader binding
+    void* GetGPUResource() const { return GPUResource; }
+    
+private:
+    IBufferProvider* BufferProvider;
+    IBuffer* Buffer;
+    void* GPUResource;
+};
+```
+
+### 6.2 IPoolAllocator for Compute Resource Management
+
+Leverage the pool allocator for efficient compute resource management:
+
+```cpp
+class FComputeResourceManager
+{
+public:
+    bool Initialize()
+    {
+        // Get pool allocator from service locator
+        PoolAllocator = IServiceLocator::Get().ResolveService<IPoolAllocator>();
+        if (!PoolAllocator)
+        {
+            UE_LOG(LogGPUDispatcher, Error, TEXT("Failed to resolve IPoolAllocator"));
+            return false;
+        }
+        
+        // Create pools for different resource types
+        ShaderParameterPool = PoolAllocator->CreatePool(
+            "GPUShaderParams",
+            sizeof(FShaderParameterStruct),
+            64,  // Initial blocks
+            256  // Max blocks
+        );
+        
+        ComputeCommandPool = PoolAllocator->CreatePool(
+            "GPUComputeCommands",
+            sizeof(FComputeCommand),
+            128,  // Initial blocks
+            512   // Max blocks
+        );
+        
+        // Set memory usage hints
+        ShaderParameterPool->SetMemoryUsageHint(EPoolMemoryUsage::FrequentAllocDealloc);
+        ComputeCommandPool->SetMemoryUsageHint(EPoolMemoryUsage::FrequentAccess);
+        
+        return true;
+    }
+    
+    // Allocate shader parameters from pool
+    FShaderParameterStruct* AllocateShaderParameters()
+    {
+        return static_cast<FShaderParameterStruct*>(ShaderParameterPool->Allocate(nullptr, "ShaderParams"));
+    }
+    
+    // Free shader parameters
+    void FreeShaderParameters(FShaderParameterStruct* Params)
+    {
+        if (Params && ShaderParameterPool)
+        {
+            ShaderParameterPool->Free(Params);
+        }
+    }
+    
+private:
+    IPoolAllocator* PoolAllocator;
+    IMemoryPool* ShaderParameterPool;
+    IMemoryPool* ComputeCommandPool;
+};
+```
+
+### 6.3 GPU Memory Optimization Strategies
+
+Implement these key strategies for optimal GPU memory performance:
+
+#### 6.3.1 Double Buffering for Compute Operations
+
+```cpp
+class FSDFFieldDoubleBuffer
+{
+public:
+    void Initialize(IBufferProvider* BufferProvider, uint64 FieldSizeInBytes)
+    {
+        // Create read and write buffers
+        ReadBuffer = BufferProvider->CreateBuffer(
+            FieldSizeInBytes,
+            EBufferUsage::SDFField,
+            TEXT("SDF_Field_Read"),
+            /*bZeroCopy=*/true,
+            /*bGPUWritable=*/false  // Read-only for GPU to prevent write hazards
+        );
+        
+        WriteBuffer = BufferProvider->CreateBuffer(
+            FieldSizeInBytes,
+            EBufferUsage::SDFField,
+            TEXT("SDF_Field_Write"),
+            /*bZeroCopy=*/true,
+            /*bGPUWritable=*/true   // Writable for GPU computations
+        );
+    }
+    
+    // Swap read/write buffers after compute operations complete
+    void Swap()
+    {
+        std::swap(ReadBuffer, WriteBuffer);
+    }
+    
+    // Get buffer for reading input data
+    IBuffer* GetReadBuffer() const { return ReadBuffer; }
+    
+    // Get buffer for writing output data
+    IBuffer* GetWriteBuffer() const { return WriteBuffer; }
+    
+private:
+    IBuffer* ReadBuffer;
+    IBuffer* WriteBuffer;
+};
+```
+
+#### 6.3.2 Memory Pool Configuration for GPU Resources
+
+Configure memory pools specifically for GPU-related operations:
+
+```cpp
+void FSDFComputeKernelManager::ConfigureGPUMemoryPools()
+{
+    // Resolve pool allocator
+    IPoolAllocator* PoolAllocator = IServiceLocator::Get().ResolveService<IPoolAllocator>();
+    if (!PoolAllocator)
+    {
+        return;
+    }
+    
+    // Create specialized pools for different compute resources
+    
+    // Parameters pool - optimized for high allocation frequency
+    ShaderParamsPool = PoolAllocator->CreatePool(
+        "GPUShaderParams",
+        sizeof(FComputeShaderParameters),
+        256,  // Initial count
+        1024  // Max count
+    );
+    ShaderParamsPool->SetMemoryUsageHint(EPoolMemoryUsage::FrequentAllocDealloc);
+    ShaderParamsPool->SetAlignmentRequirement(16);  // For SIMD alignment
+    
+    // Persistent pool - optimized for long-lived resources
+    PersistentResourcesPool = PoolAllocator->CreatePool(
+        "GPUPersistentResources",
+        4096,  // 4KB blocks
+        32,    // Initial count
+        128    // Max count
+    );
+    PersistentResourcesPool->SetMemoryUsageHint(EPoolMemoryUsage::LongLived);
+    
+    // Transient pool - optimized for short-lived resources during operations
+    TransientResourcesPool = PoolAllocator->CreatePool(
+        "GPUTransientResources",
+        2048,  // 2KB blocks
+        64,    // Initial count
+        256    // Max count
+    );
+    TransientResourcesPool->SetMemoryUsageHint(EPoolMemoryUsage::ShortLived);
+    TransientResourcesPool->SetAccessPattern(EMemoryAccessPattern::Sequential);
+}
+```
+
+### 6.4 Integration with Memory Tracker
+
+Monitor and optimize GPU resource usage using the memory tracker:
+
+```cpp
+void FGPUDispatcher::RegisterWithMemoryTracker()
+{
+    // Get memory tracker from service locator
+    IMemoryTracker* MemoryTracker = IServiceLocator::Get().ResolveService<IMemoryTracker>();
+    if (!MemoryTracker)
+    {
+        return;
+    }
+    
+    // Register GPU memory allocation category
+    MemoryTracker->RegisterCategory(
+        "GPU_Compute",
+        "GPU compute resources including shader parameters, buffers, and command lists",
+        EMemoryTrackingFlags::HighPriority | EMemoryTrackingFlags::ReportDetailed
+    );
+    
+    // Register subcategories
+    MemoryTracker->RegisterSubcategory(
+        "GPU_Compute",
+        "Buffers",
+        "GPU field and material buffers",
+        EMemoryTrackingFlags::GraphHistorical
+    );
+    
+    MemoryTracker->RegisterSubcategory(
+        "GPU_Compute",
+        "ShaderResources",
+        "Compiled shaders and parameters",
+        EMemoryTrackingFlags::GraphHistorical
+    );
+    
+    // Register memory limit warning callback
+    MemoryTracker->RegisterMemoryLimitCallback(
+        "GPU_Compute",
+        [this](uint64 CurrentUsage, uint64 Limit) {
+            this->HandleMemoryLimitWarning(CurrentUsage, Limit);
+        },
+        0.85f  // 85% threshold
+    );
+}
+
+// Track memory allocations in our code
+void FGPUDispatcher::AllocateComputeResources()
+{
+    // Get memory tracker
+    IMemoryTracker* MemoryTracker = IServiceLocator::Get().ResolveService<IMemoryTracker>();
+    
+    // Create resources and track them
+    uint64 BufferSize = 1024 * 1024 * 10;  // 10MB example
+    
+    // Report allocation to tracker
+    if (MemoryTracker)
+    {
+        MemoryTracker->TrackAllocation(
+            "GPU_Compute",
+            "Buffers",
+            "SDFFieldBuffer",
+            BufferSize,
+            this
+        );
+    }
+    
+    // Create buffer
+    SDFFieldBuffer = CreateComputeBuffer(BufferSize);
+}
+```
+
+### 6.5 Efficient Resource Transition and Synchronization
+
+Implement efficient GPU resource transitions with memory system integration:
+
+```cpp
+class FGPUResourceStateManager
+{
+public:
+    // Initialize with memory system integration
+    void Initialize()
+    {
+        // Get memory tracking services
+        BufferProvider = IServiceLocator::Get().ResolveService<IBufferProvider>();
+        MemoryTracker = IServiceLocator::Get().ResolveService<IMemoryTracker>();
+    }
+    
+    // Transition a buffer from CPU to GPU accessibility
+    void TransitionToGPU(IBuffer* Buffer)
+    {
+        if (!Buffer)
+            return;
+            
+        // Ensure buffer is unmapped before GPU use
+        if (Buffer->IsMapped())
+        {
+            Buffer->Unmap();
+        }
+        
+        // Track state transition
+        if (MemoryTracker)
+        {
+            MemoryTracker->TrackEvent(
+                "GPU_Compute",
+                "ResourceTransition",
+                FString::Printf(TEXT("Buffer %s: CPU → GPU"), *Buffer->GetBufferName().ToString()),
+                Buffer->GetSizeInBytes()
+            );
+        }
+        
+        // Additional GPU-specific transition logic would go here
+    }
+    
+    // Transition a buffer from GPU to CPU accessibility
+    void TransitionToCPU(IBuffer* Buffer, EBufferAccessMode AccessMode)
+    {
+        if (!Buffer)
+            return;
+            
+        // Track state transition
+        if (MemoryTracker)
+        {
+            MemoryTracker->TrackEvent(
+                "GPU_Compute",
+                "ResourceTransition",
+                FString::Printf(TEXT("Buffer %s: GPU → CPU"), *Buffer->GetBufferName().ToString()),
+                Buffer->GetSizeInBytes()
+            );
+        }
+        
+        // Map buffer for CPU access
+        Buffer->Map(AccessMode);
+        
+        // Additional CPU-specific transition logic would go here
+    }
+    
+private:
+    IBufferProvider* BufferProvider;
+    IMemoryTracker* MemoryTracker;
+};
+```
+
+### 6.6 Implementation Best Practices
+
+1. **Minimize Transitions**: Keep data on the GPU as long as possible to avoid costly transitions
+2. **Use Zero-Copy Memory**: When possible, use zero-copy memory to avoid data duplication
+3. **Prefer Pooled Resources**: Use memory pools for frequently allocated resources
+4. **Monitor Memory Usage**: Integrate with the memory tracker to detect and address leaks
+5. **Use Double Buffering**: Implement double or triple buffering for operations that read and write to the same data
+6. **Support Memory Pressure Recovery**: Implement handlers to reduce memory usage when system is under pressure
+
+## 7. Threading Task System Integration (System 3)
+
+### 7.1 Asynchronous Compute Operations
+
+Leverage the ThreadingTaskSystem for asynchronous compute operations with comprehensive control:
+
+```cpp
+class FGPUAsyncOperationManager
+{
+public:
+    void Initialize()
+    {
+        // Get the async operation manager from service locator
+        AsyncOperationManager = IServiceLocator::Get().ResolveService<IAsyncOperation>();
+        if (!AsyncOperationManager)
+        {
+            UE_LOG(LogGPUDispatcher, Error, TEXT("Failed to resolve IAsyncOperation"));
+            return;
+        }
+        
+        // Initialize async operation manager if needed
+        if (!AsyncOperationManager->IsInitialized())
+        {
+            AsyncOperationManager->Initialize();
+        }
+    }
+    
+    // Launch a GPU compute operation asynchronously
+    uint64 LaunchComputeOperation(const FString& OperationName, const FComputeParameters& Params)
+    {
+        if (!AsyncOperationManager)
+            return 0;
+            
+        // Create a new async operation
+        uint64 OperationId = AsyncOperationManager->CreateOperation("GPU_Compute", OperationName);
+        if (OperationId == 0)
+            return 0;
+            
+        // Register for completion notification
+        AsyncOperationManager->RegisterCompletionCallback(OperationId, 
+            FAsyncCompletionDelegate::CreateRaw(this, &FGPUAsyncOperationManager::OnComputeCompleted));
+            
+        // Register for progress updates if supported
+        AsyncOperationManager->RegisterProgressCallback(OperationId,
+            FAsyncProgressDelegate::CreateRaw(this, &FGPUAsyncOperationManager::OnComputeProgress),
+            100); // Update every 100ms
+            
+        // Store parameters in shared context
+        TMap<FString, FString> Parameters;
+        Parameters.Add("ShaderType", Params.ShaderType.ToString());
+        Parameters.Add("DispatchSizeX", FString::FromInt(Params.DispatchSize.X));
+        Parameters.Add("DispatchSizeY", FString::FromInt(Params.DispatchSize.Y));
+        Parameters.Add("DispatchSizeZ", FString::FromInt(Params.DispatchSize.Z));
+        
+        // Start the operation
+        AsyncOperationManager->StartOperation(OperationId, Parameters);
+        
+        // Store in active operations map
+        ActiveOperations.Add(OperationId, Params);
+        
+        return OperationId;
+    }
+    
+    // Cancel an in-progress compute operation
+    bool CancelComputeOperation(uint64 OperationId)
+    {
+        if (!AsyncOperationManager)
+            return false;
+            
+        return AsyncOperationManager->CancelOperation(OperationId);
+    }
+    
+    // Wait for a compute operation to complete
+    bool WaitForComputeOperation(uint64 OperationId, uint32 TimeoutMs = 0)
+    {
+        if (!AsyncOperationManager)
+            return false;
+            
+        return AsyncOperationManager->WaitForCompletion(OperationId, TimeoutMs);
+    }
+    
+private:
+    // Callback for operation completion
+    void OnComputeCompleted(const FAsyncResult& Result)
+    {
+        if (Result.bSuccess)
+        {
+            UE_LOG(LogGPUDispatcher, Log, TEXT("GPU Compute operation completed successfully"));
+        }
+        else
+        {
+            UE_LOG(LogGPUDispatcher, Warning, TEXT("GPU Compute operation failed: %s"), *Result.ErrorMessage);
+        }
+    }
+    
+    // Callback for operation progress
+    void OnComputeProgress(const FAsyncProgress& Progress)
+    {
+        UE_LOG(LogGPUDispatcher, Verbose, TEXT("GPU Compute progress: %.1f%%"), Progress.CompletionPercentage * 100.0f);
+    }
+    
+    IAsyncOperation* AsyncOperationManager;
+    TMap<uint64, FComputeParameters> ActiveOperations;
+};
+```
+
+### 7.2 Thread-Safe Queue Integration
+
+Implement thread-safe queues for efficient communication between CPU and GPU components:
+
+```cpp
+class FGPUComputeQueue
+{
+public:
+    void Initialize()
+    {
+        // Create a dedicated compute command queue
+        CommandQueue = IThreadSafeQueue::Get().CreateQueue<FComputeCommand>("GPUComputeCommands", 1024);
+        
+        // Create a dedicated result queue for completed operations
+        ResultQueue = IThreadSafeQueue::Get().CreateQueue<FComputeResult>("GPUComputeResults", 1024);
+    }
+    
+    // Enqueue a compute command to be processed by the GPU
+    bool EnqueueCommand(const FComputeCommand& Command, uint32 TimeoutMs = 100)
+    {
+        if (!CommandQueue)
+            return false;
+            
+        return CommandQueue->EnqueueWithTimeout(Command, TimeoutMs) == EQueueResult::Success;
+    }
+    
+    // Process commands in the queue
+    void ProcessCommands(uint32 MaxCommands = 32)
+    {
+        if (!CommandQueue || !ResultQueue)
+            return;
+            
+        int32 ProcessedCount = 0;
+        FComputeCommand Command;
+        
+        while (ProcessedCount < MaxCommands && CommandQueue->Dequeue(Command) == EQueueResult::Success)
+        {
+            // Process the GPU command
+            FComputeResult Result = ExecuteGPUCommand(Command);
+            
+            // Enqueue the result
+            ResultQueue->Enqueue(Result);
+            
+            ProcessedCount++;
+        }
+    }
+    
+    // Check if there are completed results
+    bool HasCompletedResults() const
+    {
+        return ResultQueue && !ResultQueue->IsEmpty();
+    }
+    
+    // Get statistics about queue usage
+    FQueueStats GetCommandQueueStats() const
+    {
+        return CommandQueue ? CommandQueue->GetStats() : FQueueStats();
+    }
+    
+private:
+    FComputeResult ExecuteGPUCommand(const FComputeCommand& Command)
+    {
+        // Implement GPU command execution logic
+        // ...
+        
+        FComputeResult Result;
+        Result.CommandId = Command.CommandId;
+        Result.bSuccess = true;
+        return Result;
+    }
+    
+    TThreadSafeQueue<FComputeCommand>* CommandQueue;
+    TThreadSafeQueue<FComputeResult>* ResultQueue;
+};
+```
+
+### 7.3 Transaction Integration for Multi-Field Operations
+
+Use the transaction manager to ensure consistency in operations that affect multiple SDF fields:
+
+```cpp
+class FGPUTransactionManager
+{
+public:
+    void Initialize()
+    {
+        // Get the transaction manager from service locator
+        TransactionManager = IServiceLocator::Get().ResolveService<ITransactionManager>();
+        if (!TransactionManager)
+        {
+            UE_LOG(LogGPUDispatcher, Error, TEXT("Failed to resolve ITransactionManager"));
+            return;
+        }
+    }
+    
+    // Begin a GPU compute transaction spanning multiple fields
+    FMiningTransactionContext* BeginComputeTransaction(const TArray<int32>& AffectedZones, const TArray<int32>& AffectedMaterials)
+    {
+        if (!TransactionManager)
+            return nullptr;
+            
+        // Configure transaction
+        FTransactionConfig Config;
+        Config.TypeId = COMPUTE_TRANSACTION_TYPE;
+        Config.Priority = 200;  // Higher priority for GPU operations
+        Config.MaxRetries = 2;
+        Config.IsolationLevel = ETransactionIsolation::ReadCommitted;
+        Config.bRecordStatistics = true;
+        
+        // Begin the transaction
+        FMiningTransactionContext* Context = nullptr;
+        if (!TransactionManager->BeginTransaction(Config, Context))
+        {
+            return nullptr;
+        }
+        
+        // Add zones and materials to the write set
+        for (int32 ZoneId : AffectedZones)
+        {
+            Context->AddToWriteSet(ZoneId);
+        }
+        
+        for (int32 ZoneId : AffectedZones)
+        {
+            for (int32 MaterialId : AffectedMaterials)
+            {
+                Context->AddToWriteSet(ZoneId, MaterialId);
+            }
+        }
+        
+        return Context;
+    }
+    
+    // Commit a compute transaction
+    bool CommitComputeTransaction(FMiningTransactionContext* Context)
+    {
+        if (!TransactionManager || !Context)
+            return false;
+            
+        return TransactionManager->CommitTransaction(Context->GetTransactionId());
+    }
+    
+    // Abort a compute transaction
+    bool AbortComputeTransaction(FMiningTransactionContext* Context)
+    {
+        if (!TransactionManager || !Context)
+            return false;
+            
+        return TransactionManager->AbortTransaction(Context->GetTransactionId());
+    }
+    
+    // Handle conflict resolution
+    void HandleTransactionConflict(FMiningTransactionContext* Context)
+    {
+        if (!Context)
+            return;
+            
+        // Get conflict information
+        TArray<FTransactionConflict> Conflicts = Context->GetConflicts();
+        
+        // Log conflicts
+        for (const FTransactionConflict& Conflict : Conflicts)
+        {
+            UE_LOG(LogGPUDispatcher, Warning, TEXT("GPU Compute transaction conflict in Zone %d, Material %d"), 
+                Conflict.ZoneId, Conflict.MaterialId);
+        }
+        
+        // Make conflict resolution decision (this is just an example)
+        // In real implementation, use more sophisticated conflict resolution based on the nature of the conflict
+        if (Conflicts.Num() > 0)
+        {
+            TransactionManager->ResolveConflict(Context->GetTransactionId(), EConflictResolution::Retry);
+        }
+    }
+    
+private:
+    ITransactionManager* TransactionManager;
+    static const uint32 COMPUTE_TRANSACTION_TYPE = 0x4750555F; // "GPU_"
+};
+```
+
+### 7.4 Task Scheduler Integration with Compute Optimization Flags
+
+Utilize specialized optimization flags from the TaskTypes system for GPU compute operations:
+
+```cpp
+class FGPUTaskScheduler
+{
+public:
+    void Initialize()
+    {
+        // Get task scheduler from service locator
+        TaskScheduler = IServiceLocator::Get().ResolveService<ITaskScheduler>();
+        if (!TaskScheduler)
+        {
+            UE_LOG(LogGPUDispatcher, Error, TEXT("Failed to resolve ITaskScheduler"));
+            return;
+        }
+    }
+    
+    // Schedule a GPU compute task with optimized configuration
+    uint64 ScheduleGPUTask(TFunction<void()> Task, ETaskPriority Priority = ETaskPriority::Normal)
+    {
+        if (!TaskScheduler)
+            return 0;
+            
+        // Configure task for GPU optimization
+        FTaskConfig Config;
+        Config.Priority = Priority;
+        Config.Type = ETaskType::Computation;
+        Config.OptimizationFlags = 
+            EThreadOptimizationFlags::GPUBound |
+            EThreadOptimizationFlags::SIMDAware |
+            EThreadOptimizationFlags::BatchProcessingEnabled;
+        Config.SIMDVariant = ESIMDVariant::AVX2;  // Use appropriate SIMD variant
+        
+        // Set registry information if applicable
+        Config.SetTypeId(GPU_COMPUTE_TYPE_ID, ERegistryType::SDF);
+        
+        return TaskScheduler->ScheduleTask(Task, Config, TEXT("GPU_ComputeTask"));
+    }
+    
+    // Schedule a data preparation task that feeds into GPU computation
+    uint64 ScheduleDataPrepTask(TFunction<void()> Task, uint64 DependentGPUTaskId)
+    {
+        if (!TaskScheduler)
+            return 0;
+            
+        // Configure task for data preparation
+        FTaskConfig Config;
+        Config.Priority = ETaskPriority::High;  // Higher priority to feed GPU quickly
+        Config.Type = ETaskType::Memory;
+        Config.OptimizationFlags = 
+            EThreadOptimizationFlags::MemoryIntensive |
+            EThreadOptimizationFlags::CacheLocality;
+            
+        // Set up dependency so GPU task waits for this task
+        FTaskDependency Dependency;
+        Dependency.TaskId = DependentGPUTaskId;
+        Dependency.bRequired = true;
+        Config.Dependencies.Add(Dependency);
+        
+        return TaskScheduler->ScheduleTask(Task, Config, TEXT("GPU_DataPrep"));
+    }
+    
+    // Batch schedule multiple related tasks for efficient processing
+    TArray<uint64> BatchScheduleGPUTasks(const TArray<TFunction<void()>>& Tasks, 
+                                        ETaskPriority Priority = ETaskPriority::Normal)
+    {
+        TArray<uint64> TaskIds;
+        
+        if (!TaskScheduler || Tasks.Num() == 0)
+            return TaskIds;
+            
+        // Base configuration
+        FTaskConfig Config;
+        Config.Priority = Priority;
+        Config.Type = ETaskType::Computation;
+        Config.OptimizationFlags = 
+            EThreadOptimizationFlags::GPUBound |
+            EThreadOptimizationFlags::BatchProcessingEnabled;
+            
+        // Schedule tasks
+        for (int32 i = 0; i < Tasks.Num(); ++i)
+        {
+            FString Description = FString::Printf(TEXT("GPU_BatchTask_%d"), i);
+            uint64 TaskId = TaskScheduler->ScheduleTask(Tasks[i], Config, Description);
+            if (TaskId != 0)
+            {
+                TaskIds.Add(TaskId);
+            }
+        }
+        
+        return TaskIds;
+    }
+    
+    // Wait for a set of GPU tasks to complete
+    bool WaitForGPUTasks(const TArray<uint64>& TaskIds, uint32 TimeoutMs = 5000)
+    {
+        if (!TaskScheduler)
+            return false;
+            
+        return TaskScheduler->WaitForTasks(TaskIds, true, TimeoutMs);
+    }
+    
+private:
+    ITaskScheduler* TaskScheduler;
+    static const uint32 GPU_COMPUTE_TYPE_ID = 0x4750555F; // "GPU_"
+};
+```
+
+### 7.5 Thread-Safe Access to Shared GPU Resources
+
+Implement thread-safe access patterns for shared GPU resources:
+
+```cpp
+class FGPUResourceGuard
+{
+public:
+    FGPUResourceGuard()
+    {
+        // Create simple spin lock for fast access synchronization
+        ResourceLock = new FSimpleSpinLock();
+    }
+    
+    ~FGPUResourceGuard()
+    {
+        delete ResourceLock;
+    }
+    
+    // Lock a GPU resource for exclusive access
+    bool LockResource(uint32 ResourceId, uint32 TimeoutMs = 100)
+    {
+        if (!ResourceLock)
+            return false;
+            
+        uint64 StartTime = FPlatformTime::Cycles64();
+        bool bLocked = false;
+        
+        // Try to acquire lock with timeout
+        while (!bLocked)
+        {
+            bLocked = ResourceLock->TryLock();
+            
+            if (bLocked)
+            {
+                // Check if resource is already locked by another operation
+                if (LockedResources.Contains(ResourceId))
+                {
+                    // Resource already locked
+                    ResourceLock->Unlock();
+                    bLocked = false;
+                }
+                else
+                {
+                    // Lock acquired, add to locked resources
+                    LockedResources.Add(ResourceId);
+                    return true;
+                }
+            }
+            
+            // Check timeout
+            if (TimeoutMs > 0)
+            {
+                uint64 CurrentTime = FPlatformTime::Cycles64();
+                double ElapsedMs = FPlatformTime::ToMilliseconds64(CurrentTime - StartTime);
+                
+                if (ElapsedMs >= TimeoutMs)
+                {
+                    // Timeout occurred
+                    return false;
+                }
+            }
+            
+            // Short yield to allow other threads to progress
+            FPlatformProcess::Yield();
+        }
+        
+        return false;
+    }
+    
+    // Unlock a previously locked GPU resource
+    void UnlockResource(uint32 ResourceId)
+    {
+        if (!ResourceLock)
+            return;
+            
+        ResourceLock->Lock();
+        LockedResources.Remove(ResourceId);
+        ResourceLock->Unlock();
+    }
+    
+    // Check if a resource is currently locked
+    bool IsResourceLocked(uint32 ResourceId)
+    {
+        if (!ResourceLock)
+            return false;
+            
+        bool bIsLocked = false;
+        
+        ResourceLock->Lock();
+        bIsLocked = LockedResources.Contains(ResourceId);
+        ResourceLock->Unlock();
+        
+        return bIsLocked;
+    }
+    
+private:
+    FSimpleSpinLock* ResourceLock;
+    TSet<uint32> LockedResources;
+};
+```
+
+### 7.6 Integration Best Practices for Threading
+
+1. **Minimize Thread Contention**: Design your GPU system to minimize contention between CPU and GPU threads
+2. **Async Compute Coordination**: Use the AsyncOperation system for long-running GPU computations
+3. **Transactional Consistency**: Use the TransactionManager for operations that modify multiple data fields
+4. **Thread-Safe Resource Access**: Implement proper synchronization for shared GPU resources
+5. **Batch Processing**: Group similar GPU operations to reduce dispatch overhead
+6. **Task Optimization Flags**: Leverage the rich task optimization flag system for GPU-specific optimizations
+7. **Use Task Priorities**: Assign higher priorities to tasks that feed or consume GPU data to avoid stalls
+
+## 8. Service Registry and Dependency Integration (System 6)
+
+The Service Registry and Dependency system provides advanced service management capabilities beyond the basic Core Registry. This section outlines how to integrate the GPU Compute Dispatcher with these advanced features.
+
+### 8.1 Memory-Aware Service Implementation
+
+Implement the `IMemoryAwareService` interface to support memory tracking and optimization:
+
+```cpp
+class FGPUDispatcher : public IComputeDispatcher, public IService, public IMemoryAwareService
+{
+public:
+    // Existing IService implementation...
+    
+    // IMemoryAwareService implementation
+    virtual uint64 GetMemoryUsage() const override
+    {
+        uint64 TotalMemoryUsage = 0;
+        
+        // Add up all GPU resources
+        TotalMemoryUsage += SDFFieldBuffer ? SDFFieldBuffer->GetSizeInBytes() : 0;
+        TotalMemoryUsage += MaterialBuffer ? MaterialBuffer->GetSizeInBytes() : 0;
+        
+        // Add shader parameter memory usage
+        for (const auto& ShaderEntry : ShaderParameters)
+        {
+            TotalMemoryUsage += ShaderEntry.Value.ParameterBufferSize;
+        }
+        
+        // Add kernel cache memory usage
+        TotalMemoryUsage += KernelManager ? KernelManager->GetCacheMemoryUsage() : 0;
+        
+        return TotalMemoryUsage;
+    }
+    
+    virtual bool TrimMemory(uint64 TargetUsageBytes) override
+    {
+        // Current memory usage
+        uint64 CurrentUsage = GetMemoryUsage();
+        
+        // If already under target, nothing to do
+        if (CurrentUsage <= TargetUsageBytes)
+            return true;
+        
+        // Calculate how much we need to trim
+        uint64 AmountToTrim = CurrentUsage - TargetUsageBytes;
+        uint64 Trimmed = 0;
+        
+        // First, clear shader caches which are easiest to regenerate
+        if (KernelManager)
+        {
+            Trimmed += KernelManager->TrimCache(AmountToTrim);
+        }
+        
+        // If we've trimmed enough, stop here
+        if (Trimmed >= AmountToTrim)
+            return true;
+        
+        // Next, release non-essential buffers
+        // This could include auxiliary buffers, cached results, etc.
+        for (auto& Buffer : AuxiliaryBuffers)
+        {
+            if (Buffer.Value->CanBeReleased())
+            {
+                uint64 BufferSize = Buffer.Value->GetSizeInBytes();
+                Buffer.Value->Release();
+                Trimmed += BufferSize;
+                
+                // If we've trimmed enough, stop
+                if (Trimmed >= AmountToTrim)
+                    return true;
+            }
+        }
+        
+        // Return whether we reached the target
+        return (CurrentUsage - Trimmed) <= TargetUsageBytes;
+    }
+    
+private:
+    // GPU resource members
+    IBuffer* SDFFieldBuffer;
+    IBuffer* MaterialBuffer;
+    TMap<FName, FComputeShaderParameters> ShaderParameters;
+    TMap<FName, FGPUBuffer*> AuxiliaryBuffers;
+    FSDFComputeKernelManager* KernelManager;
+};
+```
+
+### 8.2 State Persistence with ISaveableService
+
+Implement the `ISaveableService` interface to support service state persistence across restarts:
+
+```cpp
+class FGPUDispatcher : public IComputeDispatcher, public IService, 
+                       public IMemoryAwareService, public ISaveableService
+{
+public:
+    // Existing implementations...
+    
+    // ISaveableService implementation
+    virtual bool SaveState(TArray<uint8>& OutState) override
+    {
+        // Create a memory writer to serialize state
+        FMemoryWriter Writer(OutState);
+        
+        // Write version info
+        uint32 Version = 1;
+        Writer << Version;
+        
+        // Save hardware profile settings
+        if (HardwareProfileManager)
+        {
+            FString ProfileName = HardwareProfileManager->GetCurrentProfileName();
+            Writer << ProfileName;
+            
+            // Save profile parameters
+            TMap<FString, float> ProfileParams = HardwareProfileManager->GetCurrentProfileParameters();
+            Writer << ProfileParams;
+        }
+        
+        // Save workload distribution settings
+        if (WorkloadDistributor)
+        {
+            float CPUWorkloadPercentage = WorkloadDistributor->GetCPUWorkloadPercentage();
+            Writer << CPUWorkloadPercentage;
+            
+            uint32 BatchSize = WorkloadDistributor->GetBatchSize();
+            Writer << BatchSize;
+        }
+        
+        // Save performance history (could be used for adaptive optimization)
+        Writer << PerformanceHistory;
+        
+        return true;
+    }
+    
+    virtual bool RestoreState(const TArray<uint8>& InState) override
+    {
+        if (InState.Num() == 0)
+            return false;
+            
+        // Create a memory reader to deserialize state
+        FMemoryReader Reader(InState);
+        
+        // Read and verify version info
+        uint32 Version;
+        Reader << Version;
+        
+        if (Version != 1)  // Only support version 1 for now
+            return false;
+            
+        // Restore hardware profile settings
+        if (HardwareProfileManager)
+        {
+            FString ProfileName;
+            Reader << ProfileName;
+            HardwareProfileManager->SetCurrentProfile(ProfileName);
+            
+            // Restore profile parameters
+            TMap<FString, float> ProfileParams;
+            Reader << ProfileParams;
+            HardwareProfileManager->SetProfileParameters(ProfileParams);
+        }
+        
+        // Restore workload distribution settings
+        if (WorkloadDistributor)
+        {
+            float CPUWorkloadPercentage;
+            Reader << CPUWorkloadPercentage;
+            WorkloadDistributor->SetCPUWorkloadPercentage(CPUWorkloadPercentage);
+            
+            uint32 BatchSize;
+            Reader << BatchSize;
+            WorkloadDistributor->SetBatchSize(BatchSize);
+        }
+        
+        // Restore performance history
+        Reader << PerformanceHistory;
+        
+        return true;
+    }
+    
+private:
+    // Components
+    FHardwareProfileManager* HardwareProfileManager;
+    FWorkloadDistributor* WorkloadDistributor;
+    
+    // Performance tracking
+    TArray<FPerformanceRecord> PerformanceHistory;
+};
+```
+
+### 8.3 Service Manager Integration
+
+Integrate with the Service Manager for advanced lifecycle management:
+
+```cpp
+void FGPUComputeModule::StartupModule()
+{
+    // Create the dispatcher
+    GPUDispatcher = new FGPUDispatcher();
+    
+    // Create configuration
+    FServiceConfiguration Config;
+    Config.bCanRecover = true;
+    Config.bSaveStateForRecovery = true;
+    Config.bEnablePooling = false;  // GPU services typically aren't pooled
+    
+    // Add configuration parameters
+    Config.Parameters.Add("MaxShaderCacheSize", "512MB");
+    Config.Parameters.Add("DefaultBatchSize", "1024");
+    Config.Parameters.Add("EnableAsyncCompute", "true");
+    
+    // Register with Service Manager
+    FServiceManager::Get().RegisterService<IComputeDispatcher>(
+        GPUDispatcher,
+        Config
+    );
+    
+    // Start the service
+    FServiceManager::Get().StartService<IComputeDispatcher>();
+}
+
+void FGPUComputeModule::ShutdownModule()
+{
+    // Stop the service
+    FServiceManager::Get().StopService<IComputeDispatcher>();
+    
+    // Unregister the service
+    FServiceManager::Get().UnregisterService<IComputeDispatcher>();
+    
+    // Release the dispatcher
+    delete GPUDispatcher;
+    GPUDispatcher = nullptr;
+}
+```
+
+### 8.4 Service Health Monitoring
+
+Implement health checks for the GPU dispatcher to integrate with the health monitoring system:
+
+```cpp
+bool FGPUDispatcher::IsHealthy() const override
+{
+    // Check if all components are initialized
+    if (!HardwareProfileManager || !WorkloadDistributor || !KernelManager)
+        return false;
+        
+    // Check if we have valid GPU resources
+    if (!SDFFieldBuffer || !MaterialBuffer)
+        return false;
+        
+    // Check if kernel compilation is functional by testing with a simple kernel
+    if (!KernelManager->TestKernelCompilation())
+        return false;
+        
+    // Check for driver issues with a simple dispatch test
+    if (!PerformHealthCheckDispatch())
+        return false;
+        
+    return true;
+}
+
+// Helper method for health checking
+bool FGPUDispatcher::PerformHealthCheckDispatch() const
+{
+    // Create a minimal compute dispatch to test GPU functionality
+    try
+    {
+        // Basic test computation
+        FComputeParameters Params;
+        Params.ShaderType = TEXT("HealthCheck");
+        Params.DispatchSize = FIntVector(1, 1, 1);
+        
+        // Test dispatch
+        return TestDispatch(Params);
+    }
+    catch (...)
+    {
+        // Any exception means we're not healthy
+        return false;
+    }
+}
+```
+
+### 8.5 Dependency Resolution Integration
+
+Integrate with the Dependency Resolver for proper initialization ordering:
+
+```cpp
+void FGPUComputeModule::RegisterDependencies()
+{
+    // Get dependency resolver
+    FDependencyResolver* DependencyResolver = FServiceManager::Get().GetDependencyResolver();
+    if (!DependencyResolver)
+        return;
+        
+    // Register the GPU dispatcher node
+    constexpr uint32 GPU_DISPATCHER_NODE_ID = 0x47505500; // "GPU\0"
+    DependencyResolver->RegisterNode(
+        GPU_DISPATCHER_NODE_ID, 
+        FName("GPUComputeDispatcher"), 
+        nullptr, 
+        0
+    );
+    
+    // Register dependencies on memory system components
+    constexpr uint32 MEMORY_MANAGER_NODE_ID = 0x4D454D00; // "MEM\0"
+    DependencyResolver->RegisterDependency(
+        GPU_DISPATCHER_NODE_ID,
+        MEMORY_MANAGER_NODE_ID,
+        FDependencyResolver::EDependencyType::Required
+    );
+    
+    constexpr uint32 BUFFER_PROVIDER_NODE_ID = 0x42554600; // "BUF\0"
+    DependencyResolver->RegisterDependency(
+        GPU_DISPATCHER_NODE_ID,
+        BUFFER_PROVIDER_NODE_ID,
+        FDependencyResolver::EDependencyType::Required
+    );
+    
+    // Register dependency on task scheduler
+    constexpr uint32 TASK_SCHEDULER_NODE_ID = 0x5453434C; // "TSCL"
+    DependencyResolver->RegisterDependency(
+        GPU_DISPATCHER_NODE_ID,
+        TASK_SCHEDULER_NODE_ID,
+        FDependencyResolver::EDependencyType::Required
+    );
+    
+    // Register conditional dependency on advanced shader features based on hardware capability
+    constexpr uint32 ADVANCED_SHADER_NODE_ID = 0x41445348; // "ADSH"
+    DependencyResolver->RegisterHardwareDependency(
+        GPU_DISPATCHER_NODE_ID,
+        ADVANCED_SHADER_NODE_ID,
+        (uint32)FDependencyResolver::EHardwareCapability::AVX2 | 
+        (uint32)FDependencyResolver::EHardwareCapability::GPU,
+        FDependencyResolver::EDependencyType::Optional
+    );
+}
+```
+
+### 8.6 Service Reconfiguration Support
+
+Implement support for dynamic reconfiguration through the Service Manager:
+
+```cpp
+bool FGPUDispatcher::ApplyConfiguration(const TMap<FName, FString>& Parameters)
+{
+    bool bNeedsReinit = false;
+    
+    // Apply each parameter
+    for (const auto& Param : Parameters)
+    {
+        if (Param.Key == "MaxShaderCacheSize")
+        {
+            uint64 CacheSize = FCString::Atoi64(*Param.Value);
+            KernelManager->SetMaxCacheSize(CacheSize);
+        }
+        else if (Param.Key == "DefaultBatchSize")
+        {
+            uint32 BatchSize = FCString::Atoi(*Param.Value);
+            WorkloadDistributor->SetBatchSize(BatchSize);
+        }
+        else if (Param.Key == "EnableAsyncCompute")
+        {
+            bool bEnable = Param.Value.ToBool();
+            AsyncComputeCoordinator->SetEnabled(bEnable);
+        }
+        else if (Param.Key == "GPUPriority")
+        {
+            // This requires reinitialization
+            bNeedsReinit = true;
+            GPUPriority = FCString::Atoi(*Param.Value);
+        }
+    }
+    
+    // Handle parameters that require reinitialization
+    if (bNeedsReinit)
+    {
+        Shutdown();
+        return Initialize();
+    }
+    
+    return true;
+}
+
+// To use this from the outside:
+void ReconfigureGPUDispatcher()
+{
+    // Create new configuration
+    TMap<FName, FString> NewConfig;
+    NewConfig.Add("MaxShaderCacheSize", "1024MB");
+    NewConfig.Add("DefaultBatchSize", "2048");
+    
+    // Apply through service manager
+    FServiceManager::Get().ReconfigureService<IComputeDispatcher>(
+        FServiceConfiguration(NewConfig)
+    );
+}
+```
+
+### 8.7 Service Pooling for Multi-Zone Support
+
+Configure service pooling for zone-specific GPU compute management:
+
+```cpp
+// In module startup code
+void SetupServicePooling()
+{
+    // Create a pool of GPU dispatch services for high-traffic zones
+    bool bSuccess = FServiceManager::Get().CreateServicePool<IComputeDispatcher>(
+        INDEX_NONE,  // Global service pool
+        5            // Support up to 5 concurrent zones
+    );
+    
+    if (!bSuccess)
+    {
+        UE_LOG(LogGPUDispatcher, Warning, TEXT("Failed to create GPU dispatcher service pool"));
+    }
+}
+
+// Later, when needing a zone-specific dispatcher:
+IComputeDispatcher* GetZoneSpecificDispatcher(int32 ZoneId)
+{
+    // Acquire a pooled service specifically for this zone
+    IComputeDispatcher* ZoneDispatcher = static_cast<IComputeDispatcher*>(
+        FServiceManager::Get().AcquirePooledService(
+            UComputeDispatcher::StaticClass(),
+            ZoneId
+        )
+    );
+    
+    // When done with the service, return it to the pool
+    FServiceManager::Get().ReleasePooledService(
+        ZoneDispatcher,
+        UComputeDispatcher::StaticClass(),
+        ZoneId
+    );
+    
+    return ZoneDispatcher;
+}
+```
+
+### 8.8 Integration with Service Debug Visualizer
+
+Support the debug visualization system for runtime inspection:
+
+```cpp
+// Add a method in your GPU dispatcher to supply debug data
+void FGPUDispatcher::GatherDebugData(TMap<FString, FString>& OutDebugData) const
+{
+    // General information
+    OutDebugData.Add("Dispatcher Status", IsInitialized() ? "Initialized" : "Not Initialized");
+    OutDebugData.Add("Hardware Profile", HardwareProfileManager->GetCurrentProfileName());
+    OutDebugData.Add("GPU Model", HardwareProfileManager->GetGPUModel());
+    
+    // Performance metrics
+    OutDebugData.Add("Average Dispatch Time (ms)", FString::Printf(TEXT("%.2f"), AverageDispatchTimeMs));
+    OutDebugData.Add("Peak Memory Usage (MB)", FString::Printf(TEXT("%.2f"), GetMemoryUsage() / (1024.0f * 1024.0f)));
+    OutDebugData.Add("Active Compute Tasks", FString::FromInt(GetActiveTaskCount()));
+    
+    // Workload distribution
+    OutDebugData.Add("CPU/GPU Split", FString::Printf(TEXT("%.1f%% / %.1f%%"), 
+        WorkloadDistributor->GetCPUWorkloadPercentage(),
+        100.0f - WorkloadDistributor->GetCPUWorkloadPercentage()));
+    
+    // Kernel information
+    OutDebugData.Add("Compiled Kernels", FString::FromInt(KernelManager->GetCompiledKernelCount()));
+    OutDebugData.Add("Cache Hit Rate", FString::Printf(TEXT("%.1f%%"), KernelManager->GetCacheHitRate() * 100.0f));
+}
+
+// Register with the debug visualizer
+void RegisterWithDebugVisualizer()
+{
+    FServiceDebugVisualizer::Get().RegisterServiceForDebug(
+        UComputeDispatcher::StaticClass(),
+        TEXT("GPU Compute"),
+        [](void* Service, TMap<FString, FString>& OutData)
+        {
+            if (Service)
+            {
+                static_cast<FGPUDispatcher*>(Service)->GatherDebugData(OutData);
+            }
+        }
+    );
+}
+```
+
+### 8.9 Implementation Best Practices for Service Registry
+
+1. **Memory-Aware Services**: Implement IMemoryAwareService to support system memory pressure handling
+2. **State Persistence**: Implement ISaveableService for preserving critical settings and statistics
+3. **Health Monitoring**: Provide robust health checks to detect GPU driver or resource issues
+4. **Dependency Resolution**: Register all dependencies properly to ensure correct initialization order
+5. **Dynamic Reconfiguration**: Support runtime reconfiguration for adaptive performance tuning
+6. **Zone-Specific Services**: Use service pooling for high-traffic zones when needed
+7. **Debug Visualization**: Supply rich debug data to help diagnose issues in complex GPU operations
+8. **Graceful Degradation**: Design services to fall back to simpler modes when resources are constrained

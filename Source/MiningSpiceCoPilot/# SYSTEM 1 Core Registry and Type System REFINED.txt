@@ -114,19 +114,19 @@ FZoneTypeRegistry : public IRegistry
 - Transaction behavior visualization for debugging
 
 REQUIRED FILES
-[From Source/MiningSystem/Core/]
+[From Source/MiningSpiceCoPilot/1_CoreRegistry/]
 Public/Interfaces/
 - IServiceLocator.h
 - IRegistry.h
 
-Public/Registry/
+Public/
 - ServiceLocator.h
 - SVOTypeRegistry.h
 - SDFTypeRegistry.h
 - MaterialRegistry.h
 - ZoneTypeRegistry.h
 
-Private/Registry/
+Private/
 - ServiceLocator.cpp
 - SVOTypeRegistry.cpp
 - SDFTypeRegistry.cpp
