@@ -89,15 +89,15 @@ struct FHardwareProfile
 
     /** Number of compute units available */
     UPROPERTY(BlueprintReadOnly, Category="Hardware")
-    uint32 ComputeUnits = 0;
+    int32 ComputeUnits = 0;
 
     /** Maximum workgroup size */
     UPROPERTY(BlueprintReadOnly, Category="Hardware")
-    uint32 MaxWorkgroupSize = 1024;
+    int32 MaxWorkgroupSize = 1024;
 
     /** Wavefront size for SIMD operations */
     UPROPERTY(BlueprintReadOnly, Category="Hardware")
-    uint32 WavefrontSize = 32;
+    int32 WavefrontSize = 32;
 
     /** Whether wave intrinsics are supported */
     UPROPERTY(BlueprintReadOnly, Category="Hardware")
@@ -105,15 +105,15 @@ struct FHardwareProfile
 
     /** Shared memory size in bytes */
     UPROPERTY(BlueprintReadOnly, Category="Hardware")
-    uint32 SharedMemoryBytes = 32768;
+    int32 SharedMemoryBytes = 32768;
 
     /** L1 cache size in KB */
     UPROPERTY(BlueprintReadOnly, Category="Hardware")
-    uint32 L1CacheSizeKB = 64;
+    int32 L1CacheSizeKB = 64;
 
     /** L2 cache size in KB */
     UPROPERTY(BlueprintReadOnly, Category="Hardware")
-    uint32 L2CacheSizeKB = 1024;
+    int32 L2CacheSizeKB = 1024;
 
     /** Compute to pipeline ratio */
     UPROPERTY(BlueprintReadOnly, Category="Hardware")
@@ -144,19 +144,19 @@ struct FComputeCapabilities
 
     /** Maximum dispatch size X */
     UPROPERTY(BlueprintReadOnly, Category="Compute")
-    uint32 MaxDispatchSizeX = 65535;
+    int32 MaxDispatchSizeX = 65535;
 
     /** Maximum dispatch size Y */
     UPROPERTY(BlueprintReadOnly, Category="Compute")
-    uint32 MaxDispatchSizeY = 65535;
+    int32 MaxDispatchSizeY = 65535;
 
     /** Maximum dispatch size Z */
     UPROPERTY(BlueprintReadOnly, Category="Compute")
-    uint32 MaxDispatchSizeZ = 65535;
+    int32 MaxDispatchSizeZ = 65535;
 
     /** Maximum workgroup shared memory size in bytes */
     UPROPERTY(BlueprintReadOnly, Category="Compute")
-    uint32 MaxSharedMemorySize = 32768;
+    int32 MaxSharedMemorySize = 32768;
 
     /** List of supported compute shader formats */
     UPROPERTY(BlueprintReadOnly, Category="Compute")
@@ -171,7 +171,7 @@ struct FOperationMetrics
 
     /** Operation type identifier */
     UPROPERTY(BlueprintReadOnly, Category="Metrics")
-    uint32 OperationTypeId = 0;
+    int32 OperationTypeId = 0;
 
     /** Time spent executing on CPU in milliseconds */
     UPROPERTY(BlueprintReadOnly, Category="Metrics")
@@ -183,11 +183,11 @@ struct FOperationMetrics
 
     /** Size of data processed in bytes */
     UPROPERTY(BlueprintReadOnly, Category="Metrics")
-    uint32 DataSize = 0;
+    int32 DataSize = 0;
 
     /** Number of iterations or elements processed */
     UPROPERTY(BlueprintReadOnly, Category="Metrics")
-    uint32 IterationCount = 0;
+    int32 IterationCount = 0;
 
     /** Device utilization during operation (0.0-1.0) */
     UPROPERTY(BlueprintReadOnly, Category="Metrics")
@@ -206,7 +206,7 @@ struct FOperationStatus
 
     /** Operation identifier */
     UPROPERTY(BlueprintReadOnly, Category="Operation")
-    uint64 OperationId = 0;
+    int64 OperationId = 0;
 
     /** Current status */
     UPROPERTY(BlueprintReadOnly, Category="Operation")
@@ -308,11 +308,11 @@ struct FComputeOperation
 
     /** Unique operation identifier */
     UPROPERTY(BlueprintReadOnly, Category="Operation")
-    uint64 OperationId = 0;
+    int64 OperationId = 0;
 
     /** Operation type identifier */
     UPROPERTY(BlueprintReadWrite, Category="Operation")
-    uint32 OperationTypeId = 0;
+    int32 OperationTypeId = 0;
 
     /** Operation type from SDF system */
     UPROPERTY(BlueprintReadWrite, Category="Operation")
@@ -364,7 +364,7 @@ struct FComputeOperation
 
     /** Preferred batch size for batched operations */
     UPROPERTY(BlueprintReadWrite, Category="Operation")
-    uint32 PreferredBatchSize = 32;
+    int32 PreferredBatchSize = 32;
 
     /** Importance scale for prioritization */
     UPROPERTY(BlueprintReadWrite, Category="Operation")
