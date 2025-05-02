@@ -2,7 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
-#include "13_GPUComputeDispatcher/Public/ComputeOperationTypes.h"
+#include "RenderGraphResources.h"
+#include "../ComputeOperationTypes.h"
 #include "IComputeDispatcher.generated.h"
 
 UINTERFACE(MinimalAPI, meta=(CannotImplementInterfaceInBlueprint))
@@ -40,7 +41,7 @@ public:
      * @param OperationId ID of the operation to cancel
      * @return True if operation was canceled, false if not found or already completed
      */
-    virtual bool CancelOperation(uint64 OperationId) = 0;
+    virtual bool CancelOperation(int64 OperationId) = 0;
     
     /**
      * Queries the status of an operation
@@ -48,7 +49,7 @@ public:
      * @param OutStatus Operation status information
      * @return True if operation was found, false otherwise
      */
-    virtual bool QueryOperationStatus(uint64 OperationId, FOperationStatus& OutStatus) = 0;
+    virtual bool QueryOperationStatus(int64 OperationId, FOperationStatus& OutStatus) = 0;
     
     /**
      * Gets the compute capabilities of the current system

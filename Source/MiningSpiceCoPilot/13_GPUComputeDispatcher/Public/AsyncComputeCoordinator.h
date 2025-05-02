@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "RHICommandList.h"
-#include "13_GPUComputeDispatcher/Public/ComputeOperationTypes.h"
+#include "ComputeOperationTypes.h"
 
 /**
  * Asynchronous compute scheduling for non-critical SDF updates
@@ -19,11 +19,11 @@ public:
     bool Initialize(bool bSupportsAsyncCompute);
     
     // Async compute scheduling
-    uint64 ScheduleAsyncOperation(const FComputeOperation& Operation, 
+    int64 ScheduleAsyncOperation(const FComputeOperation& Operation, 
                                 TFunction<void(bool)> CompletionCallback,
                                 EAsyncPriority Priority = EAsyncPriority::Normal);
-    bool CancelAsyncOperation(uint64 OperationId);
-    bool WaitForCompletion(uint64 OperationId, uint32 TimeoutMS = ~0u);
+    bool CancelAsyncOperation(int64 OperationId);
+    bool WaitForCompletion(int64 OperationId, uint32 TimeoutMS = ~0u);
     
     // Queue management
     void SetQueuePriorities(const TArray<float>& PriorityWeights);
@@ -31,8 +31,8 @@ public:
     void Flush(bool bWaitForCompletion);
     
     // Scheduling methods
-    uint64 ScheduleBackgroundOperation(const FComputeOperation& Operation);
-    void RegisterCompletionCallback(uint64 OperationId, TFunction<void()> Callback);
+    int64 ScheduleBackgroundOperation(const FComputeOperation& Operation);
+    void RegisterCompletionCallback(int64 OperationId, TFunction<void()> Callback);
     
     // Frame update
     void ProcessFrame();
@@ -58,9 +58,9 @@ private:
     // Member variables
     bool bAsyncComputeSupported;
     TMap<EAsyncPriority, TArray<FPendingAsyncOperation>> PriorityQueues;
-    TMap<uint64, FOperationState> PendingOperations;
-    TMap<uint64, TFunction<void()>> CompletionCallbacks;
-    TMap<uint64, FRHIGPUFence*> OperationFences;
+    TMap<int64, FOperationState> PendingOperations;
+    TMap<int64, TFunction<void()>> CompletionCallbacks;
+    TMap<int64, FRHIGPUFence*> OperationFences;
     TArray<FRHIGPUFence*> CompletedFences;
     float FrameBudgetMS;
     FCriticalSection QueueLock;

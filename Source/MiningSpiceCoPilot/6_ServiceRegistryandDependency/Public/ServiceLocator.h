@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "../../1_CoreRegistry/Public/Interfaces/IServiceLocator.h"
+#include "../../1_CoreRegistry/Public/CoreServiceLocator.h"
 #include "../../3_ThreadingTaskSystem/Public/ThreadSafety.h"
 #include "HAL/ThreadSafeBool.h"
 #include "HAL/ThreadSafeCounter.h"
@@ -14,27 +15,7 @@
 #include "UObject/WeakObjectPtr.h"
 #include "Misc/SpinLock.h"
 #include "../../1_CoreRegistry/Public/Interfaces/IServiceProvider.h"
-
-/**
- * Structure for cached service entry with version information
- */
-struct FCachedServiceEntry
-{
-    /** The cached service instance */
-    void* ServiceInstance;
-    
-    /** The version at which this service was cached */
-    uint32 Version;
-    
-    /** Default constructor */
-    FCachedServiceEntry() : ServiceInstance(nullptr), Version(0) {}
-    
-    /** Constructor with service and version */
-    FCachedServiceEntry(void* InService, uint32 InVersion)
-        : ServiceInstance(InService)
-        , Version(InVersion)
-    {}
-};
+#include "Interfaces/IService.h"
 
 /**
  * Structure for service instance and its context
@@ -195,6 +176,20 @@ public:
         void InvalidateEntry(const UClass* InType, int32 InZoneID, int32 InRegionID)
         {
             Cache.Remove(FServiceTypeKey(InType, InZoneID, InRegionID));
+        }
+        
+        /**
+         * Helper function to add a cached service with proper type handling
+         * @param Key The service type key
+         * @param InService The service to cache
+         * @param InVersion The version of the service
+         */
+        void AddCachedService(const FServiceTypeKey& Key, void* InService, uint32 InVersion)
+        {
+            // Convert the raw pointer to a TSharedPtr<IService> for compatibility with CoreServiceLocator
+            TSharedPtr<IService> ServicePtr = MakeShareable((IService*)InService);
+            FCachedServiceEntry Entry(ServicePtr, InVersion);
+            Cache.Add(Key, Entry);
         }
     };
 

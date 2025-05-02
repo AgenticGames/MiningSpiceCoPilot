@@ -259,6 +259,13 @@ public:
     virtual IPoolAllocator* GetPoolForType(uint32 TypeId) const = 0;
     
     /**
+     * Checks if the system is under memory pressure
+     * @param OutAvailableBytes Optional output parameter to receive available memory in bytes
+     * @return True if system is under memory pressure, false otherwise
+     */
+    virtual bool IsUnderMemoryPressure(uint64* OutAvailableBytes = nullptr) const = 0;
+    
+    /**
      * Gets the singleton instance of the memory manager
      * @return Reference to the memory manager instance
      */

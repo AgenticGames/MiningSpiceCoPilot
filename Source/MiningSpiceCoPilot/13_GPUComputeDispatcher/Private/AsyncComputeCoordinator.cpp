@@ -1,6 +1,6 @@
-#include "13_GPUComputeDispatcher/Public/AsyncComputeCoordinator.h"
-#include "13_GPUComputeDispatcher/Public/GPUDispatcherLogging.h"
-#include "3_ThreadingTaskSystem/Public/AsyncTaskManager.h"
+#include "../Public/AsyncComputeCoordinator.h"
+#include "../Public/GPUDispatcherLogging.h"
+#include "../../3_ThreadingTaskSystem/Public/AsyncTaskManager.h"
 
 #include "RenderCore.h"
 #include "RenderGraphBuilder.h"
@@ -57,7 +57,7 @@ bool FAsyncComputeCoordinator::Initialize(bool bSupportsAsyncCompute)
     return true;
 }
 
-uint64 FAsyncComputeCoordinator::ScheduleAsyncOperation(const FComputeOperation& Operation, 
+int64 FAsyncComputeCoordinator::ScheduleAsyncOperation(const FComputeOperation& Operation, 
                                                       TFunction<void(bool)> CompletionCallback,
                                                       EAsyncPriority Priority)
 {
@@ -67,8 +67,12 @@ uint64 FAsyncComputeCoordinator::ScheduleAsyncOperation(const FComputeOperation&
         // but on the render thread
         
         // Queue a task on the render thread
+        // Create local copies to avoid capturing 'this'
+        FComputeOperation OpCopy = Operation;
+        TFunction<void(bool)> CallbackCopy = CompletionCallback;
+        
         ENQUEUE_RENDER_COMMAND(ExecuteComputeOperation)(
-            [this, Operation, CompletionCallback](FRHICommandListImmediate& RHICmdList)
+            [OpCopy, CallbackCopy](FRHICommandListImmediate& RHICmdList)
             {
                 // Execute on the render thread
                 bool bSuccess = true; // assume success for now
@@ -77,20 +81,20 @@ uint64 FAsyncComputeCoordinator::ScheduleAsyncOperation(const FComputeOperation&
                 // This would invoke the appropriate compute shader
                 
                 // Call completion callback
-                if (CompletionCallback)
+                if (CallbackCopy)
                 {
-                    CompletionCallback(bSuccess);
+                    CallbackCopy(bSuccess);
                 }
             });
         
         // Return a dummy operation ID
-        return NextOperationId.Increment();
+        return static_cast<int64>(NextOperationId.Increment());
     }
     
     FScopeLock Lock(&QueueLock);
     
     // Generate operation ID
-    uint64 OperationId = NextOperationId.Increment();
+    int64 OperationId = static_cast<int64>(NextOperationId.Increment());
     
     // Create pending operation
     FPendingAsyncOperation PendingOp;
@@ -110,13 +114,13 @@ uint64 FAsyncComputeCoordinator::ScheduleAsyncOperation(const FComputeOperation&
     // Update queue metrics
     UpdateQueueMetrics();
     
-    GPU_DISPATCHER_LOG_VERBOSE("Scheduled async operation %llu with priority %d", 
+    GPU_DISPATCHER_LOG_VERBOSE("Scheduled async operation %lld with priority %d", 
         OperationId, static_cast<int32>(Priority));
     
     return OperationId;
 }
 
-bool FAsyncComputeCoordinator::CancelAsyncOperation(uint64 OperationId)
+bool FAsyncComputeCoordinator::CancelAsyncOperation(int64 OperationId)
 {
     FScopeLock Lock(&QueueLock);
     
@@ -160,7 +164,7 @@ bool FAsyncComputeCoordinator::CancelAsyncOperation(uint64 OperationId)
         OperationFences.Remove(OperationId);
     }
     
-    GPU_DISPATCHER_LOG_VERBOSE("Cancelled async operation %llu", OperationId);
+    GPU_DISPATCHER_LOG_VERBOSE("Cancelled async operation %lld", OperationId);
     
     // Update queue metrics
     UpdateQueueMetrics();
@@ -168,7 +172,7 @@ bool FAsyncComputeCoordinator::CancelAsyncOperation(uint64 OperationId)
     return true;
 }
 
-bool FAsyncComputeCoordinator::WaitForCompletion(uint64 OperationId, uint32 TimeoutMS)
+bool FAsyncComputeCoordinator::WaitForCompletion(int64 OperationId, uint32 TimeoutMS)
 {
     FScopeLock Lock(&QueueLock);
     
@@ -199,40 +203,46 @@ bool FAsyncComputeCoordinator::WaitForCompletion(uint64 OperationId, uint32 Time
         return false;
     }
     
-    // Release lock before waiting
-    Lock.Unlock();
-    
-    // Wait for fence with timeout
+    // We need to wait for the fence, so release the lock to avoid blocking
     bool bCompleted = false;
-    uint32 StartTime = FPlatformTime::Cycles();
-    uint32 EndTime = StartTime + FPlatformTime::GetCyclesPerMillisecond() * TimeoutMS;
-    
-    while (FPlatformTime::Cycles() < EndTime)
     {
-        if (IsFenceComplete(*Fence))
+        // Save lock pointer and release lock to avoid deadlocks during wait
+        FCriticalSection* QueueLockPtr = &QueueLock;
+        Lock.Unlock();
+        
+        // Wait for fence with timeout
+        uint32 StartTime = FPlatformTime::Cycles();
+        double CyclesPerMsec = FPlatformTime::GetSecondsPerCycle() * 1000.0;
+        uint32 EndTime = StartTime + static_cast<uint32>(CyclesPerMsec * TimeoutMS);
+        
+        while (FPlatformTime::Cycles() < EndTime)
         {
-            bCompleted = true;
-            break;
+            if (IsFenceComplete(*Fence))
+            {
+                bCompleted = true;
+                break;
+            }
+            
+            // Sleep briefly to avoid busy-waiting
+            FPlatformProcess::Sleep(0.001f);
         }
         
-        // Sleep briefly to avoid busy-waiting
-        FPlatformProcess::Sleep(0.001f);
-    }
-    
-    // Re-acquire lock
-    Lock.Lock();
-    
-    // Update state if completed
-    if (bCompleted)
-    {
-        State->Status = EOperationStatus::Completed;
+        // Reacquire lock with a new scope using the saved pointer
+        FScopeLock NewLock(QueueLockPtr);
         
-        // Add fence to completed list for cleanup
-        CompletedFences.Add(*Fence);
-        OperationFences.Remove(OperationId);
+        // Update state if completed
+        if (bCompleted)
+        {
+            State->Status = EOperationStatus::Completed;
+            
+            // Add fence to completed list for cleanup
+            CompletedFences.Add(*Fence);
+            OperationFences.Remove(OperationId);
+        }
     }
     
     return bCompleted;
+}
 }
 
 void FAsyncComputeCoordinator::SetQueuePriorities(const TArray<float>& PriorityWeights)
@@ -278,14 +288,17 @@ void FAsyncComputeCoordinator::Flush(bool bWaitForCompletion)
         {
             if (FencePair.Value)
             {
-                // Release lock before waiting
-                Lock.Unlock();
-                
-                // Wait for fence
-                WaitForFence(FencePair.Value);
-                
-                // Re-acquire lock
-                Lock.Lock();
+                {
+                    // Release and reacquire lock to avoid deadlocks during fence wait
+                    FCriticalSection* QueueLockPtr = &QueueLock;
+                    Lock.Unlock();
+                    
+                    // Wait for fence
+                    WaitForFence(FencePair.Value);
+                    
+                    // Reacquire lock
+                    FScopeLock NewLock(QueueLockPtr);
+                }
             }
         }
     }
@@ -302,7 +315,7 @@ void FAsyncComputeCoordinator::Flush(bool bWaitForCompletion)
     GPU_DISPATCHER_LOG_VERBOSE("Flushed async compute queues, %d operations pending", PendingOperations.Num());
 }
 
-uint64 FAsyncComputeCoordinator::ScheduleBackgroundOperation(const FComputeOperation& Operation)
+int64 FAsyncComputeCoordinator::ScheduleBackgroundOperation(const FComputeOperation& Operation)
 {
     // Use AsyncTaskManager to schedule a background task
     FAsyncTaskManager& TaskManager = FAsyncTaskManager::Get();
@@ -319,13 +332,31 @@ uint64 FAsyncComputeCoordinator::ScheduleBackgroundOperation(const FComputeOpera
     TaskManager.StartOperation(TaskId, Params);
     
     // Schedule at lowest priority
-    return ScheduleAsyncOperation(Operation, [TaskId, &TaskManager](bool bSuccess) {
+    
+    // Create a local copy of TaskManager to avoid capturing 'this' or using a reference
+    FAsyncTaskManager* TaskManagerPtr = &TaskManager;
+    
+    return ScheduleAsyncOperation(Operation, [TaskId, TaskManagerPtr](bool bSuccess) {
         // Mark task as completed when operation finishes
-        TaskManager.CompleteOperation(TaskId, bSuccess);
+        if (bSuccess) {
+            FAsyncResult SuccessResult;
+            // In UE5.5, FAsyncResult properties are accessed differently
+            SuccessResult.SetSuccess(true);
+            SuccessResult.SetCode(0);
+            SuccessResult.SetMessage(TEXT("Operation completed successfully"));
+            TaskManagerPtr->OnOperationCompleted(TaskId, SuccessResult);
+        } else {
+            FAsyncResult FailResult;
+            // In UE5.5, FAsyncResult properties are accessed differently
+            FailResult.SetSuccess(false);
+            FailResult.SetCode(1);
+            FailResult.SetMessage(TEXT("Operation failed"));
+            TaskManagerPtr->OnOperationCompleted(TaskId, FailResult);
+        }
     }, EAsyncPriority::Background);
 }
 
-void FAsyncComputeCoordinator::RegisterCompletionCallback(uint64 OperationId, TFunction<void()> Callback)
+void FAsyncComputeCoordinator::RegisterCompletionCallback(int64 OperationId, TFunction<void()> Callback)
 {
     FScopeLock Lock(&QueueLock);
     
@@ -370,11 +401,11 @@ void FAsyncComputeCoordinator::ProcessCompletedOperations()
     FScopeLock Lock(&QueueLock);
     
     // Check all operations with fences
-    TArray<uint64> CompletedOperations;
+    TArray<int64> CompletedOperations;
     
     for (const auto& FencePair : OperationFences)
     {
-        uint64 OperationId = FencePair.Key;
+        int64 OperationId = FencePair.Key;
         FRHIGPUFence* Fence = FencePair.Value;
         
         if (Fence && IsFenceComplete(Fence))
@@ -388,7 +419,7 @@ void FAsyncComputeCoordinator::ProcessCompletedOperations()
     }
     
     // Update states and invoke callbacks
-    for (uint64 OperationId : CompletedOperations)
+    for (int64 OperationId : CompletedOperations)
     {
         // Update state
         FOperationState* State = PendingOperations.Find(OperationId);
@@ -419,14 +450,16 @@ void FAsyncComputeCoordinator::ProcessCompletedOperations()
             // Remove from map
             CompletionCallbacks.Remove(OperationId);
             
-            // Release lock before invoking callback
-            Lock.Unlock();
-            
-            // Invoke callback
-            Callback();
-            
-            // Re-acquire lock
-            Lock.Lock();
+            {
+                // Release and reacquire lock to avoid deadlocks when calling callback
+                FCriticalSection* QueueLockPtr = &QueueLock;
+                Lock.Unlock();
+                
+                // Invoke callback
+                Callback();
+                
+                // Reacquire lock
+                FScopeLock NewLock(QueueLockPtr);
         }
     }
 }
@@ -508,9 +541,14 @@ bool FAsyncComputeCoordinator::DispatchPendingOperations()
         OperationFences.Add(PendingOp.OperationId, Fence);
     }
     
-    // Queue dispatch on render thread
+    // Queue dispatch on render thread - avoid capturing 'this'
+    // Create local copies
+    FPendingAsyncOperation PendingOpCopy = PendingOp;
+    TFunction<void(bool)> CallbackCopy = Callback;
+    FRHIGPUFence* FenceCopy = Fence;
+    
     ENQUEUE_RENDER_COMMAND(DispatchAsyncCompute)(
-        [this, PendingOp, Callback, Fence](FRHICommandListImmediate& RHICmdList)
+        [PendingOpCopy, CallbackCopy, FenceCopy](FRHICommandListImmediate& RHICmdList)
         {
             // Execute on the render thread
             bool bSuccess = true; // assume success for now
@@ -519,15 +557,15 @@ bool FAsyncComputeCoordinator::DispatchPendingOperations()
             // This would invoke the appropriate compute shader
             
             // Signal fence when done
-            if (Fence)
+            if (FenceCopy)
             {
-                RHICmdList.WriteGPUFence(Fence);
+                RHICmdList.WriteGPUFence(FenceCopy);
             }
             
             // If no fence, call completion callback immediately
-            if (!Fence && Callback)
+            if (!FenceCopy && CallbackCopy)
             {
-                Callback(bSuccess);
+                CallbackCopy(bSuccess);
             }
         });
     
@@ -669,7 +707,7 @@ void FAsyncComputeCoordinator::CheckForStaleOperations()
     FScopeLock Lock(&QueueLock);
     
     // Check for operations that have timed out
-    TArray<uint64> TimedOutOperations;
+    TArray<int64> TimedOutOperations;
     
     for (const auto& OpPair : PendingOperations)
     {
@@ -697,7 +735,7 @@ void FAsyncComputeCoordinator::CheckForStaleOperations()
     }
     
     // Handle timed out operations
-    for (uint64 OperationId : TimedOutOperations)
+    for (int64 OperationId : TimedOutOperations)
     {
         // Update state
         FOperationState* State = PendingOperations.Find(OperationId);
@@ -732,17 +770,18 @@ void FAsyncComputeCoordinator::CheckForStaleOperations()
         // Call completion callback with failure
         if (Callback)
         {
-            // Release lock before invoking callback
+            // Save lock pointer and release lock to avoid deadlocks during callback
+            FCriticalSection* QueueLockPtr = &QueueLock;
             Lock.Unlock();
             
             // Invoke callback with failure
             Callback(false);
             
-            // Re-acquire lock
-            Lock.Lock();
+            // Reacquire lock 
+            FScopeLock NewLock(QueueLockPtr);
         }
         
-        GPU_DISPATCHER_LOG_WARNING("Async operation %llu timed out", OperationId);
+        GPU_DISPATCHER_LOG_WARNING("Async operation %lld timed out", OperationId);
     }
 }
 

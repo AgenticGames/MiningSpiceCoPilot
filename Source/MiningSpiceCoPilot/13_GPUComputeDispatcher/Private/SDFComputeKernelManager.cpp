@@ -1,6 +1,6 @@
-#include "13_GPUComputeDispatcher/Public/SDFComputeKernelManager.h"
-#include "13_GPUComputeDispatcher/Public/GPUDispatcherLogging.h"
-#include "13_GPUComputeDispatcher/Public/ComputeOperationTypes.h"
+#include "../Public/SDFComputeKernelManager.h"
+#include "../Public/GPUDispatcherLogging.h"
+#include "../Public/ComputeOperationTypes.h"
 
 #include "ShaderCore.h"
 #include "Misc/Paths.h"
@@ -116,7 +116,7 @@ FSDFComputeKernelManager::~FSDFComputeKernelManager()
 
 bool FSDFComputeKernelManager::RegisterKernel(int32 OpType, const FSDFComputeKernel& Kernel)
 {
-    FScopeLock Lock(&KernelLock);
+    FScopeLock Lock(&this->KernelLock);
     
     // Create array for this operation type if it doesn't exist
     TArray<FSDFComputeKernel>& OpKernels = Kernels.FindOrAdd(OpType);
@@ -143,7 +143,7 @@ bool FSDFComputeKernelManager::RegisterKernel(int32 OpType, const FSDFComputeKer
 
 bool FSDFComputeKernelManager::RegisterKernelPermutation(int32 OpType, const FString& PermutationName, const FShaderVariant& Variant)
 {
-    FScopeLock Lock(&KernelLock);
+    FScopeLock Lock(&this->KernelLock);
     
     // Check if we have any kernels for this operation type
     TArray<FSDFComputeKernel>* OpKernels = Kernels.Find(OpType);
@@ -192,7 +192,7 @@ bool FSDFComputeKernelManager::RegisterKernelPermutation(int32 OpType, const FSt
 
 FSDFComputeKernel* FSDFComputeKernelManager::FindBestKernelForOperation(int32 OpType, const FComputeOperation& Operation)
 {
-    FScopeLock Lock(&KernelLock);
+    FScopeLock Lock(&this->KernelLock);
     
     // Check if we have any kernels for this operation type
     TArray<FSDFComputeKernel>* OpKernels = Kernels.Find(OpType);
@@ -544,7 +544,7 @@ bool FSDFComputeKernelManager::PrecompileCommonKernels()
 
 void FSDFComputeKernelManager::PurgeUnusedKernels()
 {
-    FScopeLock Lock(&KernelLock);
+    FScopeLock Lock(&this->KernelLock);
     
     int32 PurgedCount = 0;
     double CurrentTime = FPlatformTime::Seconds();
@@ -585,7 +585,7 @@ bool FSDFComputeKernelManager::UpdateShaderForTypeVersion(uint32 TypeId, uint32 
     // This would update shaders for a specific type when its memory layout changes
     // For simplicity, we'll just invalidate any cached shaders for this type
     
-    FScopeLock Lock(&KernelLock);
+    FScopeLock Lock(&this->KernelLock);
     
     // Find kernels for this type
     TArray<FSDFComputeKernel>* TypeKernels = Kernels.Find(TypeId);
@@ -608,7 +608,9 @@ bool FSDFComputeKernelManager::UpdateShaderForTypeVersion(uint32 TypeId, uint32 
 
 uint64 FSDFComputeKernelManager::GetTotalShaderMemoryUsage() const
 {
-    FScopeLock Lock(&KernelLock);
+    // Use const_cast for FCriticalSection in const method
+    FCriticalSection& MutableLock = const_cast<FCriticalSection&>(KernelLock);
+    FScopeLock Lock(&MutableLock);
     
     uint64 TotalSize = 0;
     
@@ -636,7 +638,7 @@ uint64 FSDFComputeKernelManager::GetTotalShaderMemoryUsage() const
 
 FSDFComputeKernel* FSDFComputeKernelManager::GetDrillOperationKernel(float Radius, bool bSmooth)
 {
-    FScopeLock Lock(&KernelLock);
+    FScopeLock Lock(&this->KernelLock);
     
     // Look for a drill operation kernel
     TArray<FSDFComputeKernel>* OpKernels = Kernels.Find(0); // Union operation
@@ -679,7 +681,7 @@ FSDFComputeKernel* FSDFComputeKernelManager::GetDrillOperationKernel(float Radiu
 
 FSDFComputeKernel* FSDFComputeKernelManager::GetExplosiveOperationKernel(float Radius, float Falloff)
 {
-    FScopeLock Lock(&KernelLock);
+    FScopeLock Lock(&this->KernelLock);
     
     // Look for an explosive operation kernel
     TArray<FSDFComputeKernel>* OpKernels = Kernels.Find(0); // Union operation
@@ -706,7 +708,7 @@ FSDFComputeKernel* FSDFComputeKernelManager::GetExplosiveOperationKernel(float R
 
 FSDFComputeKernel* FSDFComputeKernelManager::GetPrecisionToolKernel(const FBox& Bounds, bool bHighPrecision)
 {
-    FScopeLock Lock(&KernelLock);
+    FScopeLock Lock(&this->KernelLock);
     
     // Look for a precision tool kernel
     TArray<FSDFComputeKernel>* OpKernels = Kernels.Find(0); // Union operation
@@ -749,7 +751,7 @@ FSDFComputeKernel* FSDFComputeKernelManager::GetPrecisionToolKernel(const FBox& 
 
 bool FSDFComputeKernelManager::RegisterMaterialChannels(uint32 MaterialTypeId, int32 ChannelId, uint32 ChannelCount)
 {
-    FScopeLock Lock(&KernelLock);
+    FScopeLock Lock(&this->KernelLock);
     
     // Store mapping from material type to channel ID
     MaterialChannelMap.Add(MaterialTypeId, ChannelId);
@@ -882,7 +884,7 @@ void FSDFComputeKernelManager::OnShaderFormatChanged()
     
     GPU_DISPATCHER_LOG_VERBOSE("Shader format changed, invalidating cached shaders");
     
-    FScopeLock Lock(&KernelLock);
+    FScopeLock Lock(&this->KernelLock);
     
     // Clear compiled shaders
     CompiledShaders.Empty();

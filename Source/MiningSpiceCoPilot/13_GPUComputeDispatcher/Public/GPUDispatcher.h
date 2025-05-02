@@ -4,10 +4,11 @@
 #include "Containers/CircularBuffer.h"
 #include "RenderGraphResources.h"
 #include "RenderGraphBuilder.h"
-#include "13_GPUComputeDispatcher/Public/Interfaces/IComputeDispatcher.h"
-#include "13_GPUComputeDispatcher/Public/Interfaces/IWorkloadDistributor.h"
-#include "6_ServiceRegistryandDependency/Public/Interfaces/IMemoryAwareService.h"
-#include "6_ServiceRegistryandDependency/Public/Interfaces/ISaveableService.h"
+#include "RHIGPUReadback.h"
+#include "Interfaces/IComputeDispatcher.h"
+#include "Interfaces/IWorkloadDistributor.h"
+#include "../../6_ServiceRegistryandDependency/Public/Interfaces/IMemoryAwareService.h"
+#include "../../6_ServiceRegistryandDependency/Public/Interfaces/ISaveableService.h"
 
 class FHardwareProfileManager;
 class FSDFComputeKernelManager;
@@ -30,8 +31,8 @@ public:
     //~ Begin IComputeDispatcher Interface
     virtual bool DispatchCompute(const FComputeOperation& Operation) override;
     virtual bool BatchOperations(const TArray<FComputeOperation>& Operations) override;
-    virtual bool CancelOperation(uint64 OperationId) override;
-    virtual bool QueryOperationStatus(uint64 OperationId, FOperationStatus& OutStatus) override;
+    virtual bool CancelOperation(int64 OperationId) override;
+    virtual bool QueryOperationStatus(int64 OperationId, FOperationStatus& OutStatus) override;
     virtual FComputeCapabilities GetCapabilities() const override;
     virtual bool DispatchComputeAsync(const FComputeOperation& Operation, TFunction<void(bool, float)> CompletionCallback) override;
     virtual bool DispatchSDFOperation(int32 OpType, const FBox& Bounds, 
@@ -79,7 +80,7 @@ private:
     void LoadConfigSettings();
     void ProcessOnCPU(const FComputeOperation& Operation, TFunction<void(bool, float)> CompletionCallback);
     void UpdatePerformanceMetrics(const FOperationMetrics& Metrics);
-    void OnAsyncOperationComplete(uint64 OperationId, bool bSuccess);
+    void OnAsyncOperationComplete(int64 OperationId, bool bSuccess);
     float GetCurrentGPUUtilization() const;
     void MonitorMemoryPressure();
     EAsyncPriority GetOperationPriority(const FComputeOperation& Operation) const;
@@ -97,13 +98,13 @@ private:
     TMap<uint32, class FNarrowBandAllocator*> NarrowBandAllocators;
     
     // State tracking
-    TMap<uint64, FOperationState> ActiveOperations;
+    TMap<int64, FOperationState> ActiveOperations;
     FCriticalSection OperationLock;
     FThreadSafeCounter64 NextOperationId;
     FThreadSafeBool bIsInitialized;
     
     // Performance tracking
-    TCircularBuffer<FOperationMetrics> PerformanceHistory;
+    TArray<FOperationMetrics> PerformanceHistory;
     static constexpr int32 MaxHistoryEntries = 100;
     float AverageGPUUtilization;
     float CPUToGPUPerformanceRatio;

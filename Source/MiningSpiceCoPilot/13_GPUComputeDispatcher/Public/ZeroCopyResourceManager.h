@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "RHICommandList.h"
 #include "RHIResources.h"
+#include "RenderGraphResources.h"
+#include "RHIGPUReadback.h"
 
 /**
  * Manages zero-copy resources for efficient CPU/GPU data sharing

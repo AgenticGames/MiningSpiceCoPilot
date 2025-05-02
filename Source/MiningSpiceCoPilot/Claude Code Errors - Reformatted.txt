@@ -1,0 +1,1807 @@
+# UNREAL ENGINE 5.5 COMPILER ERRORS AND SOLUTIONS GUIDE FOR CLAUDE CODE
+
+## JUNE 2025 UPDATE - GPU COMPUTE DISPATCHER NON-RHI FIXES
+
+### 1. Lambda Capture Issues with 'this' Pointer
+**Error Description:** 'this' can only be used as a lambda capture within a non-static member function, especially problematic in ENQUEUE_RENDER_COMMAND
+
+**Root Cause:**
+- UE5.5 has stricter rules for capturing 'this' pointer in lambdas
+- Using 'this' directly in lambdas can lead to lifetime issues
+
+**Solution:**
+```cpp
+// Incorrect usage
+ENQUEUE_RENDER_COMMAND(ProcessCompute)(
+    [this, &Operation](FRHICommandList& RHICmdList) {
+        // Implementation using 'this'
+    });
+
+// Correct usage
+// Create a local pointer to the class instance
+FGPUDispatcher* Dispatcher = this;
+ENQUEUE_RENDER_COMMAND(ProcessCompute)(
+    [Dispatcher, &Operation](FRHICommandList& RHICmdList) {
+        // Use Dispatcher instead of 'this'
+    });
+```
+
+### 2. FScopeLock Issues with Lock Releasing
+**Error Description:** Attempting to manually release locks with FScopeLock causing undefined behavior
+
+**Root Cause:**
+- FScopeLock is RAII-based and should not be manually released
+- Incorrect pattern: `FScopeLock* ReleasedLock = &Lock; ReleasedLock = nullptr;`
+
+**Solution:**
+```cpp
+// Incorrect usage
+{
+    // Create a new scope without the lock
+    FScopeLock* ReleasedLock = &Lock;
+    ReleasedLock = nullptr;
+    
+    // Do work without lock
+    DoUnlockedWork();
+    
+    // Reacquire lock with a new scope
+    {
+        FScopeLock NewLock(&QueueLock);
+    }
+}
+
+// Correct usage
+{
+    // Save lock pointer
+    FCriticalSection* QueueLockPtr = &QueueLock;
+    Lock.Unlock();
+    
+    // Do work without lock
+    DoUnlockedWork();
+    
+    // Reacquire lock
+    FScopeLock NewLock(QueueLockPtr);
+}
+```
+
+### 3. Event Naming in RDG Passes
+**Error Description:** 'LPassName' identifier not found in AddPass function
+
+**Root Cause:**
+- UE5.5 changes in FRDGEventName usage in AddPass function
+- Expecting a variable that doesn't exist
+
+**Solution:**
+```cpp
+// Incorrect usage
+GraphBuilder.AddPass(
+    RDG_EVENT_NAME(PassName), // Assuming PassName is used directly
+    ShaderParams,
+    ERDGPassFlags::Compute,
+    [](FRHIComputeCommandList& RHICmdList) { ... });
+
+// Correct usage
+// Create a proper FRDGEventName for the pass
+FRDGEventName EventName(PassName);
+
+// Use the event name directly
+GraphBuilder.AddPass(
+    EventName,
+    ShaderParams,
+    ERDGPassFlags::Compute,
+    [](FRHIComputeCommandList& RHICmdList) { ... });
+```
+
+### 4. Shader Type Redefinition Errors
+**Error Description:** Multiple function/variable redefinitions for shader classes
+
+**Root Cause:**
+- Typedef creates aliases but not distinct types for compiler
+- UE5.5 requires more explicit type separation for shader classes
+
+**Solution:**
+```cpp
+// Incorrect usage - typedef approach
+typedef FSDFOperationShader FGenericSDFOperation;
+IMPLEMENT_SHADER_TYPE(, FGenericSDFOperation, TEXT("/Path/Shader.usf"), TEXT("EntryPoint"), SF_Compute);
+
+// Correct usage - explicit class extension
+class FGenericSDFOperation : public FSDFOperationShader 
+{
+public:
+    DECLARE_SHADER_TYPE(FGenericSDFOperation, Global);
+    FGenericSDFOperation() {}
+    FGenericSDFOperation(const ShaderMetaType::CompiledShaderInitializerType& Initializer) 
+        : FSDFOperationShader(Initializer) {}
+};
+IMPLEMENT_SHADER_TYPE(, FGenericSDFOperation, TEXT("/Path/Shader.usf"), TEXT("EntryPoint"), SF_Compute);
+```
+
+### 5. Serialization Type Conversion Issues
+**Error Description:** Cannot convert from const uint32*/const int32* to void* in Serialize
+
+**Root Cause:**
+- UE5.5 has stricter type safety in serialization functions
+- const_cast usage problematic with Serialize function
+
+**Solution:**
+```cpp
+// Incorrect usage
+uint32 VendorIdCasted = static_cast<uint32>(Profile.VendorId);
+Writer.Serialize(const_cast<uint32*>(&VendorIdCasted), sizeof(uint32));
+
+// Correct usage - create mutable variables for serialization
+uint32 VendorIdCasted = static_cast<uint32>(Profile.VendorId);
+Writer.Serialize(&VendorIdCasted, sizeof(uint32));
+
+// For const values that need serialization, make a local copy
+uint32 ComputeUnitsCopy = Profile.ComputeUnits;
+Writer.Serialize(&ComputeUnitsCopy, sizeof(uint32));
+```
+
+### 6. Missing Function Implementations
+**Error Description:** ProcessOnGPU is not a member of FGPUDispatcher, CalculateOperationDataSize not found
+
+**Root Cause:**
+- Functions declared in header but not implemented in cpp files
+
+**Solution:**
+```cpp
+// Implement in a dedicated file (e.g., MissingImplementations.cpp) to avoid modifying main files
+#include "../Public/GPUDispatcher.h"
+
+// Implementation for missing function
+uint32 FGPUDispatcher::CalculateOperationDataSize(const FComputeOperation& Operation) const
+{
+    // Implementation...
+}
+
+bool FGPUDispatcher::ProcessOnGPU(const FComputeOperation& Operation)
+{
+    // Implementation...
+}
+```
+
+## MAY 2025 UPDATE - SYSTEM 13 GPU COMPUTE DISPATCHER COMPREHENSIVE FIXES (LATEST)
+
+### 1. RHI Feature Detection Updates
+**Error Description:** WITH_RAYTRACING not defined as preprocessor macro, RHISupportsAsyncCompute identifier not found
+
+**Root Cause:** 
+- UE5.5 changed how feature support is detected
+- Global variables replaced with GDynamicRHI function calls
+
+**Solution:**
+```cpp
+// Old style ray tracing check
+#ifdef WITH_RAYTRACING
+    bSupportsRayTracing = true;
+#else
+    bSupportsRayTracing = false;
+#endif
+
+// New style
+#if WITH_RAYTRACING
+    bSupportsRayTracing = GRHISupportsRayTracing;
+#endif
+
+// Old style async compute check
+bSupportsAsyncCompute = RHISupportsAsyncCompute(GMaxRHIShaderPlatform);
+
+// New style
+if (GDynamicRHI && GDynamicRHI->SupportsFeature(ERHIFeature::AsyncCompute))
+{
+    bSupportsAsyncCompute = true;
+}
+```
+
+### 2. Memory Statistics API Updates
+**Error Description:** FRHIMemoryStats undeclared identifier, RHIGetMemoryStats identifier not found
+
+**Root Cause:**
+- UE5.5 changed memory statistics API structures and methods
+- Moved from global functions to GDynamicRHI member methods
+
+**Solution:**
+```cpp
+// Old style
+FRHIMemoryStats MemoryStats;
+if (RHIGetMemoryStats(MemoryStats))
+{
+    TotalMemory = MemoryStats.TotalGPUMemory;
+    AvailableMemory = MemoryStats.AvailableGPUMemory;
+}
+
+// New style
+FRHIMemoryStatistics MemoryStats;
+GDynamicRHI->GetMemoryStatistics(MemoryStats);
+if (MemoryStats.IsValid())
+{
+    TotalMemory = MemoryStats.TotalPhysicalGPUMemory;
+    AvailableMemory = MemoryStats.AvailablePhysicalGPUMemory;
+}
+```
+
+### 3. Buffer Creation Updates
+**Error Description:** BCF_None undeclared identifier, RHICreateBuffer identifier not found
+
+**Root Cause:**
+- UE5.5 changed buffer creation to use descriptors rather than parameter lists
+- Old flags replaced with new enums and structures
+
+**Solution:**
+```cpp
+// Old style buffer creation
+FBufferRHIRef BufferRef = RHICreateBuffer(
+    Size,
+    FinalUsageFlags,
+    BCF_None,  // EBufferCreateFlags enum value
+    ERHIAccess::SRVMask,
+    ResourceCreateInfo);
+
+// New style
+FRHIBufferCreateInfo BufferCreateInfo;
+BufferCreateInfo.Size = Size;
+BufferCreateInfo.Usage = static_cast<ERHIBufferUsageFlags>(FinalUsageFlags);
+BufferCreateInfo.AccessFlags = ERHIAccess::SRVMask;
+BufferCreateInfo.ClearValue = FRHIClearValue();
+    
+FBufferRHIRef BufferRef = RHICreateBuffer(BufferCreateInfo);
+```
+
+### 4. UAV/SRV View Creation Updates
+**Error Description:** FRHIUnorderedAccessViewCreateInfo undeclared identifier, RHICreateUnorderedAccessView and RHICreateShaderResourceView identifier not found
+
+**Root Cause:**
+- UE5.5 changed view creation to use new descriptor structures
+- Changed from CreateInfo to descriptors/initializers
+
+**Solution:**
+```cpp
+// Old style UAV creation
+FRHIUnorderedAccessViewCreateInfo UAVCreateInfo(Format);
+FUnorderedAccessViewRHIRef UAVRef = RHICreateUnorderedAccessView(Buffer, UAVCreateInfo);
+
+// New style
+FRHIUnorderedAccessViewDesc UAVDesc;
+UAVDesc.Buffer.Buffer = Buffer;
+UAVDesc.Buffer.Format = Format;
+FUnorderedAccessViewRHIRef UAVRef = RHICreateUnorderedAccessView(UAVDesc);
+
+// Old style SRV creation
+FRHIShaderResourceViewCreateInfo SRVCreateInfo(Format);
+FShaderResourceViewRHIRef SRVRef = RHICreateShaderResourceView(Buffer, SRVCreateInfo);
+
+// New style
+FRHIShaderResourceViewDesc SRVDesc;
+SRVDesc.Buffer.Buffer = Buffer;
+SRVDesc.Buffer.Format = Format;
+FShaderResourceViewRHIRef SRVRef = RHICreateShaderResourceView(SRVDesc);
+```
+
+### 5. Shader Class Definitions and Layout 
+**Error Description:** Multiple redefinitions of shader class members like InternalInitializeBases, StaticGetTypeLayout, etc.
+
+**Root Cause:**
+- UE5.5 requires explicit type layout declarations for shader classes
+- Missing DECLARE_TYPE_LAYOUT macro in shader class definitions
+
+**Solution:**
+```cpp
+// Old style shader class definition
+class MININGSPICECOPILOT_API FSDFComputeShaderBase : public FGlobalShader
+{
+    DECLARE_SHADER_TYPE(FSDFComputeShaderBase, Global);
+    // Implementation...
+};
+
+// New style with type layout declaration
+class MININGSPICECOPILOT_API FSDFComputeShaderBase : public FGlobalShader
+{
+    DECLARE_TYPE_LAYOUT(FSDFComputeShaderBase, NonVirtual);
+    DECLARE_SHADER_TYPE(FSDFComputeShaderBase, Global);
+    // Implementation...
+    
+    // Add virtual destructor for classes with virtual functions
+    virtual ~FSDFComputeShaderBase() {}
+};
+
+// Shader implementation file needs to use typedefs for specialized shaders
+// Fix:
+typedef FSDFOperationShader FGenericSDFOperation;
+IMPLEMENT_SHADER_TYPE(, FGenericSDFOperation, TEXT("/Path/Shader.usf"), TEXT("EntryPoint"), SF_Compute);
+```
+
+### 6. Shader Parameter Binding
+**Error Description:** FRHIBatchedShaderParameters no appropriate default constructor, FRHIComputeCommandList::SetShaderParameters function doesn't take 2 arguments
+
+**Root Cause:**
+- UE5.5 changes how shader parameters are set
+- Now uses FRHIComputeShaderParameters instead of FRHIBatchedShaderParameters 
+
+**Solution:**
+```cpp
+// Old style parameter binding
+FRHIBatchedShaderParameters BatchedParams;
+SetUniformBufferParameter(BatchedParams, GetUniformBufferParameter<FSDFOperationParameters>(), ParametersUB);
+RHICmdList.SetShaderParameters(ShaderRHI, BatchedParams);
+
+// New style
+FRHIComputeShaderParameters ShaderParams;
+ShaderParams.AddParameter(GetUniformBufferParameter<FSDFOperationParameters>(), ParametersUB);
+RHICmdList.SetComputeShaderParameters(ShaderRHI, ShaderParams);
+```
+
+### 7. FRHITransitionInfo Usage
+**Error Description:** Cannot convert from ERHIPipeline to EResourceTransitionFlags in FRHITransitionInfo constructor
+
+**Root Cause:**
+- UE5.5 changes how resource transitions are described
+- Uses access states rather than pipeline states
+
+**Solution:**
+```cpp
+// Old style transitions
+Transitions.Add(FRHITransitionInfo(
+    static_cast<FRHITexture*>(Resource), 
+    CurrentState->CurrentAccess, 
+    TargetState.CurrentAccess, 
+    CurrentState->CurrentPipeline, 
+    TargetState.CurrentPipeline));
+
+// New style transitions
+Transitions.Add(FRHITransitionInfo::CreateAccessTransition(
+    static_cast<FRHITexture*>(Resource), 
+    CurrentState->CurrentAccess, 
+    TargetState.CurrentAccess));
+```
+
+### 8. FRDGBuilder::AddPass Usage
+**Error Description:** RDG_EVENT_NAME format usage errors, FRDGBuilder::AddPass function has incorrect number of arguments
+
+**Root Cause:**
+- UE5.5 changes how RDG passes are created and named
+- Format strings no longer supported in RDG_EVENT_NAME
+
+**Solution:**
+```cpp
+// Old style
+GraphBuilder.AddPass(
+    RDG_EVENT_NAME("%s", PassName),
+    ShaderParams,
+    ERDGPassFlags::Compute,
+    [](FRHIComputeCommandList& RHICmdList) { /* ... */ });
+
+// New style 
+GraphBuilder.AddPass(
+    RDG_EVENT_NAME(PassName),
+    ShaderParams,
+    ERDGPassFlags::Compute,
+    [](FRHIComputeCommandList& RHICmdList) { /* ... */ });
+```
+
+### 9. Lambda Capture Issues with 'this' Pointer
+**Error Description:** 'this' can only be used as a lambda capture within a non-static member function
+
+**Root Cause:**
+- UE5.5 has stricter rules for capturing 'this' in lambdas
+- ENQUEUE_RENDER_COMMAND requires specific capture patterns
+
+**Solution:**
+```cpp
+// Old style
+ENQUEUE_RENDER_COMMAND(ProcessComputeOperation)(
+    [this, &Operation, Kernel, &bSuccess](FRHICommandListImmediate& RHICmdList)
+    {
+        // Implementation...
+    });
+
+// New style
+// Create local copies to avoid capturing 'this' and avoid reference capture problems
+FComputeOperation OpCopy = Operation;
+FSDFComputeKernel* KernelCopy = Kernel;
+FGPUDispatcher* Dispatcher = this;
+    
+ENQUEUE_RENDER_COMMAND(ProcessComputeOperation)(
+    [Dispatcher, OpCopy, KernelCopy, &bSuccess](FRHICommandListImmediate& RHICmdList)
+    {
+        // Implementation...
+    });
+```
+
+### 10. Serialization Type Conversion Issues
+**Error Description:** Cannot convert from const uint32*/const int32* to void* in Serialize
+
+**Root Cause:**
+- UE5.5 has stricter type safety in serialization functions
+
+**Solution:**
+```cpp
+// Old style
+Writer.Serialize(&VendorIdCasted, sizeof(uint32));
+Writer.Serialize(&Profile.ComputeUnits, sizeof(uint32));
+
+// New style with const_cast for serialization
+Writer.Serialize(const_cast<uint32*>(&VendorIdCasted), sizeof(uint32));
+
+// Alternative: create local mutable copies
+uint32 ComputeUnitsCopy = Profile.ComputeUnits;
+Writer.Serialize(&ComputeUnitsCopy, sizeof(uint32));
+```
+
+## MAY 2025 UPDATE - SYSTEM 13 GPU COMPUTE DISPATCHER SPECIFIC FIXES (LATEST)
+
+### 1. Lambda Capture Issues with 'this' Pointer
+**Error Description:** 'this' can only be used as a lambda capture within a non-static member function
+
+**Root Cause:**
+- UE5.5 has changed how 'this' pointer can be used in lambda captures
+- Certain contexts like ENQUEUE_RENDER_COMMAND don't support direct 'this' capture
+
+**Solution:**
+```cpp
+// Old style
+ENQUEUE_RENDER_COMMAND(ProcessComputeOperation)(
+    [this, &Operation, Kernel, &bSuccess](FRHICommandListImmediate& RHICmdList)
+    {
+        // Implementation...
+    });
+
+// New style
+// Capture class instance by value instead of using 'this' pointer
+FGPUDispatcher* Dispatcher = this;
+ENQUEUE_RENDER_COMMAND(ProcessComputeOperation)(
+    [Dispatcher, &Operation, Kernel, &bSuccess](FRHICommandListImmediate& RHICmdList)
+    {
+        // Implementation...
+    });
+```
+
+### 2. FScopeLock with Const FCriticalSection
+**Error Description:** Cannot convert from 'const FCriticalSection*' to 'FCriticalSection*' in FScopeLock constructor
+
+**Root Cause:**
+- FScopeLock requires non-const FCriticalSection pointer
+- Const member functions implicitly make class members const
+
+**Solution:**
+```cpp
+// Old style in const member function
+float FGPUDispatcher::GetCurrentGPUUtilization() const
+{
+    FScopeLock Lock(&OperationLock); // Error: OperationLock is const in this context
+    // Implementation...
+}
+
+// New style
+float FGPUDispatcher::GetCurrentGPUUtilization() const
+{
+    // Create a mutable reference to OperationLock before using it with FScopeLock
+    FCriticalSection& MutableLock = const_cast<FCriticalSection&>(OperationLock);
+    FScopeLock Lock(&MutableLock);
+    // Implementation...
+}
+```
+
+### 3. Shader Interface Issues with DECLARE_TYPE_LAYOUT
+**Error Description:** static_assert failed: 'Invalid interface for FSDFComputeShaderBase'
+
+**Root Cause:**
+- In UE5.5, shader classes need DECLARE_TYPE_LAYOUT in addition to DECLARE_SHADER_TYPE
+- Missing type layout declaration causes static assertion failure
+
+**Solution:**
+```cpp
+// Old style
+class MININGSPICECOPILOT_API FSDFComputeShaderBase : public FGlobalShader
+{
+    DECLARE_SHADER_TYPE(FSDFComputeShaderBase, Global);
+    // Implementation...
+};
+
+// New style
+class MININGSPICECOPILOT_API FSDFComputeShaderBase : public FGlobalShader
+{
+    DECLARE_TYPE_LAYOUT(FSDFComputeShaderBase, NonVirtual);
+    DECLARE_SHADER_TYPE(FSDFComputeShaderBase, Global);
+    // Implementation...
+};
+```
+
+### 4. Shader Parameter Setting API Updates
+**Error Description:** 'SetUniformBufferParameter' function does not take 4 arguments
+
+**Root Cause:**
+- UE5.5 changes how shader parameters are set, using batched parameters instead of direct calls
+
+**Solution:**
+```cpp
+// Old style
+SetUniformBufferParameter(RHICmdList, ShaderRHI, GetUniformBufferParameter<FSDFOperationParameters>(), ParametersUB);
+
+// New style 
+// Create batched shader parameters for UE5.5 compatibility
+FRHIBatchedShaderParameters BatchedParams;
+SetUniformBufferParameter(BatchedParams, GetUniformBufferParameter<FSDFOperationParameters>(), ParametersUB);
+        
+// Set the batched parameters on the shader
+RHICmdList.SetShaderParameters(ShaderRHI, BatchedParams);
+```
+
+### 5. AsyncComputeCoordinator Integration with AsyncTaskManager
+**Error Description:** CompleteOperation is not a member of FAsyncTaskManager, cannot convert from IAsyncOperation to FAsyncTaskManager
+
+**Root Cause:**
+- API changes in UE5.5 for async task management
+- FAsyncTaskManager expects FAsyncResult for operation completion instead of simple boolean
+
+**Solution:**
+```cpp
+// Old style
+TaskManager.CompleteOperation(TaskId, bSuccess);
+
+// New style
+// Create appropriate result based on success/failure
+if (bSuccess) {
+    FAsyncResult SuccessResult;
+    SuccessResult.bSuccess = true;
+    SuccessResult.Code = 0;
+    SuccessResult.Message = TEXT("Operation completed successfully");
+    TaskManager.OnOperationCompleted(TaskId, SuccessResult);
+} else {
+    FAsyncResult FailResult;
+    FailResult.bSuccess = false;
+    FailResult.Code = 1;
+    FailResult.Message = TEXT("Operation failed");
+    TaskManager.OnOperationCompleted(TaskId, FailResult);
+}
+```
+
+## MAY 2025 UPDATE - SYSTEM 13 GPU COMPUTE DISPATCHER SPECIFIC FIXES
+
+### 1. RHI Header-Related Issues
+**Error Description:** Missing WITH_RAYTRACING macro, undeclared GRHISupportsAsyncCompute, and undefined FRHIMemoryStats.
+
+**Root Cause:**
+- API changes in UE5.5 for checking Ray Tracing support and async compute capabilities
+- Updated memory statistics API in UE5.5
+
+**Solution:**
+```cpp
+// Old style for ray tracing support
+#if WITH_RAYTRACING
+    bSupportsRayTracing = true;
+#else
+    bSupportsRayTracing = false;
+#endif
+
+// New style
+bSupportsRayTracing = false;
+#if WITH_RAYTRACING
+    bSupportsRayTracing = true;
+#endif
+
+// Old style for async compute support
+bSupportsAsyncCompute = GRHISupportsAsyncCompute;
+
+// New style
+bSupportsAsyncCompute = false;
+if (IsRHIDeviceAsyncComputeSupported(GMaxRHIShaderPlatform))
+{
+    bSupportsAsyncCompute = true;
+}
+
+// Old style memory stats
+FRHIMemoryStats MemoryStats;
+if (RHIGetMemoryStats(MemoryStats))
+{
+    TotalMemory = MemoryStats.TotalGPUMemory;
+    AvailableMemory = MemoryStats.AvailableGPUMemory;
+}
+
+// New style
+if (GDynamicRHI)
+{
+    FResourceSizeEx ResSize;
+    GDynamicRHI->GetResourceMemoryStats(ResSize);
+    TotalMemory = ResSize.GetTotalMemoryBytes();
+    AvailableMemory = ResSize.GetFreeMemoryBytes();
+}
+```
+
+### 2. Buffer Creation and View Creation
+**Error Description:** EBufferCreateFlags, BCF_None, RHICreateBuffer, FRHIUnorderedAccessViewCreateInfo, and FRHIShaderResourceViewCreateInfo not defined.
+
+**Root Cause:**
+- API changes in UE5.5 for buffer and view creation
+
+**Solution:**
+```cpp
+// Old style buffer creation
+FRHIResourceCreateInfo ResourceCreateInfo = CreateInfo;
+EBufferCreateFlags CreateFlags = BCF_None;
+FBufferRHIRef BufferRef = RHICreateBuffer(
+    Size,
+    UsageFlags,
+    CreateFlags,
+    ERHIAccess::SRVMask,
+    ResourceCreateInfo);
+
+// New style
+FRHIResourceCreateInfo ResourceCreateInfo = CreateInfo;
+uint32 FinalUsageFlags = static_cast<uint32>(Usage) | AdditionalUsageFlags;
+FBufferRHIRef BufferRef = RHICreateBuffer(
+    Size,
+    FinalUsageFlags,
+    0,  // Additional info
+    ERHIAccess::SRVMask,
+    ResourceCreateInfo);
+
+// Old style UAV creation
+FRHIUnorderedAccessViewCreateInfo UAVCreateInfo(Format);
+FUnorderedAccessViewRHIRef UAVRef = RHICreateUnorderedAccessView(Buffer, UAVCreateInfo);
+
+// New style
+FRHIUnorderedAccessViewInitializer UAVInitializer(Buffer, Format);
+FUnorderedAccessViewRHIRef UAVRef = RHICreateUnorderedAccessView(UAVInitializer);
+
+// Old style SRV creation
+FRHIShaderResourceViewCreateInfo SRVCreateInfo(Format);
+FShaderResourceViewRHIRef SRVRef = RHICreateShaderResourceView(Buffer, SRVCreateInfo);
+
+// New style
+FRHIShaderResourceViewInitializer SRVInitializer(Buffer, Format);
+FShaderResourceViewRHIRef SRVRef = RHICreateShaderResourceView(SRVInitializer);
+```
+
+### 3. Shader Parameter Issues
+**Error Description:** FRHIBatchedShaderParameters has no appropriate constructor, and FRHIComputeCommandList::SetShaderParameters function doesn't take 2 arguments.
+
+**Root Cause:**
+- API changes in UE5.5 for shader parameter binding
+
+**Solution:**
+```cpp
+// Old style
+FRHIUniformBuffer* ParametersUB = FSDFOperationParameters::CreateUniformBuffer(Parameters, EUniformBufferUsage::UniformBuffer_SingleDraw);
+        
+// Create a batch shader parameters structure
+FRHIBatchedShaderParameters BatchedParams;
+SetUniformBufferParameter(BatchedParams, GetUniformBufferParameter<FSDFOperationParameters>(), ParametersUB);
+        
+// Set the batched parameters on the shader
+RHICmdList.SetShaderParameters(ShaderRHI, BatchedParams);
+
+// New style
+FRHIUniformBuffer* ParametersUB = FSDFOperationParameters::CreateUniformBuffer(Parameters, EUniformBufferUsage::UniformBuffer_SingleDraw);
+        
+// Set the parameter directly using UE5.5 compatible API
+SetUniformBufferParameter(RHICmdList, ShaderRHI, GetUniformBufferParameter<FSDFOperationParameters>(), ParametersUB);
+```
+
+### 4. Virtual Destructor for Classes with Virtual Functions
+**Error Description:** Classes with virtual functions should have virtual destructors.
+
+**Root Cause:**
+- Missing virtual destructors in shader classes that have virtual functions
+
+**Solution:**
+```cpp
+// Old style
+class MININGSPICECOPILOT_API FSDFComputeShaderBase : public FGlobalShader
+{
+    // Class implementation...
+};
+
+// New style
+class MININGSPICECOPILOT_API FSDFComputeShaderBase : public FGlobalShader
+{
+    // Class implementation...
+    
+    // Add virtual destructor since this class has virtual functions
+    virtual ~FSDFComputeShaderBase() {}
+};
+```
+
+### 5. Pipeline State Creation
+**Error Description:** FComputePipelineStateInitializer undeclared, missing GetCachedComputePipelineState.
+
+**Root Cause:**
+- API changes in UE5.5 for pipeline state creation
+
+**Solution:**
+```cpp
+// Old style
+FComputePipelineStateInitializer PipelineInitializer;
+PipelineInitializer.ComputeShader = ShaderRHI;
+return GetCachedComputePipelineState(PipelineInitializer);
+
+// New style
+FComputePipelineStateInitializer PipelineInitializer;
+PipelineInitializer.ComputeShader = ShaderRHI;
+return PipelineStateCache::GetAndOrCreateComputePipelineState(RHICmdList, PipelineInitializer);
+```
+
+### 6. AddPass Function Parameters
+**Error Description:** AddPass function has incorrect number of arguments.
+
+**Root Cause:**
+- API changes in UE5.5 for RDG pass creation
+
+**Solution:**
+```cpp
+// Old style
+GraphBuilder.AddPass(
+    RDG_EVENT_NAME("%s", TEXT("SDFOperation")),
+    nullptr,
+    ERDGPassFlags::Compute,
+    [this, Params, &ShaderMetadata](FRHIComputeCommandList& RHICmdList) { ... });
+
+// New style
+GraphBuilder.AddPass(
+    RDG_EVENT_NAME("SDFOperation"),
+    nullptr,
+    ERDGPassFlags::Compute,
+    [this, Params, &ShaderMetadata](FRHIComputeCommandList& RHICmdList) { ... });
+```
+
+### 7. FScopeLock with Const Pointer
+**Error Description:** Cannot convert from 'const FCriticalSection*' to 'FCriticalSection*' in FScopeLock constructor.
+
+**Root Cause:**
+- FScopeLock constructor doesn't accept const pointers to FCriticalSection
+
+**Solution:**
+```cpp
+// Old style
+FScopeLock Lock(&ResourceLock);
+
+// New style
+FCriticalSection& MutableLock = const_cast<FCriticalSection&>(ResourceLock);
+FScopeLock Lock(&MutableLock);
+```
+
+### 8. FMemoryReader and FMemoryWriter Operator Issues
+**Error Description:** FMemoryReader and FMemoryWriter do not define the >> and << operators as expected.
+
+**Root Cause:**
+- Changes in UE5.5 serialization framework
+
+**Solution:**
+```cpp
+// Old style - Writing
+Writer << StateVersion;
+Writer << Profile.DeviceName;
+
+// New style - Writing
+Writer.Serialize(&StateVersion, sizeof(uint32));
+Writer.Serialize(TCHAR_TO_ANSI(*Profile.DeviceName), Profile.DeviceName.Len() + 1);
+
+// Old style - Reading
+Reader >> StateVersion;
+Reader >> DeviceName;
+
+// New style - Reading
+Reader.Serialize(&StateVersion, sizeof(uint32));
+char DeviceNameBuffer[256];
+Reader.Serialize(DeviceNameBuffer, 256);
+DeviceName = FString(ANSI_TO_TCHAR(DeviceNameBuffer));
+```
+
+### 9. Missing Function Implementations
+**Error Description:** Missing CalculateOperationDataSize and ProcessOnGPU in FGPUDispatcher.
+
+**Root Cause:**
+- Incomplete implementation of certain functions required by the interface
+
+**Solution:**
+```cpp
+// Implement the missing functions in a separate file
+// For example: MissingImplementations.cpp
+#include "../Public/GPUDispatcher.h"
+
+uint32 FGPUDispatcher::CalculateOperationDataSize(const FComputeOperation& Operation) const
+{
+    // Implementation...
+}
+
+bool FGPUDispatcher::ProcessOnGPU(const FComputeOperation& Operation)
+{
+    // Implementation...
+}
+```
+
+### 10. Class Name Conflicts
+**Error Description:** Class name conflicts with existing UE5 classes.
+
+**Root Cause:**
+- Using a class name that conflicts with an existing namespace or class in UE5
+
+**Solution:**
+```cpp
+// Old style
+class MININGSPICECOPILOT_API FMiningComputeShaderUtils
+{
+    // Implementation...
+};
+
+// New style
+class MININGSPICECOPILOT_API FMiningSDFComputeShaderUtils
+{
+    // Implementation...
+};
+```
+
+This guide documents common errors encountered when working with Unreal Engine 5.5 projects, along with solutions and best practices. Use this as a reference when implementing systems for Unreal Engine 5.5 to avoid common pitfalls.
+
+This guide documents common errors Claude Code encounters when working with Unreal Engine 5 projects, along with solutions and best practices. Use this as a reference when implementing systems for Unreal Engine 5 to avoid common pitfalls.
+
+## MAY 2025 UPDATES - UNREAL ENGINE 5.5 COMPATIBILITY FIXES
+
+### Const Correctness with FScopeLock
+**Error Description:** Compiler errors with FScopeLock when used with const pointers to FCriticalSection.
+
+**Root Cause:**
+- FScopeLock constructor doesn't accept const FCriticalSection pointers
+- Common in const member functions where class members are implicitly const
+
+**Solution:**
+```cpp
+// Incorrect (fails to compile in UE5.5)
+void SomeClass::SomeConstMethod() const
+{
+    FScopeLock Lock(&SomeLock); // Error: cannot convert from 'const FCriticalSection *' to 'FCriticalSection *'
+    // ...
+}
+
+// Correct approach 1: Use const_cast when in const member functions
+void SomeClass::SomeConstMethod() const
+{
+    FCriticalSection& MutableLock = const_cast<FCriticalSection&>(SomeLock);
+    FScopeLock Lock(&MutableLock);
+    // ...
+}
+
+// Correct approach 2: For non-const methods, no cast is needed
+void SomeClass::SomeNonConstMethod()
+{
+    FScopeLock Lock(&SomeLock); // Works fine in non-const context
+    // ...
+}
+```
+
+### Forward Declaration and Definition Location
+**Error Description:** Compiler errors about undefined structures used across files.
+
+**Root Cause:**
+- Structures defined in implementation files but used in multiple places
+- Missing forward declarations for types used in header files
+
+**Solution:**
+```cpp
+// INCORRECT: Defining structures in implementation files
+// In WorkloadDistributor.cpp
+struct FOperationParameters
+{
+    float VolumeSize = 0.0f;
+    int32 MaterialId = -1;
+    // ...
+};
+
+// CORRECT: Move shared structures to header files
+// In ComputeOperationTypes.h (accessible to all files that need it)
+struct FOperationParameters
+{
+    float VolumeSize = 0.0f;
+    int32 MaterialId = -1;
+    // ...
+};
+```
+
+### Updated RHI Function Calls in UE 5.5
+**Error Description:** Compiler errors related to outdated RHI function calls that have been changed in UE 5.5.
+
+**Root Cause:**
+- API changes between UE5.0/5.1 and UE5.5
+- Direct RHI function calls that now need to go through GDynamicRHI
+- Changes to parameter types and counts
+
+**Solution:**
+```cpp
+// Old style (pre-UE5.5)
+bool bSupportsCompute = RHISupportsComputeShaders(GMaxRHIShaderPlatform);
+bool bSupportsRayTracing = RHISupportsRayTracing();
+
+// New style (UE5.5)
+bool bSupportsCompute = IsFeatureLevelSupported(GMaxRHIShaderPlatform, ERHIFeatureLevel::SM5);
+bool bSupportsRayTracing = false;
+#if WITH_RAYTRACING
+bSupportsRayTracing = true;
+#endif
+bool bSupportsAsyncCompute = GRHISupportsAsyncCompute;
+
+// Old style buffer creation (pre-UE5.5)
+FBufferRHIRef BufferRef = RHICreateBuffer(
+    Size,
+    Usage | BUF_Shared,
+    ERHIAccess::SRVMask,
+    CreateInfo);
+
+// New style (UE5.5)
+uint32 UsageFlags = static_cast<uint32>(Usage) | static_cast<uint32>(BUF_Shared);
+FRHIResourceCreateInfo ResourceCreateInfo = CreateInfo;
+FBufferRHIRef BufferRef = GDynamicRHI->RHICreateBuffer(
+    Size,
+    UsageFlags,
+    0,
+    ERHIAccess::SRVMask,
+    ResourceCreateInfo);
+```
+
+### Resource View Descriptors in UE5.5
+**Error Description:** Compiler errors with UAV and SRV creation in UE5.5.
+
+**Root Cause:**
+- Class names and API changed between engine versions
+- `FBufferUnorderedAccessViewDesc` replaced with `TRHIUnorderedAccessViewDesc`
+- Direct RHI function calls need to go through GDynamicRHI
+
+**Solution:**
+```cpp
+// Old style (pre-UE5.5)
+FBufferUnorderedAccessViewDesc UAVDesc;
+UAVDesc.Format = Format;
+FUnorderedAccessViewRHIRef UAVRef = RHICreateUnorderedAccessView(Buffer, false, false, UAVDesc);
+
+// New style (UE5.5)
+TRHIUnorderedAccessViewDesc UAVDesc;
+UAVDesc.Format = Format;
+FUnorderedAccessViewRHIRef UAVRef = GDynamicRHI->RHICreateUnorderedAccessView(Buffer, false, false, UAVDesc);
+
+// Similarly for shader resource views
+FShaderResourceViewRHIRef SRVRef = GDynamicRHI->RHICreateShaderResourceView(Buffer, Format);
+```
+
+## RECENT ADDITIONS - GPU COMPUTE SYSTEM ERRORS
+
+### 1. Legacy RHI API Usage
+**Error Description:** Compiler errors related to outdated RHI function calls that have been replaced in UE5.
+
+**Root Cause:** 
+- Using outdated RHI functions like `GetCyclesPerMillisecond`, `GRHISupportsAsyncCompute`, or `IsRHIDeviceBufferPoolingEnabled`
+- Calling functions like `RHICreateBuffer` with incorrect parameter counts
+
+**Solution:**
+```cpp
+// Old style (UE4)
+uint32 EndTime = StartTime + FPlatformTime::GetCyclesPerMillisecond() * TimeoutMS;
+
+// New style (UE5)
+double CyclesPerMsec = FPlatformTime::GetSecondsPerCycle() * 1000.0;
+uint32 EndTime = StartTime + static_cast<uint32>(CyclesPerMsec * TimeoutMS);
+
+// Old style
+bool bSupportsAsync = GRHISupportsAsyncCompute;
+
+// New style
+bool bSupportsAsync = RHISupportsAsyncCompute(GMaxRHIShaderPlatform);
+
+// Old style buffer creation
+RHICreateBuffer(Size, BUF_ShaderResource);
+
+// New style buffer creation
+RHICreateBuffer(Size, BUF_ShaderResource, 0, ERHIAccess::SRVMask, CreateInfo);
+```
+
+### 2. FScopeLock Usage Errors
+**Error Description:** Compiler errors related to direct manipulation of FCriticalSection locks when using FScopeLock.
+
+**Root Cause:**
+- Calling Lock() and Unlock() explicitly on FScopeLock instances
+- Releasing and reacquiring locks incorrectly
+- Trying to assign to an FScopeLock instance (Lock = FScopeLock)
+- Using const pointers with FScopeLock constructor
+
+**Solution:**
+```cpp
+// Incorrect lock usage - explicit unlock/lock
+FScopeLock Lock(&QueueLock);
+// Do work that needs lock
+Lock.Unlock();  // ERROR: This is incorrect!
+// Do work without lock
+Lock.Lock();    // ERROR: This is incorrect!
+
+// Incorrect lock usage - reassignment
+FScopeLock Lock(&QueueLock);
+// Do work with lock
+Lock = FScopeLock(&QueueLock);  // ERROR: Cannot reassign FScopeLock!
+
+// Incorrect lock usage - const pointer
+FScopeLock Lock(&this->KernelLock);  // ERROR: Using 'this->' with FScopeLock!
+
+// Correct lock usage - create new scope
+{
+    FScopeLock Lock(&QueueLock);
+    // Do work that needs lock
+}  // Lock automatically released at end of scope
+
+// When work is needed outside lock, use nested scope
+{
+    // Work with first lock
+    FScopeLock Lock(&QueueLock);
+    // Do work that needs lock
+}
+// Do work without lock
+{
+    // Acquire lock again with a new scope 
+    FScopeLock NewLock(&QueueLock);
+    // Do more work with lock
+}
+```
+
+### 3. RDG (Render Dependency Graph) API Changes
+**Error Description:** Compiler errors with RDG functions that have been renamed or modified in UE5.
+
+**Root Cause:**
+- Using old-style RDG event names
+- Calling `AddComputePass` instead of `AddPass` with ERDGPassFlags::Compute
+
+**Solution:**
+```cpp
+// Old style
+GraphBuilder.AddComputePass(
+    FRDGEventName(*PassName),
+    ShaderParams,
+    [ComputeShader](FRHICommandList& RHICmdList) { ... }
+);
+
+// New style
+GraphBuilder.AddPass(
+    RDG_EVENT_NAME("%s", *PassName),
+    ShaderParams,
+    ERDGPassFlags::Compute,
+    [ComputeShader](FRHICommandList& RHICmdList) { ... }
+);
+```
+
+### 4. Pipeline State Creation
+**Error Description:** Compiler errors related to compute pipeline state creation.
+
+**Root Cause:**
+- Using incorrect API calls for pipeline state creation
+- Missing proper PipelineStateCache function calls
+
+**Solution:**
+```cpp
+// Incorrect
+FComputePipelineStateInitializer PipelineInitializer;
+PipelineInitializer.ComputeShader = ShaderRHI;
+return PipelineStateCache::GetAndOrCreateComputePipelineState(RHICmdList, PipelineInitializer);
+
+// Correct
+FComputePipelineStateInitializer PipelineInitializer;
+PipelineInitializer.ComputeShader = ShaderRHI;
+return GetCachedComputePipelineState(PipelineInitializer);
+```
+
+## RENDERING AND GPU COMPUTE ERRORS
+
+### 1. Shader Type Definitions and IMPLEMENT_SHADER_TYPE Errors
+
+**Error Description:**
+Compiler errors related to shader type definitions like `FSDFOperationShader` and `FComputeShaderType` where shader class declarations or implementations are missing or incorrect.
+
+**Root Cause:**
+- Missing shader class declarations and implementations using Unreal's shader macros
+- Incorrect shader parameter binding
+- Incomplete shader type implementation
+
+**Solution:**
+1. Properly declare shader classes using `DECLARE_SHADER_TYPE` macro
+2. Implement shader types with `IMPLEMENT_SHADER_TYPE` macro
+3. Create base shader classes that extend `FGlobalShader`
+4. Implement shader binding methods for parameters
+5. Include proper shader compilation environment settings
+6. Add shader parameter binding support for uniform buffers
+
+**Example Fix:**
+```cpp
+// Header file
+class MININGSPICECOPILOT_API FSDFComputeShaderBase : public FGlobalShader
+{
+    DECLARE_SHADER_TYPE(FSDFComputeShaderBase, Global);
+    
+    // Constructor & parameter binding implementation
+};
+
+// CPP file
+IMPLEMENT_SHADER_TYPE(, FSDFComputeShaderBase, TEXT("/MiningSpiceCoPilot/Shaders/SDFOperations.usf"), TEXT("UnionOperation"), SF_Compute);
+```
+
+### 2. TShaderMapRef Template Usage Issues
+
+**Error Description:**
+Compiler errors with `TShaderMapRef<FComputeShaderType>` initialization or usage in compute shader dispatch code.
+
+**Root Cause:**
+- Incorrect initialization of shader map references
+- Missing shader type declarations
+- Improper template parameter usage
+
+**Solution:**
+1. Initialize shader map references properly using the global shader map
+2. Ensure shader class is correctly declared and implemented
+3. Use proper shader map initialization pattern:
+   `FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);`
+   `TShaderMapRef<FComputeShaderType> ComputeShader(ShaderMap);`
+
+**Example Fix:**
+```cpp
+// Incorrect
+TShaderMapRef<FComputeShaderType> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+
+// Correct
+FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
+TShaderMapRef<FComputeShaderType> ComputeShader(ShaderMap);
+```
+
+### 3. RHI API Usage Problems
+
+**Error Description:**
+Compiler errors with RHI (Rendering Hardware Interface) API calls, particularly with buffer creation and transitions.
+
+**Root Cause:**
+- Using deprecated RHI functions 
+- Incorrect parameter types for RHI functions
+- Missing or incorrect RHI API includes
+
+**Solution:**
+1. Update RHI buffer creation calls to the current API
+2. Use correct parameter types for RHI transitions
+3. Include all necessary RHI headers
+4. Use RHICreateBuffer instead of RHICreateVertexBuffer
+5. Use RHITransition with TArray<FRHITransitionInfo> instead of single transitions
+
+**Example Fix:**
+```cpp
+// Incorrect
+FRHIResourceCreateInfo CreateInfo(TEXT("ComputeStaging"));
+StagingBuffer = RHICreateVertexBuffer(
+    16 * 1024 * 1024,         // 16MB staging buffer
+    BUF_ShaderResource | BUF_SourceCopy | BUF_Dynamic,
+    CreateInfo);
+
+// Correct
+FRHIResourceCreateInfo CreateInfo(TEXT("ComputeStaging"));
+StagingBuffer = RHICreateBuffer(
+    16 * 1024 * 1024,         // 16MB staging buffer
+    BUF_ShaderResource | BUF_SourceCopy | BUF_Dynamic,
+    0,
+    ERHIAccess::SRVMask,
+    CreateInfo);
+```
+
+```cpp
+// Incorrect
+RHICmdList.Transition(FRHITransitionInfo(
+    Resource, 
+    CurrentState->CurrentAccess, 
+    TargetState.CurrentAccess, 
+    CurrentState->CurrentPipeline, 
+    TargetState.CurrentPipeline));
+
+// Correct
+TArray<FRHITransitionInfo> Transitions;
+Transitions.Add(FRHITransitionInfo(
+    Resource, 
+    CurrentState->CurrentAccess, 
+    TargetState.CurrentAccess, 
+    CurrentState->CurrentPipeline, 
+    TargetState.CurrentPipeline));
+RHICmdList.Transition(Transitions);
+```
+
+### 4. Missing ComputePipelineStateInitializer Definition
+
+**Error Description:**
+Compiler errors related to `FComputePipelineStateInitializer` being undefined.
+
+**Root Cause:**
+- Missing necessary RHI include files
+- Using incorrect include paths
+
+**Solution:**
+1. Include necessary RHI headers: "RHIDefinitions.h", "RHIStaticStates.h"
+2. Add include for "PipelineStateCache.h"
+3. Ensure include order is correct (RHI headers before pipeline state headers)
+
+**Example Fix:**
+```cpp
+#include "CoreMinimal.h"
+#include "RenderGraphBuilder.h"
+#include "ShaderParameterStruct.h"
+#include "RHICommandList.h"
+#include "ShaderCore.h"
+#include "PipelineStateCache.h"
+#include "RHIDefinitions.h"
+#include "RHIStaticStates.h"
+```
+
+### 5. Name Collision with FComputeShaderUtils
+
+**Error Description:**
+Compiler error: "has already been defined to be a namespace" when defining a utility class for compute shaders.
+
+**Root Cause:**
+- Using a class name that conflicts with an existing namespace in Unreal Engine
+
+**Solution:**
+1. Use more specific names for utility classes to avoid namespace conflicts
+2. Add a unique prefix to utility class names (e.g., project name or abbreviation)
+
+**Example Fix:**
+```cpp
+// Incorrect
+class MININGSPICECOPILOT_API FComputeShaderUtils
+{
+    // Implementation
+};
+
+// Correct
+class MININGSPICECOPILOT_API FMiningComputeShaderUtils
+{
+    // Implementation
+};
+```
+
+## DATA TYPE AND SERIALIZATION ERRORS
+
+### 6. Missing Type Conversions for Enumerations
+
+**Error Description:**
+Type conversion errors when using enum types with functions expecting specific types.
+
+**Root Cause:**
+- Missing explicit casts between enum types and integers
+- Using enum types directly with functions expecting specific integer types
+
+**Solution:**
+1. Use explicit static_cast<> when converting between enum types and integers
+2. Ensure enum types match between function calls and implementations
+3. When using interfaces, check parameter types match exactly
+
+**Example Fix:**
+```cpp
+// Incorrect
+if (!Registry->IsOperationGPUCompatible(OpType))
+
+// Correct
+ESDFOperationType OpEnum = static_cast<ESDFOperationType>(OpType);
+if (!Registry->IsOperationGPUCompatible(OpEnum))
+```
+
+### 7. FMemoryWriter/FMemoryReader Serialization Issues
+
+**Error Description:**
+Compiler errors or runtime issues with FMemoryWriter/FMemoryReader serialization.
+
+**Root Cause:**
+- Inconsistent operator usage (mixing << and >> operators)
+- Type mismatches during serialization
+- Using incompatible types with serialization operators
+
+**Solution:**
+1. Use consistent operators throughout serialization code
+2. Ensure types match exactly between read and write operations
+3. Use static_cast<> to convert enum types to storage types
+4. Use intermediate variables for complex types
+
+**Example Fix:**
+```cpp
+// Writing - Incorrect
+Writer << (uint32)Profile.VendorId;
+Writer << SuccessfulOperations.GetValue();
+
+// Writing - Correct
+uint32 VendorIdCasted = static_cast<uint32>(Profile.VendorId);
+Writer << VendorIdCasted;
+uint64 SuccessfulOps = SuccessfulOperations.GetValue();
+Writer << SuccessfulOps;
+
+// Reading with FMemoryReader - Incorrect
+Reader << StateVersion;  // WRONG direction!
+Reader << DeviceName;    // WRONG direction!
+
+// Reading with FMemoryReader - Correct
+Reader >> StateVersion;  // Correct: FMemoryReader uses >>
+Reader >> DeviceName;  
+
+// Variables for reading complex data - Correct
+float AvgGPUUtil, CPUToGPURatio;
+Reader >> AvgGPUUtil;
+Reader >> CPUToGPURatio;
+AverageGPUUtilization = AvgGPUUtil;
+CPUToGPUPerformanceRatio = CPUToGPURatio;
+```
+
+### 8. Missing Class Members in Configuration Structures
+
+**Error Description:**
+Compiler errors about missing class members in configuration structures.
+
+**Root Cause:**
+- Using members that aren't defined in the structure
+- Configuration structures with inconsistent members across different files
+
+**Solution:**
+1. Define all required members in configuration structures
+2. Ensure consistent structure definitions across files
+3. Use comments to document member purpose
+
+**Example Fix:**
+```cpp
+// Missing properties
+struct FDistributionConfig
+{
+    bool bEnableAutotuning = true;
+    float CPUAffinityForLowOperationCount = 0.8f;
+    float GPUAffinityForBatchedOperations = 0.9f;
+};
+
+// Complete structure with all required properties
+struct FDistributionConfig
+{
+    bool bEnableAutotuning = true;
+    float CPUAffinityForLowOperationCount = 0.8f;
+    float GPUAffinityForBatchedOperations = 0.9f;
+    
+    // Whether the device supports async compute
+    bool bDeviceSupportsAsyncCompute = false;
+    
+    // Device performance tier (0-3, where 3 is highest)
+    int32 DevicePerformanceTier = 1;
+};
+```
+
+## INTERFACE AND IMPLEMENTATION ERRORS
+
+### 9. Registry Functionality Issues
+
+**Error Description:**
+Compiler errors for missing or incorrectly implemented registry functionality methods.
+
+**Root Cause:**
+- Calling methods that don't exist in the registry interface
+- Using incorrect parameter types for registry methods
+
+**Solution:**
+1. Check registry interface for available methods
+2. Use appropriate registry methods that actually exist
+3. Implement adapter methods if needed when direct methods don't exist
+4. Transform data to match expected types
+
+**Example Fix:**
+```cpp
+// Incorrect 
+TArray<int32> OperationTypes = Registry->GetAllOperationTypes();
+
+// Correct
+TArray<int32> OperationTypes;
+TArray<FSDFOperationInfo> Operations = Registry->GetAllOperations();
+for (const FSDFOperationInfo& OpInfo : Operations)
+{
+    OperationTypes.Add(static_cast<int32>(OpInfo.OperationType));
+}
+```
+
+### 10. Undefined Service Components
+
+**Error Description:**
+Compiler errors about undefined UClass types for service components.
+
+**Root Cause:**
+- Using UClass types that aren't defined in the codebase
+- Trying to cast to undefined UClass types
+
+**Solution:**
+1. Define UClass types for service components
+2. Use template-based service resolution instead of class-based lookup
+3. Change static_cast to dynamic_cast when working with UClass hierarchies
+
+**Example Fix:**
+```cpp
+// Define UClass types
+UCLASS()
+class UServiceHealthMonitor : public UObject
+{
+    GENERATED_BODY()
+};
+
+UCLASS()
+class UServiceDebugVisualizer : public UObject
+{
+    GENERATED_BODY()
+};
+
+// Use template-based resolution
+// Incorrect
+FServiceHealthMonitor* HealthMonitor = 
+    static_cast<FServiceHealthMonitor*>(Locator.ResolveService(UServiceHealthMonitor::StaticClass()));
+
+// Correct
+FServiceHealthMonitor* HealthMonitor = 
+    Locator.ResolveService<FServiceHealthMonitor>();
+```
+
+## BLUEPRINT COMPATIBILITY ERRORS
+
+### 11. Blueprint Incompatible Types
+
+**Error Description:**
+Compiler errors flagging types as incompatible with Blueprint.
+
+**Root Cause:**
+- Using C++ unsigned integer types (uint32, uint64) in Blueprint-exposed properties
+- Using non-BP compatible types with UPROPERTY or in USTRUCT(BlueprintType)
+
+**Solution:**
+1. Replace unsigned types with Blueprint-compatible signed types:
+   - Replace uint32 with int32
+   - Replace uint64 with int64
+2. Only expose necessary properties to Blueprint
+3. Use conditional compilation for internal-only properties
+
+**Example Fix:**
+```cpp
+// Incorrect
+UPROPERTY(BlueprintReadOnly, Category="Operation")
+uint64 OperationId = 0;
+
+// Correct
+UPROPERTY(BlueprintReadOnly, Category="Operation")
+int64 OperationId = 0;
+```
+
+## INCLUDE AND TYPE ERRORS
+
+### 12. Incorrect Include Paths
+
+**Error Description:**
+Compiler errors for missing include files.
+
+**Root Cause:**
+- Using absolute-style paths that don't match project structure
+- Incorrect relative paths between modules
+
+**Solution:**
+1. Use relative paths within the same module: "../Public/Header.h"
+2. Use proper module-relative paths for includes from other modules: "../../OtherModule/Public/Header.h"
+3. Check include guards to prevent redefinition errors
+
+**Example Fix:**
+```cpp
+// Incorrect
+#include "13_GPUComputeDispatcher/Public/GPUDispatcherLogging.h"
+
+// Correct - Same module
+#include "../Public/GPUDispatcherLogging.h"
+
+// Correct - Different module
+#include "../../13_GPUComputeDispatcher/Public/GPUDispatcherLogging.h"
+```
+
+### 13. Structure Type Redefinition
+
+**Error Description:**
+Compiler errors about struct type redefinition.
+
+**Root Cause:**
+- Defining the same structure in multiple header files
+- Including headers with redundant type definitions
+
+**Solution:**
+1. Define structures in a common header file included by dependent headers
+2. Use include guards and forward declarations appropriately
+3. Remove duplicate definitions across files
+
+**Example Fix:**
+```cpp
+// Incorrect - Defined in multiple files
+struct FCachedServiceEntry {
+    // Duplicate implementation
+};
+
+// Correct - Include the header with the definition
+#include "CoreServiceLocator.h"
+// And remove the duplicate definition
+```
+
+### 14. Missing Render Graph Include
+
+**Error Description:**
+Compiler errors about undefined RDG types like `FRDGBufferRef`.
+
+**Root Cause:**
+- Missing includes for Render Dependency Graph (RDG) headers
+- Using RDG types without the proper include files
+
+**Solution:**
+1. Include "RenderGraphResources.h" for FRDGBufferRef and related types
+2. Include "RenderGraphBuilder.h" for FRDGBuilder
+3. Follow the principle that each header should include all headers it depends on
+
+**Example Fix:**
+```cpp
+// Add in header file that uses RDG types
+#include "RenderGraphResources.h"
+#include "RenderGraphBuilder.h"
+```
+
+## FUNCTION AND API IMPLEMENTATION ERRORS
+
+### 15. Missing Function Implementations
+
+**Error Description:**
+Compiler errors about missing function implementations.
+
+**Root Cause:**
+- Functions declared but not implemented
+- Interface methods not properly overridden
+
+**Solution:**
+1. Ensure all declared functions have implementations
+2. Check interface implementation for missing methods
+3. Use override keyword to catch mismatches
+
+**Example Fix:**
+```cpp
+// Implement missing functions in your class:
+uint32 CalculateOperationDataSize(const FComputeOperation& Operation) const
+{
+    // Implementation details
+    return CalculatedSize;
+}
+
+bool ProcessOnGPU(const FComputeOperation& Operation)
+{
+    // Implementation details
+    return true;
+}
+
+bool IsRHIDeviceComputeSupported()
+{
+    return RHISupportsComputeShaders(GMaxRHIShaderPlatform);
+}
+```
+
+### 16. Template Type Mismatch in Math Functions
+
+**Error Description:**
+Compiler errors with template type deduction in math functions.
+
+**Root Cause:**
+- Using mixed types in templated math functions
+- Failure of compiler to deduce template parameters
+
+**Solution:**
+1. Use explicit template parameters (e.g., FMath::Max<int32>)
+2. Ensure consistent types for all parameters
+3. Add explicit casts when mixing types
+
+**Example Fix:**
+```cpp
+// Incorrect
+int32 Result = FMath::Max(1u, Value); // Mixed unsigned and signed types
+
+// Correct
+int32 Result = FMath::Max<int32>(1, Value); // Explicit template parameter
+```
+
+## CONTAINER AND DATA STRUCTURE ERRORS
+
+### 17. TCircularBuffer Usage Error
+
+**Error Description:**
+Compiler errors with TCircularBuffer methods that don't exist.
+
+**Root Cause:**
+- Assuming TCircularBuffer has methods it doesn't have
+- Incorrect initialization of TCircularBuffer
+
+**Solution:**
+1. Replace TCircularBuffer with TArray and manually implement circular behavior
+2. Use proper initialization for container classes
+3. Check API documentation for available methods
+
+**Example Fix:**
+```cpp
+// Incorrect
+TCircularBuffer<FOperationMetrics> PerformanceHistory;
+PerformanceHistory.Init(100);
+PerformanceHistory.Add(Metrics);
+
+// Correct
+TArray<FOperationMetrics> PerformanceHistory;
+// Then add manual handling of circular buffer behavior:
+PerformanceHistory.Add(Metrics);
+if (PerformanceHistory.Num() > MaxHistoryEntries)
+{
+    PerformanceHistory.RemoveAt(0);
+}
+```
+
+# GENERAL BEST PRACTICES
+
+1. **Verify Code Compilation**: Test compile frequently, especially after implementing complex systems. Test with both Debug and Development configurations.
+
+2. **Type Consistency**: Maintain consistent types throughout the codebase, especially between interfaces and implementations.
+
+3. **Blueprint Compatibility**: Use int32/int64 instead of uint32/uint64 for Blueprint-exposed properties.
+
+4. **RHI API Usage**: Stay updated with current Unreal Engine RHI APIs, which change between engine versions:
+   - Use `GDynamicRHI->RHI*` calls instead of direct `RHI*` functions in UE5.5+
+   - Use explicit casts when working with enum-based flags: `static_cast<uint32>(BUF_Shared)`
+   - Include proper headers like RHICore.h, RHIDefinitions.h, and RenderCore.h
+   - Check feature support with IsFeatureLevelSupported instead of deprecated functions
+
+5. **Include Management**: Ensure each header includes everything it needs and nothing more.
+
+6. **Interface Implementation**: Use the override keyword for all interface implementations to catch mismatches.
+
+7. **Template Parameters**: Specify explicit template parameters when type deduction might be ambiguous.
+
+8. **Shader Development**: Follow UE5 shader development patterns carefully, especially with compute shaders.
+
+9. **Service Resolution**: Use template-based service resolution where possible instead of static casts.
+
+10. **Container Usage**: Verify container class API before implementing complex container operations.
+
+11. **Const Correctness**: Be careful with const contexts:
+    - When using FCriticalSection in const methods, use const_cast to satisfy the FScopeLock requirements
+    - When accessing class members in const methods that modify external state, use mutable or const_cast as appropriate
+
+12. **Memory Management Patterns**: 
+    - Prefer TSharedPtr/TUniquePtr over raw pointers
+    - Use RAII patterns for resource acquisition (like FScopeLock)
+    - Always check GDynamicRHI before making RHI calls
+
+## UNREAL ENGINE 5.5 ADDITIONAL GPU COMPUTE SYSTEM FIXES
+
+### 1. SetUniformBufferParameter API Changes
+**Error Description:** Compiler errors related to calling `SetUniformBufferParameter` with 4 arguments which is no longer supported.
+
+**Root Cause:**
+- The UE5.5 API now uses a different approach with batched parameters
+- Old code using `SetUniformBufferParameter(RHICmdList, ShaderRHI, ...)` no longer works
+
+**Solution:**
+```cpp
+// Old style
+SetUniformBufferParameter(RHICmdList, ShaderRHI, GetUniformBufferParameter<FParameters>(), ParametersUB);
+
+// New style
+FRHIBatchedShaderParameters BatchedParams;
+SetUniformBufferParameter(BatchedParams, GetUniformBufferParameter<FParameters>(), ParametersUB);
+RHICmdList.SetShaderParameters(ShaderRHI, BatchedParams);
+```
+
+### 2. FComputePipelineStateInitializer Usage
+**Error Description:** Compiler errors about `FComputePipelineStateInitializer` being undefined or incorrectly used.
+
+**Root Cause:**
+- Missing proper includes in UE5.5
+- API changes for pipeline state creation
+
+**Solution:**
+```cpp
+// Add necessary includes
+#include "PipelineStateCache.h"
+#include "RHICore.h"
+#include "RenderCore.h"
+
+// Old style
+FComputePipelineStateInitializer PipelineInitializer;
+PipelineInitializer.ComputeShader = ShaderRHI;
+return PipelineStateCache::GetAndOrCreateComputePipelineState(RHICmdList, PipelineInitializer);
+
+// New style
+FComputePipelineStateInitializer PipelineInitializer;
+PipelineInitializer.ComputeShader = ShaderRHI;
+return GetCachedComputePipelineState(PipelineInitializer);
+```
+
+### 3. Buffer Creation and View Descriptors
+**Error Description:** Compiler errors related to `RHICreateBuffer`, `TRHIUnorderedAccessViewDesc`, and view creation.
+
+**Root Cause:**
+- API changes in UE5.5 for buffer and view creation
+- Removal of `GDynamicRHI->RHI*` direct calls
+
+**Solution:**
+```cpp
+// Old style buffer creation
+FBufferRHIRef BufferRef = GDynamicRHI->RHICreateBuffer(
+    Size,
+    UsageFlags,
+    0,
+    ERHIAccess::SRVMask,
+    ResourceCreateInfo);
+
+// New style
+FBufferRHIRef BufferRef = RHICreateBuffer(
+    Size,
+    UsageFlags,
+    BCF_None,  // EBufferCreateFlags
+    ERHIAccess::SRVMask,
+    ResourceCreateInfo);
+
+// Old style UAV creation
+TRHIUnorderedAccessViewDesc UAVDesc;
+UAVDesc.Format = Format;
+FUnorderedAccessViewRHIRef UAVRef = GDynamicRHI->RHICreateUnorderedAccessView(Buffer, false, false, UAVDesc);
+
+// New style
+FRHIUnorderedAccessViewCreateInfo UAVCreateInfo(Format);
+FUnorderedAccessViewRHIRef UAVRef = RHICreateUnorderedAccessView(Buffer, UAVCreateInfo);
+
+// Old style SRV creation
+FShaderResourceViewRHIRef SRVRef = GDynamicRHI->RHICreateShaderResourceView(Buffer, Format);
+
+// New style
+FRHIShaderResourceViewCreateInfo SRVCreateInfo(Format);
+FShaderResourceViewRHIRef SRVRef = RHICreateShaderResourceView(Buffer, SRVCreateInfo);
+```
+
+### 4. Feature Level Detection
+**Error Description:** Compiler errors related to `IsFeatureLevelSupported` which has been deprecated.
+
+**Root Cause:**
+- API changes in UE5.5 for checking shader model support
+- New enum-based feature level checking
+
+**Solution:**
+```cpp
+// Old style
+bool bSupportsComputeShaders = IsFeatureLevelSupported(GMaxRHIShaderPlatform, ERHIFeatureLevel::SM5);
+
+// New style
+bool bSupportsComputeShaders = EnumHasAnyFlags(GMaxRHIFeatureLevel, ERHIFeatureLevel::SM5);
+```
+
+### 5. JSON Object Field Accessors
+**Error Description:** Warnings about FJsonObject API methods being deprecated.
+
+**Root Cause:**
+- UE5.5 requires using TCHAR* strings in JSON field accessors instead of ANSI strings
+
+**Solution:**
+```cpp
+// Old style
+OutProfile.DeviceName = JsonObject->GetStringField("DeviceName");
+JsonObject->TryGetObjectField("BlockSizes", BlockSizesObject);
+
+// New style
+OutProfile.DeviceName = JsonObject->GetStringField(TEXT("DeviceName"));
+JsonObject->TryGetObjectField(TEXT("BlockSizes"), BlockSizesObject);
+```
+
+### 6. GPU Memory Statistics
+**Error Description:** Compiler errors about RHIGetGPUMemoryStats no longer being available.
+
+**Root Cause:**
+- API changes in UE5.5 for accessing GPU memory information
+
+**Solution:**
+```cpp
+// Old style
+uint64 OutTotalGPUMemory, OutAvailableGPUMemory;
+if (GDynamicRHI && GDynamicRHI->RHIGetGPUMemoryStats(OutTotalGPUMemory, OutAvailableGPUMemory))
+
+// New style
+FRHIMemoryStats MemoryStats;
+if (RHIGetMemoryStats(MemoryStats))
+{
+    TotalMemory = MemoryStats.TotalGPUMemory;
+    AvailableMemory = MemoryStats.AvailableGPUMemory;
+}
+```

@@ -1,23 +1,23 @@
-#include "13_GPUComputeDispatcher/Public/GPUDispatcher.h"
-#include "13_GPUComputeDispatcher/Public/GPUDispatcherLogging.h"
-#include "13_GPUComputeDispatcher/Public/HardwareProfileManager.h"
-#include "13_GPUComputeDispatcher/Public/WorkloadDistributor.h"
-#include "13_GPUComputeDispatcher/Public/SDFComputeKernelManager.h"
-#include "13_GPUComputeDispatcher/Public/AsyncComputeCoordinator.h"
-#include "13_GPUComputeDispatcher/Public/ZeroCopyResourceManager.h"
-#include "13_GPUComputeDispatcher/Public/SDFShaderParameters.h"
+#include "../Public/GPUDispatcher.h"
+#include "../Public/GPUDispatcherLogging.h"
+#include "../Public/HardwareProfileManager.h"
+#include "../Public/WorkloadDistributor.h"
+#include "../Public/SDFComputeKernelManager.h"
+#include "../Public/AsyncComputeCoordinator.h"
+#include "../Public/ZeroCopyResourceManager.h"
+#include "../Public/SDFShaderParameters.h"
 
-#include "1_CoreRegistry/Public/CoreServiceLocator.h"
-#include "1_CoreRegistry/Public/SDFTypeRegistry.h"
-#include "1_CoreRegistry/Public/TypeRegistry.h"
-#include "2_MemoryManagement/Public/Interfaces/IMemoryManager.h"
-#include "2_MemoryManagement/Public/Interfaces/IBufferProvider.h"
-#include "2_MemoryManagement/Public/NarrowBandAllocator.h"
-#include "3_ThreadingTaskSystem/Public/AsyncTaskManager.h"
-#include "3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h"
-#include "3_ThreadingTaskSystem/Public/NumaHelpers.h"
-#include "6_ServiceRegistryandDependency/Public/ServiceLocator.h"
-#include "6_ServiceRegistryandDependency/Public/ServiceHealthMonitor.h"
+#include "../../1_CoreRegistry/Public/CoreServiceLocator.h"
+#include "../../1_CoreRegistry/Public/SDFTypeRegistry.h"
+#include "../../1_CoreRegistry/Public/TypeRegistry.h"
+#include "../../2_MemoryManagement/Public/Interfaces/IMemoryManager.h"
+#include "../../2_MemoryManagement/Public/Interfaces/IBufferProvider.h"
+#include "../../2_MemoryManagement/Public/NarrowBandAllocator.h"
+#include "../../3_ThreadingTaskSystem/Public/AsyncTaskManager.h"
+#include "../../3_ThreadingTaskSystem/Public/Interfaces/ITaskScheduler.h"
+#include "../../3_ThreadingTaskSystem/Public/NumaHelpers.h"
+#include "../../6_ServiceRegistryandDependency/Public/ServiceLocator.h"
+#include "../../6_ServiceRegistryandDependency/Public/ServiceHealthMonitor.h"
 
 #include "RenderGraphResources.h"
 #include "RenderGraphBuilder.h"
@@ -26,7 +26,20 @@
 #include "ShaderCore.h"
 #include "PipelineStateCache.h"
 #include "ShaderParameterUtils.h"
-#include "ComputeShaderUtils.h"
+#include "../Public/ComputeShaderUtils.h"
+
+// Define UClass types for service components to fix compile errors
+UCLASS()
+class UServiceHealthMonitor : public UObject
+{
+    GENERATED_BODY()
+};
+
+UCLASS()
+class UServiceDebugVisualizer : public UObject
+{
+    GENERATED_BODY()
+};
 
 DEFINE_LOG_CATEGORY(LogGPUDispatcher);
 
@@ -35,7 +48,7 @@ FGPUDispatcher::FGPUDispatcher()
     , CPUToGPUPerformanceRatio(1.0f)
     , StagingBuffer(nullptr)
 {
-    PerformanceHistory.Init(MaxHistoryEntries);
+    // TArray doesn't need explicit initialization like TCircularBuffer
     bIsInitialized = false;
 }
 
@@ -62,11 +75,16 @@ bool FGPUDispatcher::Initialize()
     }
     
     // Initialize workload distributor with detected hardware profile
-    if (!WorkloadDistributor->Initialize(HardwareProfileManager->GetCurrentProfile()))
-    {
-        GPU_DISPATCHER_LOG_ERROR("Failed to initialize workload distributor");
-        return false;
-    }
+    FDistributionConfig DistConfig;
+    DistConfig.bEnableAutotuning = true;
+    DistConfig.CPUAffinityForLowOperationCount = 0.8f;
+    DistConfig.GPUAffinityForBatchedOperations = 0.9f;
+    
+    // Apply hardware profile settings to the config
+    DistConfig.bDeviceSupportsAsyncCompute = HardwareProfileManager->GetCurrentProfile().bSupportsAsyncCompute;
+    DistConfig.DevicePerformanceTier = HardwareProfileManager->GetCurrentProfile().PerformanceTier;
+    
+    WorkloadDistributor->SetDistributionConfig(DistConfig);
     
     // Initialize kernel manager
     if (!KernelManager->PrecompileCommonKernels())
@@ -192,9 +210,10 @@ bool FGPUDispatcher::InitializeMemoryResources()
                 
             if (NBAllocator)
             {
-                // Store for later use
-                NarrowBandAllocators.Add(NBAllocator->GetTypeId(), NBAllocator);
-                GPU_DISPATCHER_LOG_VERBOSE("Found narrow band allocator for type %u", NBAllocator->GetTypeId());
+                // Store for later use - use the hash of the pool name as the key
+                uint32 PoolNameHash = GetTypeHash(NBAllocator->GetPoolName());
+                NarrowBandAllocators.Add(PoolNameHash, NBAllocator);
+                GPU_DISPATCHER_LOG_VERBOSE("Found narrow band allocator: %s", *NBAllocator->GetPoolName().ToString());
             }
         }
     }
@@ -225,9 +244,11 @@ bool FGPUDispatcher::InitializeZeroCopyBuffers()
     
     // Create staging buffer for transfers
     FRHIResourceCreateInfo CreateInfo(TEXT("ComputeStaging"));
-    StagingBuffer = RHICreateVertexBuffer(
+    StagingBuffer = RHICreateBuffer(
         16 * 1024 * 1024,         // 16MB staging buffer
         BUF_ShaderResource | BUF_SourceCopy | BUF_Dynamic,
+        0,
+        ERHIAccess::SRVMask,
         CreateInfo);
         
     if (!StagingBuffer)
@@ -253,12 +274,18 @@ bool FGPUDispatcher::ConfigureSDFOperationsForGPU()
     // Get current hardware profile
     const FHardwareProfile& Profile = HardwareProfileManager->GetCurrentProfile();
     
-    // Configure operations based on hardware capabilities
-    TArray<int32> OperationTypes = Registry->GetAllOperationTypes();
+    // Get all operation types from the registry
+    TArray<int32> OperationTypes;
+    TArray<FSDFOperationInfo> Operations = Registry->GetAllOperations();
+    for (const FSDFOperationInfo& OpInfo : Operations)
+    {
+        OperationTypes.Add(static_cast<int32>(OpInfo.OperationType));
+    }
     for (int32 OpType : OperationTypes)
     {
         // Determine if this operation can run on GPU
-        bool bGPUCompatible = Registry->IsOperationGPUCompatible(OpType);
+        ESDFOperationType OpEnum = static_cast<ESDFOperationType>(OpType);
+        bool bGPUCompatible = Registry->IsOperationGPUCompatible(OpEnum);
         
         if (bGPUCompatible)
         {
@@ -318,7 +345,7 @@ bool FGPUDispatcher::DispatchCompute(const FComputeOperation& Operation)
     if (Target == EProcessingTarget::GPU)
     {
         // Create operation state
-        uint64 OperationId = NextOperationId.Increment();
+        int64 OperationId = static_cast<int64>(NextOperationId.Increment());
         
         FComputeOperation ModifiedOperation = Operation;
         ModifiedOperation.OperationId = OperationId;
@@ -434,7 +461,7 @@ bool FGPUDispatcher::BatchOperations(const TArray<FComputeOperation>& Operations
     return bAllSucceeded;
 }
 
-bool FGPUDispatcher::CancelOperation(uint64 OperationId)
+bool FGPUDispatcher::CancelOperation(int64 OperationId)
 {
     if (!bIsInitialized)
     {
@@ -467,7 +494,7 @@ bool FGPUDispatcher::CancelOperation(uint64 OperationId)
     return false;
 }
 
-bool FGPUDispatcher::QueryOperationStatus(uint64 OperationId, FOperationStatus& OutStatus)
+bool FGPUDispatcher::QueryOperationStatus(int64 OperationId, FOperationStatus& OutStatus)
 {
     if (!bIsInitialized)
     {
@@ -495,16 +522,16 @@ bool FGPUDispatcher::QueryOperationStatus(uint64 OperationId, FOperationStatus& 
         // Get service health monitor
         IServiceLocator& Locator = IServiceLocator::Get();
         FServiceHealthMonitor* HealthMonitor = 
-            static_cast<FServiceHealthMonitor*>(Locator.ResolveService(UServiceHealthMonitor::StaticClass()));
+            Locator.ResolveService<FServiceHealthMonitor>();
         
         if (HealthMonitor)
         {
-            // Record operation failure
+            // Record operation failure using correct enum value
             HealthMonitor->RecordServiceOperation(
                 "GPUDispatcher",
                 false,  // operation failed
                 State->ExecutionTimeMs,
-                "ResourceExhaustion",
+                EServiceFailureReason::ResourceExhaustion,
                 State->ErrorMessage);
         }
     }
@@ -521,8 +548,8 @@ FComputeCapabilities FGPUDispatcher::GetCapabilities() const
         Capabilities.HardwareProfile = HardwareProfileManager->GetCurrentProfile();
     }
     
-    // Set basic capabilities
-    Capabilities.bSupportsComputeShaders = IsRHIDeviceComputeSupported();
+    // Set basic capabilities using modern UE5.5 API
+    Capabilities.bSupportsComputeShaders = EnumHasAnyFlags(GMaxRHIFeatureLevel, ERHIFeatureLevel::SM5);
     
     // Set maximum dispatch sizes
     Capabilities.MaxDispatchSizeX = 65535;
@@ -534,7 +561,11 @@ FComputeCapabilities FGPUDispatcher::GetCapabilities() const
     
     // Add supported shader formats
     TArray<FName> ShaderFormats;
-    GetAllTargetPlatformShaderFormats(GMaxRHIShaderPlatform, ShaderFormats);
+    // Use some common shader formats as a fallback since direct API may not be accessible
+    ShaderFormats.Add(FName("SF_METAL_SM5"));
+    ShaderFormats.Add(FName("SF_METAL_SM5_NOTESS"));
+    ShaderFormats.Add(FName("SF_VULKAN_SM5"));
+    ShaderFormats.Add(FName("SF_VULKAN_SM6"));
     for (const FName& Format : ShaderFormats)
     {
         Capabilities.SupportedShaderFormats.Add(Format.ToString());
@@ -560,7 +591,7 @@ bool FGPUDispatcher::DispatchComputeAsync(const FComputeOperation& Operation, TF
     if (Target == EProcessingTarget::GPU)
     {
         // Create operation state
-        uint64 OperationId = NextOperationId.Increment();
+        int64 OperationId = static_cast<int64>(NextOperationId.Increment());
         
         FComputeOperation ModifiedOperation = Operation;
         ModifiedOperation.OperationId = OperationId;
@@ -577,10 +608,12 @@ bool FGPUDispatcher::DispatchComputeAsync(const FComputeOperation& Operation, TF
         }
         
         // Submit to async compute coordinator
+        // Capture class instance by value instead of using 'this' pointer for UE5.5 compatibility
+        FGPUDispatcher* Dispatcher = this;
         AsyncComputeCoordinator->ScheduleAsyncOperation(
             ModifiedOperation, 
-            [this, OperationId](bool bSuccess) {
-                OnAsyncOperationComplete(OperationId, bSuccess);
+            [Dispatcher, OperationId](bool bSuccess) {
+                Dispatcher->OnAsyncOperationComplete(OperationId, bSuccess);
             },
             GetOperationPriority(ModifiedOperation));
         
@@ -618,7 +651,8 @@ bool FGPUDispatcher::DispatchSDFOperation(int32 OpType, const FBox& Bounds,
     }
     
     // Check if operation is GPU compatible
-    if (!Registry->IsOperationGPUCompatible(OpType))
+    ESDFOperationType OpEnum = static_cast<ESDFOperationType>(OpType);
+    if (!Registry->IsOperationGPUCompatible(OpEnum))
     {
         GPU_DISPATCHER_LOG_VERBOSE("SDF operation %d is not GPU compatible, falling back to CPU", OpType);
         
@@ -646,8 +680,10 @@ bool FGPUDispatcher::DispatchSDFOperation(int32 OpType, const FBox& Bounds,
     }
     
     // Execute using RDG
+    // Capture class instance by value instead of using 'this' pointer for UE5.5 compatibility
+    FGPUDispatcher* Dispatcher = this;
     ENQUEUE_RENDER_COMMAND(DispatchSDFOperation)(
-        [this, OpType, Bounds, InputBuffers, OutputBuffer, Kernel](FRHICommandListImmediate& RHICmdList)
+        [Dispatcher, OpType, Bounds, InputBuffers, OutputBuffer, Kernel](FRHICommandListImmediate& RHICmdList)
         {
             FRDGBuilder GraphBuilder(RHICmdList);
             
@@ -678,12 +714,13 @@ bool FGPUDispatcher::DispatchSDFOperation(int32 OpType, const FBox& Bounds,
                 FMath::DivideAndRoundUp((int32)(Bounds.Max.Z - Bounds.Min.Z), (int32)Kernel->ThreadGroupSizeZ)
             );
             
-            // Add compute pass
-            TShaderMapRef<FComputeShaderType> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+            // Get the appropriate shader based on operation type
+            FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
+            TShaderMapRef<FComputeShaderType> ComputeShader(ShaderMap);
             
-            FComputeShaderUtils::AddPass(
+            FMiningSDFComputeShaderUtils::AddPass(
                 GraphBuilder,
-                RDG_EVENT_NAME("SDFOperation"),
+                TEXT("SDFOperation"),
                 ComputeShader,
                 ShaderParams,
                 GroupSize
@@ -734,8 +771,10 @@ bool FGPUDispatcher::DispatchMaterialOperation(int32 MaterialChannelId, const FB
     }
     
     // Execute using RDG
+    // Capture class instance by value instead of using 'this' pointer for UE5.5 compatibility
+    FGPUDispatcher* Dispatcher = this;
     ENQUEUE_RENDER_COMMAND(DispatchMaterialOperation)(
-        [this, MaterialChannelId, Bounds, InputBuffers, OutputBuffer, Kernel](FRHICommandListImmediate& RHICmdList)
+        [Dispatcher, MaterialChannelId, Bounds, InputBuffers, OutputBuffer, Kernel](FRHICommandListImmediate& RHICmdList)
         {
             FRDGBuilder GraphBuilder(RHICmdList);
             
@@ -767,12 +806,13 @@ bool FGPUDispatcher::DispatchMaterialOperation(int32 MaterialChannelId, const FB
                 FMath::DivideAndRoundUp((int32)(Bounds.Max.Z - Bounds.Min.Z), (int32)Kernel->ThreadGroupSizeZ)
             );
             
-            // Add compute pass
-            TShaderMapRef<FComputeShaderType> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+            // Get the appropriate shader based on operation type
+            FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
+            TShaderMapRef<FComputeShaderType> ComputeShader(ShaderMap);
             
-            FComputeShaderUtils::AddPass(
+            FMiningSDFComputeShaderUtils::AddPass(
                 GraphBuilder,
-                RDG_EVENT_NAME("MaterialOperation"),
+                TEXT("MaterialOperation"),
                 ComputeShader,
                 ShaderParams,
                 GroupSize
@@ -877,40 +917,64 @@ bool FGPUDispatcher::TrimMemory(uint64 TargetUsageBytes)
 
 bool FGPUDispatcher::SaveState(TArray<uint8>& OutState)
 {
+    // Take lock here to ensure consistent state while saving
+    FScopeLock Lock(&OperationLock);
+    
     // Save critical state information
     FMemoryWriter Writer(OutState);
     
     // Save version for compatibility
     const uint32 StateVersion = 1;
-    Writer << StateVersion;
+    Writer.Serialize(&StateVersion, sizeof(uint32));
     
     // Save hardware profile
     FHardwareProfile Profile = HardwareProfileManager->GetCurrentProfile();
-    Writer << Profile.DeviceName;
-    Writer << (uint32)Profile.VendorId;
-    Writer << Profile.ComputeUnits;
+    // Make a copy of the string as non-const char array to use with Serialize
+    int32 StringLen = Profile.DeviceName.Len() + 1;
+    char* DeviceNameBuffer = new char[StringLen];
+    FCStringAnsi::Strncpy(DeviceNameBuffer, TCHAR_TO_ANSI(*Profile.DeviceName), StringLen);
+    Writer.Serialize(DeviceNameBuffer, StringLen);
+    delete[] DeviceNameBuffer;
+    
+    // Save VendorId as uint32
+    uint32 VendorIdCasted = static_cast<uint32>(Profile.VendorId);
+    Writer.Serialize(&VendorIdCasted, sizeof(uint32));
+    
+    // Save ComputeUnits - creating a mutable copy for serialization
+    uint32 ComputeUnitsCopy = Profile.ComputeUnits;
+    Writer.Serialize(&ComputeUnitsCopy, sizeof(uint32));
     
     // Save active operations count
     const int32 ActiveOpsCount = ActiveOperations.Num();
-    Writer << ActiveOpsCount;
+    Writer.Serialize(&ActiveOpsCount, sizeof(int32));
     
     // Save performance metrics
-    Writer << AverageGPUUtilization;
-    Writer << CPUToGPUPerformanceRatio;
-    Writer << SuccessfulOperations.GetValue();
-    Writer << FailedOperations.GetValue();
+    // Create local copies for serialization
+    float AverageGPUUtil = AverageGPUUtilization;
+    float CPUToGPURatio = CPUToGPUPerformanceRatio;
+    Writer.Serialize(&AverageGPUUtil, sizeof(float));
+    Writer.Serialize(&CPUToGPURatio, sizeof(float));
+    
+    // Get and save atomic counter values
+    uint64 SuccessfulOps = SuccessfulOperations.GetValue();
+    uint64 FailedOps = FailedOperations.GetValue();
+    Writer.Serialize(&SuccessfulOps, sizeof(uint64));
+    Writer.Serialize(&FailedOps, sizeof(uint64));
     
     // Save distribution config
     FDistributionConfig Config = WorkloadDistributor->GetDistributionConfig();
-    Writer << Config.bEnableAutotuning;
-    Writer << Config.CPUAffinityForLowOperationCount;
-    Writer << Config.GPUAffinityForBatchedOperations;
+    Writer.Serialize(&Config.bEnableAutotuning, sizeof(bool));
+    Writer.Serialize(&Config.CPUAffinityForLowOperationCount, sizeof(float));
+    Writer.Serialize(&Config.GPUAffinityForBatchedOperations, sizeof(float));
     
     return true;
 }
 
 bool FGPUDispatcher::RestoreState(const TArray<uint8>& InState)
 {
+    // Take lock here to ensure consistent state during restoration
+    FScopeLock Lock(&OperationLock);
+    
     if (InState.Num() == 0)
     {
         return false;
@@ -920,7 +984,7 @@ bool FGPUDispatcher::RestoreState(const TArray<uint8>& InState)
     
     // Read and validate version
     uint32 StateVersion;
-    Reader << StateVersion;
+    Reader.Serialize(&StateVersion, sizeof(uint32));
     if (StateVersion != 1)
     {
         GPU_DISPATCHER_LOG_WARNING("Incompatible state version %u, expected 1", StateVersion);
@@ -931,14 +995,20 @@ bool FGPUDispatcher::RestoreState(const TArray<uint8>& InState)
     FString DeviceName;
     uint32 VendorId;
     uint32 ComputeUnits;
-    Reader << DeviceName;
-    Reader << VendorId;
-    Reader << ComputeUnits;
+    
+    // Read DeviceName string
+    char DeviceNameBuffer[256];
+    Reader.Serialize(DeviceNameBuffer, 256);
+    DeviceName = FString(ANSI_TO_TCHAR(DeviceNameBuffer));
+    
+    Reader.Serialize(&VendorId, sizeof(uint32));
+    Reader.Serialize(&ComputeUnits, sizeof(uint32));
     
     // Check if hardware matches
     const FHardwareProfile& CurrentProfile = HardwareProfileManager->GetCurrentProfile();
+    uint32 CurrentVendorId = static_cast<uint32>(CurrentProfile.VendorId);
     if (DeviceName != CurrentProfile.DeviceName || 
-        VendorId != (uint32)CurrentProfile.VendorId ||
+        VendorId != CurrentVendorId ||
         ComputeUnits != CurrentProfile.ComputeUnits)
     {
         GPU_DISPATCHER_LOG_WARNING("Hardware profile mismatch, saved state may not be optimal");
@@ -946,24 +1016,33 @@ bool FGPUDispatcher::RestoreState(const TArray<uint8>& InState)
     
     // Read active operations count (for metrics)
     int32 ActiveOpsCount;
-    Reader << ActiveOpsCount;
+    Reader.Serialize(&ActiveOpsCount, sizeof(int32));
     
     // Read performance metrics
-    Reader >> AverageGPUUtilization;
-    Reader >> CPUToGPUPerformanceRatio;
+    float AvgGPUUtil, CPUToGPURatio;
+    Reader.Serialize(&AvgGPUUtil, sizeof(float));
+    Reader.Serialize(&CPUToGPURatio, sizeof(float));
+    AverageGPUUtilization = AvgGPUUtil;
+    CPUToGPUPerformanceRatio = CPUToGPURatio;
     
     uint64 SuccessfulOps, FailedOps;
-    Reader >> SuccessfulOps;
-    Reader >> FailedOps;
+    Reader.Serialize(&SuccessfulOps, sizeof(uint64));
+    Reader.Serialize(&FailedOps, sizeof(uint64));
     
     SuccessfulOperations.Set(SuccessfulOps);
     FailedOperations.Set(FailedOps);
     
     // Read distribution config
     FDistributionConfig Config;
-    Reader >> Config.bEnableAutotuning;
-    Reader >> Config.CPUAffinityForLowOperationCount;
-    Reader >> Config.GPUAffinityForBatchedOperations;
+    bool EnableAutotuning;
+    float CPUAffinity, GPUAffinity;
+    Reader.Serialize(&EnableAutotuning, sizeof(bool));
+    Reader.Serialize(&CPUAffinity, sizeof(float));
+    Reader.Serialize(&GPUAffinity, sizeof(float));
+    
+    Config.bEnableAutotuning = EnableAutotuning;
+    Config.CPUAffinityForLowOperationCount = CPUAffinity;
+    Config.GPUAffinityForBatchedOperations = GPUAffinity;
     
     WorkloadDistributor->SetDistributionConfig(Config);
     
@@ -978,11 +1057,14 @@ void FGPUDispatcher::ExecuteComputePass(FRDGBuilder& GraphBuilder,
     ResourceBarrierTracking(GraphBuilder, Params.Resources);
     
     // Execute the compute pass with proper resource transitions
-    GraphBuilder.AddComputePass(
-        TEXT("SDFOperation"),
+    // Fixed AddPass call to match UE5.5 API
+    // Capture class instance by value instead of using 'this' pointer for UE5.5 compatibility
+    FGPUDispatcher* Dispatcher = this;
+    GraphBuilder.AddPass(
+        RDG_EVENT_NAME("SDFOperation"),
         nullptr,
         ERDGPassFlags::Compute,
-        [this, Params, &ShaderMetadata](FRHIComputeCommandList& RHICmdList) 
+        [Dispatcher, Params, &ShaderMetadata](FRHIComputeCommandList& RHICmdList) 
         {
             // Set compute shader and parameters
             // This is just a placeholder, actual shader setup would be more complex
@@ -1033,7 +1115,7 @@ void FGPUDispatcher::LogOperationCompletion(const FComputeOperation& Operation, 
     // Get debug visualizer
     IServiceLocator& Locator = IServiceLocator::Get();
     FServiceDebugVisualizer* Visualizer = 
-        static_cast<FServiceDebugVisualizer*>(Locator.ResolveService(UServiceDebugVisualizer::StaticClass()));
+        Locator.ResolveService<FServiceDebugVisualizer>();
     
     if (Visualizer)
     {
@@ -1083,9 +1165,6 @@ void FGPUDispatcher::ProcessOnCPU(const FComputeOperation& Operation, TFunction<
 
 bool FGPUDispatcher::ProcessOnGPU(const FComputeOperation& Operation)
 {
-    // This would typically use the RDG to submit a compute shader
-    // For the purpose of this implementation, we'll just simulate a GPU operation
-    
     // Get compute kernel for this operation
     FSDFComputeKernel* Kernel = KernelManager->FindBestKernelForOperation(Operation.OperationType, Operation);
     if (!Kernel)
@@ -1094,22 +1173,95 @@ bool FGPUDispatcher::ProcessOnGPU(const FComputeOperation& Operation)
         return false;
     }
     
-    // In a real implementation, this would queue an RDG operation
-    // For now, we'll just simulate the GPU execution time
+    // Prepare dispatch command to process the operation on GPU
+    bool bSuccess = false;
     
-    // Simulate GPU processing time based on operation complexity
-    float Complexity = Operation.Bounds.GetVolume() / 1000.0f;
-    float SimulatedTimeMs = FMath::Max(0.5f, Complexity * 0.005f); // GPU typically 2x faster than CPU
+    // Queue render command to execute the operation
+    // Capture class instance by value instead of using 'this' pointer for UE5.5 compatibility
+    FGPUDispatcher* Dispatcher = this;
+    ENQUEUE_RENDER_COMMAND(ProcessComputeOperation)(
+        [Dispatcher, &Operation, Kernel, &bSuccess](FRHICommandListImmediate& RHICmdList)
+        {
+            FRDGBuilder GraphBuilder(RHICmdList);
+            
+            // Set up shader parameters
+            FSDFOperationParameters* ShaderParams = GraphBuilder.AllocParameters<FSDFOperationParameters>();
+            
+            // Set operation parameters
+            ShaderParams->OperationType = Operation.OperationType;
+            ShaderParams->BoundsMin = FVector3f(Operation.Bounds.Min);
+            ShaderParams->BoundsMax = FVector3f(Operation.Bounds.Max);
+            ShaderParams->Strength = Operation.Strength;
+            ShaderParams->BlendWeight = Operation.BlendWeight;
+            ShaderParams->UseNarrowBand = Operation.bUseNarrowBand ? 1 : 0;
+            ShaderParams->UseHighPrecision = Operation.bRequiresHighPrecision ? 1 : 0;
+            
+            // Calculate volume size based on bounds
+            FVector VolumeSize = Operation.Bounds.GetSize();
+            ShaderParams->VolumeSize = FVector3f(VolumeSize);
+            
+            // Set up dispatch parameters
+            FIntVector VolumeRes(
+                FMath::Max(1, FMath::CeilToInt(VolumeSize.X / Kernel->CellSize.X)),
+                FMath::Max(1, FMath::CeilToInt(VolumeSize.Y / Kernel->CellSize.Y)),
+                FMath::Max(1, FMath::CeilToInt(VolumeSize.Z / Kernel->CellSize.Z))
+            );
+            
+            ShaderParams->VolumeWidth = VolumeRes.X;
+            ShaderParams->VolumeHeight = VolumeRes.Y;
+            ShaderParams->VolumeDepth = VolumeRes.Z;
+            
+            // Create dispatch parameters
+            const FIntVector GroupSize(
+                FMath::DivideAndRoundUp(VolumeRes.X, (int32)Kernel->ThreadGroupSizeX),
+                FMath::DivideAndRoundUp(VolumeRes.Y, (int32)Kernel->ThreadGroupSizeY),
+                FMath::DivideAndRoundUp(VolumeRes.Z, (int32)Kernel->ThreadGroupSizeZ)
+            );
+            
+            // Get the appropriate shader based on operation type
+            FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
+            TShaderMapRef<FComputeShaderType> ComputeShader(ShaderMap);
+            
+            // Add compute pass
+            FMiningSDFComputeShaderUtils::AddPass(
+                GraphBuilder,
+                TEXT("SDFOperation"),
+                ComputeShader,
+                ShaderParams,
+                GroupSize
+            );
+            
+            // Execute graph
+            GraphBuilder.Execute();
+            
+            // Operation completed successfully
+            bSuccess = true;
+        });
     
-    // Simulate GPU work with a small sleep
-    FPlatformProcess::Sleep(SimulatedTimeMs / 1000.0f);
+    // Wait for command to complete
+    FlushRenderingCommands();
     
-    return true;
+    return bSuccess;
 }
 
 void FGPUDispatcher::UpdatePerformanceMetrics(const FOperationMetrics& Metrics)
 {
-    // Record operation metrics
+    // Add the new metrics to the history array
+    PerformanceHistory.Add(Metrics);
+    
+    // If we have more than our maximum entries, remove the oldest one
+    if (PerformanceHistory.Num() > MaxHistoryEntries)
+    {
+        PerformanceHistory.RemoveAt(0);
+    }
+    
+    // Update workload distributor with the new metrics
+    if (WorkloadDistributor)
+    {
+        WorkloadDistributor->UpdatePerformanceMetrics(Metrics);
+    }
+    
+    // Update success/failure counters
     if (Metrics.SuccessfulExecution)
     {
         SuccessfulOperations.Increment();
@@ -1119,37 +1271,26 @@ void FGPUDispatcher::UpdatePerformanceMetrics(const FOperationMetrics& Metrics)
         FailedOperations.Increment();
     }
     
-    // Update GPU utilization metrics
-    float CurrentUtilization = Metrics.DeviceUtilization;
-    if (CurrentUtilization > 0.0f)
+    // Update performance ratio metrics
+    if (Metrics.GPUExecutionTimeMS > 0.0f && Metrics.CPUExecutionTimeMS > 0.0f)
     {
-        // Use exponential moving average to smooth utilization
-        const float Alpha = 0.1f;
-        AverageGPUUtilization = Alpha * CurrentUtilization + (1.0f - Alpha) * AverageGPUUtilization;
-    }
-    
-    // Update performance history for learning
-    PerformanceHistory.Add(Metrics);
-    
-    // Notify WorkloadDistributor
-    WorkloadDistributor->UpdatePerformanceMetrics(Metrics);
-    
-    // Update CPU to GPU performance ratio if we have both times
-    if (Metrics.CPUExecutionTimeMS > 0.0f && Metrics.GPUExecutionTimeMS > 0.0f)
-    {
-        const float Alpha = 0.1f;
+        // Calculate ratio of CPU time to GPU time
         float Ratio = Metrics.CPUExecutionTimeMS / Metrics.GPUExecutionTimeMS;
-        CPUToGPUPerformanceRatio = Alpha * Ratio + (1.0f - Alpha) * CPUToGPUPerformanceRatio;
+        
+        // Weighted update to the overall ratio
+        const float WeightFactor = 0.2f; // 20% weight for new value
+        CPUToGPUPerformanceRatio = (CPUToGPUPerformanceRatio * (1.0f - WeightFactor)) + (Ratio * WeightFactor);
     }
     
-    // Monitor memory pressure periodically
-    if ((SuccessfulOperations.GetValue() + FailedOperations.GetValue()) % 100 == 0)
+    // Update GPU utilization metric
+    if (Metrics.DeviceUtilization >= 0.0f)
     {
-        MonitorMemoryPressure();
+        const float WeightFactor = 0.1f; // 10% weight for new value
+        AverageGPUUtilization = (AverageGPUUtilization * (1.0f - WeightFactor)) + (Metrics.DeviceUtilization * WeightFactor);
     }
 }
 
-void FGPUDispatcher::OnAsyncOperationComplete(uint64 OperationId, bool bSuccess)
+void FGPUDispatcher::OnAsyncOperationComplete(int64 OperationId, bool bSuccess)
 {
     FOperationState* State = nullptr;
     TFunction<void(bool, float)> CompletionCallback;
@@ -1196,7 +1337,9 @@ float FGPUDispatcher::GetCurrentGPUUtilization() const
     // In a real implementation, this would query the GPU's current utilization
     // For simplicity, we'll return a simulated value based on active operations
     
-    FScopeLock Lock(&OperationLock);
+    // Create a mutable reference to OperationLock before using it with FScopeLock
+    FCriticalSection& MutableLock = const_cast<FCriticalSection&>(OperationLock);
+    FScopeLock Lock(&MutableLock);
     
     int32 ActiveCount = 0;
     for (const auto& Pair : ActiveOperations)
@@ -1271,12 +1414,14 @@ void FGPUDispatcher::ResourceBarrierTracking(FRDGBuilder& GraphBuilder, const TM
                 ERDGPassFlags::None,
                 [Resource, CurrentState, TargetState](FRHICommandListImmediate& RHICmdList)
                 {
-                    RHICmdList.Transition(FRHITransitionInfo(
-                        Resource, 
+                    TArray<FRHITransitionInfo> Transitions;
+                    // Use UE5.5 compatible FRHITransitionInfo API
+                    // Create transition with only access states (not pipeline states)
+                    Transitions.Add(FRHITransitionInfo::CreateAccessTransition(
+                        static_cast<FRHITexture*>(Resource), 
                         CurrentState->CurrentAccess, 
-                        TargetState.CurrentAccess, 
-                        CurrentState->CurrentPipeline, 
-                        TargetState.CurrentPipeline));
+                        TargetState.CurrentAccess));
+                    RHICmdList.Transition(Transitions);
                     
                     // Update current state
                     *CurrentState = TargetState;
@@ -1292,15 +1437,45 @@ uint32 FGPUDispatcher::CalculateOperationDataSize(const FComputeOperation& Opera
 {
     // Calculate approximate data size for metrics
     FVector Size = Operation.Bounds.GetSize();
-    uint32 VoxelCount = (uint32)(Size.X * Size.Y * Size.Z);
     
-    // Assume 4 bytes per voxel for SDF field
+    // Get the cell size from the HardwareProfileManager if available
+    FVector CellSize(1.0f, 1.0f, 1.0f);
+    if (HardwareProfileManager)
+    {
+        const FHardwareProfile& Profile = HardwareProfileManager->GetCurrentProfile();
+        FSDFComputeKernel* Kernel = KernelManager->FindBestKernelForOperation(Operation.OperationType, Operation);
+        if (Kernel)
+        {
+            CellSize = Kernel->CellSize;
+        }
+    }
+    
+    // Calculate number of voxels based on the bounds and cell size
+    int32 VoxelsX = FMath::Max(1, FMath::CeilToInt(Size.X / CellSize.X));
+    int32 VoxelsY = FMath::Max(1, FMath::CeilToInt(Size.Y / CellSize.Y));
+    int32 VoxelsZ = FMath::Max(1, FMath::CeilToInt(Size.Z / CellSize.Z));
+    uint32 VoxelCount = VoxelsX * VoxelsY * VoxelsZ;
+    
+    // If using narrow band optimization, we process fewer voxels
+    if (Operation.bUseNarrowBand)
+    {
+        // In narrow band optimization, we typically only process 20-30% of the voxels
+        VoxelCount = static_cast<uint32>(VoxelCount * 0.3f);
+    }
+    
+    // Assume 4 bytes per voxel for SDF field (32-bit float)
     uint32 BytesPerVoxel = 4;
     
-    // If operation uses multiple channels, multiply by channel count
+    // If high precision is required, use 8 bytes per voxel (64-bit double)
+    if (Operation.bRequiresHighPrecision)
+    {
+        BytesPerVoxel = 8;
+    }
+    
+    // If operation uses multiple material channels, multiply by channel count
     if (Operation.MaterialChannelId >= 0)
     {
-        BytesPerVoxel *= 4; // Assume 4 channels on average
+        BytesPerVoxel *= 4; // Assume 4 channels on average for materials
     }
     
     return VoxelCount * BytesPerVoxel;

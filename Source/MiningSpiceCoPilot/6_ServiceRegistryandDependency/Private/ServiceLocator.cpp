@@ -266,7 +266,7 @@ void* FServiceLocator::ResolveService(const UClass* InInterfaceType, int32 InZon
     if (VersionCounter)
     {
         const uint32 Version = VersionCounter->GetValue();
-        FThreadLocalServiceCache::Get().Cache.Add(Key, FCachedServiceEntry(Entry->ServiceInstance, Version));
+        FThreadLocalServiceCache::Get().AddCachedService(Key, Entry->ServiceInstance, Version);
     }
     
     return Entry->ServiceInstance;
@@ -904,7 +904,7 @@ void* FServiceLocator::ResolveServiceCached(const UClass* InInterfaceType, int32
         if (VersionCounter && CachedEntry->Version == VersionCounter->GetValue())
         {
             // Cache hit with current version
-            return CachedEntry->ServiceInstance;
+            return CachedEntry->Service.Get();
         }
     }
     

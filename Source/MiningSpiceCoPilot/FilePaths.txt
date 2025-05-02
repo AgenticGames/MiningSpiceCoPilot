@@ -130,6 +130,35 @@ MiningSpiceCoPilot
 │       │       ├── ServiceHealthMonitor.h
 │       │       ├── ServiceLocator.h
 │       │       └── ServiceManager.h
+│       ├── 13_GPUComputeDispatcher/
+│       │   ├── Private/
+│       │   │   ├── AsyncComputeCoordinator.cpp
+│       │   │   ├── ComputeShaderUtils.cpp
+│       │   │   ├── GPUDispatcher.cpp
+│       │   │   ├── HardwareProfileManager.cpp
+│       │   │   ├── SDFComputeKernelManager.cpp
+│       │   │   ├── WorkloadDistributor.cpp
+│       │   │   └── ZeroCopyResourceManager.cpp
+│       │   ├── Public/
+│       │   │   ├── Interfaces/
+│       │   │   │   ├── IComputeDispatcher.h
+│       │   │   │   └── IWorkloadDistributor.h
+│       │   │   ├── AsyncComputeCoordinator.h
+│       │   │   ├── ComputeOperationTypes.h
+│       │   │   ├── ComputeShaderUtils.h
+│       │   │   ├── GPUDispatcher.h
+│       │   │   ├── GPUDispatcherLogging.h
+│       │   │   ├── HardwareProfileManager.h
+│       │   │   ├── SDFComputeKernelManager.h
+│       │   │   ├── SDFShaderParameters.h
+│       │   │   ├── WorkloadDistributor.h
+│       │   │   └── ZeroCopyResourceManager.h
+│       │   ├── Shaders/
+│       │   │   ├── MiningOperations.usf
+│       │   │   └── SDFOperations.usf
+│       │   ├── GPUComputeDispatcherModule.cpp
+│       │   ├── GPUComputeDispatcherModule.h
+│       │   └── README.md
 │       ├── GUIDE Locks/
 │       ├── Private/
 │       │   └── Logging/

@@ -2,8 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "Containers/CircularBuffer.h"
-#include "13_GPUComputeDispatcher/Public/Interfaces/IWorkloadDistributor.h"
-#include "13_GPUComputeDispatcher/Public/ComputeOperationTypes.h"
+#include "Interfaces/IWorkloadDistributor.h"
+#include "ComputeOperationTypes.h"
 
 struct FPerformanceHistory
 {
@@ -47,7 +47,7 @@ public:
     virtual bool MergeOperations(const TArray<FComputeOperation>& Operations, TArray<FOperationBatch>& OutBatches) override;
     virtual void SetDistributionConfig(const FDistributionConfig& Config) override;
     virtual FDistributionConfig GetDistributionConfig() const override;
-    virtual void AdjustForMemoryPressure(uint64 AvailableBytes) override;
+    virtual void AdjustForMemoryPressure(int64 AvailableBytes) override;
     virtual void IncreaseCPUWorkloadRatio(float AdditionalRatio) override;
     //~ End IWorkloadDistributor Interface
     
@@ -86,7 +86,7 @@ private:
     // Learning system
     TSharedPtr<FAdaptivePerformanceSystem> PerformanceSystem;
     TMap<uint32, FPerformanceHistory> PerformanceHistoryByType;
-    TCircularBuffer<FOperationMetrics> RecentOperations;
+    TArray<FOperationMetrics> RecentOperations;
     float MemoryPressureAdjustment;
     float CPUWorkloadRatioBoost;
     FCriticalSection StatsLock;

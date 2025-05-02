@@ -1,9 +1,15 @@
-#include "13_GPUComputeDispatcher/Public/ZeroCopyResourceManager.h"
-#include "13_GPUComputeDispatcher/Public/GPUDispatcherLogging.h"
+#include "../Public/ZeroCopyResourceManager.h"
+#include "../Public/GPUDispatcherLogging.h"
 
 #include "RenderCore.h"
 #include "RHIResources.h"
 #include "RHIDefinitions.h"
+#include "RHI.h"
+#include "RHIUtilities.h"
+#include "RHIStaticStates.h"
+#include "PipelineStateCache.h"
+#include "RenderGraphResources.h" // For FBufferUnorderedAccessViewDesc
+#include "Shader.h" // For SupportsComputeShaders
 
 FZeroCopyResourceManager::FZeroCopyResourceManager()
     : NextBufferIndex(0)
@@ -31,12 +37,18 @@ FZeroCopyResourceManager::~FZeroCopyResourceManager()
 
 bool FZeroCopyResourceManager::Initialize()
 {
-    // Check if RHI supports shared memory
-    bool bSupportsSharedMemory = IsRHIDeviceBufferPoolingEnabled() && GRHISupportsBufferSharedResourceView;
+    // Check if RHI supports compute shaders (needed for shared resources)
+    bool bSupportsSharedMemory = IsFeatureLevelSupported(GMaxRHIShaderPlatform, ERHIFeatureLevel::SM5);
     
     if (!bSupportsSharedMemory)
     {
-        GPU_DISPATCHER_LOG_WARNING("RHI does not support shared memory, zero-copy buffers will be emulated");
+        GPU_DISPATCHER_LOG_WARNING("RHI does not support compute shaders, zero-copy buffers will be emulated");
+    }
+    
+    // Initialize the RHI if not done already
+    if (!GDynamicRHI)
+    {
+        GPU_DISPATCHER_LOG_WARNING("DynamicRHI not initialized, some operations may fail");
     }
     
     GPU_DISPATCHER_LOG_DEBUG("ZeroCopyResourceManager initialized");
@@ -45,7 +57,9 @@ bool FZeroCopyResourceManager::Initialize()
 
 void* FZeroCopyResourceManager::PinMemory(void* CPUAddress, SIZE_T Size, uint32& OutBufferIndex)
 {
-    FScopeLock Lock(&ResourceLock);
+    // Create a mutable reference to ResourceLock before using it with FScopeLock
+    FCriticalSection& MutableLock = const_cast<FCriticalSection&>(ResourceLock);
+    FScopeLock Lock(&MutableLock);
     
     // Generate a unique buffer index
     OutBufferIndex = NextBufferIndex++;
@@ -58,7 +72,7 @@ void* FZeroCopyResourceManager::PinMemory(void* CPUAddress, SIZE_T Size, uint32&
     Buffer.UsageCount = 1;
     
     // Create a GPU buffer for this memory
-    Buffer.GPUBuffer = new FRHIGPUBufferReadback(TEXT("ZeroCopyBuffer"), Size);
+    Buffer.GPUBuffer = new FRHIGPUBufferReadback(TEXT("ZeroCopyBuffer"));
     
     // Track allocated memory
     TotalAllocatedBytes += Size;
@@ -72,7 +86,9 @@ void* FZeroCopyResourceManager::PinMemory(void* CPUAddress, SIZE_T Size, uint32&
 
 FRHIGPUBufferReadback* FZeroCopyResourceManager::GetGPUBuffer(uint32 BufferIndex)
 {
-    FScopeLock Lock(&ResourceLock);
+    // Create a mutable reference to ResourceLock before using it with FScopeLock
+    FCriticalSection& MutableLock = const_cast<FCriticalSection&>(ResourceLock);
+    FScopeLock Lock(&MutableLock);
     
     // Find the buffer
     FPinnedBuffer* Buffer = PinnedBuffers.Find(BufferIndex);
@@ -91,7 +107,9 @@ FRHIGPUBufferReadback* FZeroCopyResourceManager::GetGPUBuffer(uint32 BufferIndex
 
 void FZeroCopyResourceManager::ReleaseMemory(uint32 BufferIndex)
 {
-    FScopeLock Lock(&ResourceLock);
+    // Create a mutable reference to ResourceLock before using it with FScopeLock
+    FCriticalSection& MutableLock = const_cast<FCriticalSection&>(ResourceLock);
+    FScopeLock Lock(&MutableLock);
     
     // Find the buffer
     FPinnedBuffer* Buffer = PinnedBuffers.Find(BufferIndex);
@@ -122,7 +140,9 @@ void FZeroCopyResourceManager::ReleaseMemory(uint32 BufferIndex)
 
 void FZeroCopyResourceManager::TransitionResource(FRHIResource* Resource, ERHIAccess NewAccess, ERHIPipeline Pipeline)
 {
-    FScopeLock Lock(&ResourceLock);
+    // Create a mutable reference to ResourceLock before using it with FScopeLock
+    FCriticalSection& MutableLock = const_cast<FCriticalSection&>(ResourceLock);
+    FScopeLock Lock(&MutableLock);
     
     // Check if resource exists
     if (!Resource)
@@ -160,12 +180,24 @@ FRHIBuffer* FZeroCopyResourceManager::CreateBuffer(SIZE_T Size, EBufferUsageFlag
     // This is just a wrapper around RHI buffer creation
     // In a real implementation, it would handle shared memory setup
     
-    FBufferRHIRef BufferRef = RHICreateBuffer(
-        Size,
-        Usage,
-        BUF_Shared | BUF_ShaderResource | BUF_StructuredBuffer,
-        ERHIAccess::SRVMask,
-        CreateInfo);
+    // Cast to uint32 to avoid operator overload ambiguity
+    uint32 AdditionalUsageFlags = static_cast<uint32>(BUF_Shared | BUF_ShaderResource | BUF_StructuredBuffer);
+    uint32 UsageFlags = static_cast<uint32>(Usage) | AdditionalUsageFlags;
+    
+    // Updated buffer creation for UE5.5
+    FRHIResourceCreateInfo ResourceCreateInfo = CreateInfo;
+    
+    // Set buffer usage flags (combine with provided flags)
+    uint32 FinalUsageFlags = static_cast<uint32>(Usage) | AdditionalUsageFlags;
+
+    // Create buffer using UE5.5 compatible API
+    FRHIBufferCreateInfo BufferCreateInfo;
+    BufferCreateInfo.Size = Size;
+    BufferCreateInfo.Usage = static_cast<ERHIBufferUsageFlags>(FinalUsageFlags);
+    BufferCreateInfo.AccessFlags = ERHIAccess::SRVMask;
+    BufferCreateInfo.ClearValue = FRHIClearValue();
+    
+    FBufferRHIRef BufferRef = RHICreateBuffer(BufferCreateInfo);
     
     // Track allocated memory
     TotalAllocatedBytes += Size;
@@ -181,8 +213,13 @@ FRHIUnorderedAccessView* FZeroCopyResourceManager::CreateUAV(FRHIBuffer* Buffer,
         return nullptr;
     }
     
-    // Create UAV
-    FUnorderedAccessViewRHIRef UAVRef = RHICreateUnorderedAccessView(Buffer, Format);
+    // Create UAV with updated API for UE5.5
+    // Create UAV descriptor specifying format and buffer
+    FRHIUnorderedAccessViewDesc UAVDesc;
+    UAVDesc.Buffer.Buffer = Buffer;
+    UAVDesc.Buffer.Format = Format;
+    
+    FUnorderedAccessViewRHIRef UAVRef = RHICreateUnorderedAccessView(UAVDesc);
     
     // Return raw pointer (ownership transferred to caller)
     return UAVRef.GetReference();
@@ -195,8 +232,13 @@ FRHIShaderResourceView* FZeroCopyResourceManager::CreateSRV(FRHIBuffer* Buffer, 
         return nullptr;
     }
     
-    // Create SRV
-    FShaderResourceViewRHIRef SRVRef = RHICreateShaderResourceView(Buffer, Format);
+    // Create SRV with updated API for UE5.5
+    // Create SRV descriptor specifying format and buffer
+    FRHIShaderResourceViewDesc SRVDesc;
+    SRVDesc.Buffer.Buffer = Buffer;
+    SRVDesc.Buffer.Format = Format;
+    
+    FShaderResourceViewRHIRef SRVRef = RHICreateShaderResourceView(SRVDesc);
     
     // Return raw pointer (ownership transferred to caller)
     return SRVRef.GetReference();

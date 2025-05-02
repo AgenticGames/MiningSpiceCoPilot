@@ -1,5 +1,8 @@
-#include "13_GPUComputeDispatcher/Public/WorkloadDistributor.h"
-#include "13_GPUComputeDispatcher/Public/GPUDispatcherLogging.h"
+#include "../Public/WorkloadDistributor.h"
+#include "../Public/GPUDispatcherLogging.h"
+
+// Forward declarations
+struct FOperationParameters;
 
 // Adaptive performance system for learning from historical performance
 class FAdaptivePerformanceSystem
@@ -18,7 +21,8 @@ public:
         Entry.Timestamp = FPlatformTime::Seconds();
         Entry.IsSuccess = bSuccess;
         
-        FScopeLock Lock(&StatsLock);
+        FCriticalSection& MutableLock = const_cast<FCriticalSection&>(StatsLock);
+        FScopeLock Lock(&MutableLock);
         TArray<FPerformanceEntry>& History = PerformanceHistory.FindOrAdd(OperationTypeId);
         History.Add(Entry);
         
@@ -33,13 +37,15 @@ public:
     }
     
     // Predict performance for future operations
-    double PredictExecutionTime(uint32 OperationTypeId, EProcessingTarget Target, const FOperationParameters& Params)
+    double PredictExecutionTime(uint32 OperationTypeId, EProcessingTarget Target, const FOperationParameters& Params) const
     {
         // Find similar operations in history
         TArray<double> SimilarTimes;
         TArray<float> Weights;
         
-        FScopeLock Lock(&StatsLock);
+        // Use mutable access to critical section for locking
+        FCriticalSection& MutableLock = const_cast<FCriticalSection&>(StatsLock);
+        FScopeLock Lock(&MutableLock);
         const TArray<FPerformanceEntry>* History = PerformanceHistory.Find(OperationTypeId);
         if (!History || History->Num() == 0)
         {
@@ -55,7 +61,7 @@ public:
                 continue;
             }
             
-            float Similarity = CalculateParameterSimilarity(Params, Entry.Params);
+            float Similarity = CalculateParameterSimilarity(Params, Entry.OperationParams);
             if (Similarity > 0.7f) // 70% similarity threshold
             {
                 SimilarTimes.Add(Entry.ExecutionTimeMs);
@@ -96,7 +102,8 @@ public:
     // Get overall success rate for an operation type and target
     float GetSuccessRate(uint32 OperationTypeId, EProcessingTarget Target)
     {
-        FScopeLock Lock(&StatsLock);
+        FCriticalSection& MutableLock = const_cast<FCriticalSection&>(StatsLock);
+        FScopeLock Lock(&MutableLock);
         const TArray<FPerformanceEntry>* History = PerformanceHistory.Find(OperationTypeId);
         if (!History || History->Num() == 0)
         {
@@ -130,18 +137,10 @@ private:
         uint32 DataSize = 0;
         double Timestamp = 0.0;
         bool IsSuccess = true;
-        FOperationParameters Params;
+        FOperationParameters OperationParams;
     };
     
-    // Operation parameters for similarity comparison
-    struct FOperationParameters
-    {
-        float VolumeSize = 0.0f;
-        int32 MaterialId = -1;
-        int32 ChannelCount = 0;
-        bool bUseNarrowBand = false;
-        bool bHighPrecision = false;
-    };
+    // Using FOperationParameters defined in ComputeOperationTypes.h
     
     // Update prediction model based on history
     void UpdatePredictionModel(uint32 OperationTypeId)
@@ -151,7 +150,7 @@ private:
     }
     
     // Calculate similarity between operation parameters
-    float CalculateParameterSimilarity(const FOperationParameters& A, const FOperationParameters& B)
+    float CalculateParameterSimilarity(const FOperationParameters& A, const FOperationParameters& B) const
     {
         // Simple similarity metric based on parameter differences
         // In a real implementation, this would be more sophisticated
@@ -194,7 +193,7 @@ FWorkloadDistributor::FWorkloadDistributor()
     , CPUWorkloadRatioBoost(0.0f)
 {
     // Initialize performance history buffer
-    RecentOperations.Init(100);
+    RecentOperations.Reserve(100);
     
     // Create adaptive performance system
     PerformanceSystem = MakeShared<FAdaptivePerformanceSystem>();
@@ -349,6 +348,10 @@ EProcessingTarget FWorkloadDistributor::DetermineProcessingTarget(const FCompute
 void FWorkloadDistributor::UpdatePerformanceMetrics(const FOperationMetrics& Metrics)
 {
     // Add to recent operations history
+    if (RecentOperations.Num() >= 100)
+    {
+        RecentOperations.RemoveAt(0);
+    }
     RecentOperations.Add(Metrics);
     
     // Update operation stats
@@ -572,7 +575,7 @@ FDistributionConfig FWorkloadDistributor::GetDistributionConfig() const
     return Config;
 }
 
-void FWorkloadDistributor::AdjustForMemoryPressure(uint64 AvailableBytes)
+void FWorkloadDistributor::AdjustForMemoryPressure(int64 AvailableBytes)
 {
     // Calculate memory pressure as a factor (0.0 to 1.0)
     // where 1.0 means severe memory pressure
@@ -588,21 +591,21 @@ void FWorkloadDistributor::AdjustForMemoryPressure(uint64 AvailableBytes)
     if (AvailablePercentage < 0.1f)
     {
         // Severe memory pressure, heavily bias toward CPU
-        MemoryPressureAdjustment = 0.5f;
+        this->MemoryPressureAdjustment = 0.5f;
         GPU_DISPATCHER_LOG_WARNING("Severe memory pressure detected (%.1f%% available), adjusting workload distribution",
             AvailablePercentage * 100.0f);
     }
     else if (AvailablePercentage < 0.25f)
     {
         // Moderate memory pressure
-        MemoryPressureAdjustment = 0.25f;
+        this->MemoryPressureAdjustment = 0.25f;
         GPU_DISPATCHER_LOG_DEBUG("Moderate memory pressure detected (%.1f%% available), adjusting workload distribution",
             AvailablePercentage * 100.0f);
     }
     else
     {
         // Normal memory conditions
-        MemoryPressureAdjustment = 0.0f;
+        this->MemoryPressureAdjustment = 0.0f;
     }
 }
 
@@ -658,7 +661,7 @@ bool FWorkloadDistributor::ApplyFallbackStrategy(FComputeOperation& Operation, i
             return true;
             
         case 1: // Reduce batch size
-            Operation.PreferredBatchSize = FMath::Max(1u, Operation.PreferredBatchSize / 2);
+            Operation.PreferredBatchSize = FMath::Max<int32>(1, Operation.PreferredBatchSize / 2);
             return true;
             
         case 2: // Switch to hybrid CPU/GPU
@@ -864,7 +867,8 @@ void FWorkloadDistributor::UpdateDecisionModel(const FOperationMetrics& Metrics)
     // or statistical model used to predict performance
     // For simplicity, we'll just update simple statistics
     
-    FScopeLock Lock(&StatsLock);
+    FCriticalSection& MutableLock = const_cast<FCriticalSection&>(StatsLock);
+    FScopeLock Lock(&MutableLock);
     
     FPerformanceHistory& History = PerformanceHistoryByType.FindOrAdd(Metrics.OperationTypeId);
     

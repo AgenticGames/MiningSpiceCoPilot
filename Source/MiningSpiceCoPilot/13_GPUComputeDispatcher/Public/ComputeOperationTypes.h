@@ -1,8 +1,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "RHIDefinitions.h"
 #include "Engine/EngineTypes.h"
+#include "RHI.h"
+#include "RHIDefinitions.h"
+#include "RHIResources.h"
+#include "RHICommandList.h"
+#include "HAL/Platform.h" 
+#include "RHIStaticStates.h"
 #include "ComputeOperationTypes.generated.h"
 
 /** GPU vendor identifiers */
@@ -70,7 +75,17 @@ struct FResourceState
 {
     ERHIAccess CurrentAccess = ERHIAccess::SRVMask;
     ERHIPipeline CurrentPipeline = ERHIPipeline::Graphics;
-    uint32 LastFrameAccessed = 0;
+    int32 LastFrameAccessed = 0;
+};
+
+/** Operation parameters for similarity comparison */
+struct FOperationParameters
+{
+    float VolumeSize = 0.0f;
+    int32 MaterialId = -1;
+    int32 ChannelCount = 0;
+    bool bUseNarrowBand = false;
+    bool bHighPrecision = false;
 };
 
 /** Hardware profile for compute capabilities */
@@ -118,6 +133,10 @@ struct FHardwareProfile
     /** Compute to pipeline ratio */
     UPROPERTY(BlueprintReadOnly, Category="Hardware")
     float ComputeToPipelineRatio = 1.0f;
+
+    /** Device performance tier (0-3, where 3 is highest) */
+    UPROPERTY(BlueprintReadOnly, Category="Hardware")
+    int32 PerformanceTier = 1;
 
     /** GPU vendor ID */
     UPROPERTY(BlueprintReadOnly, Category="Hardware")
@@ -232,7 +251,7 @@ struct FOperationStatus
 /** Internal state tracking for operations */
 struct FOperationState
 {
-    uint64 OperationId = 0;
+    int64 OperationId = 0;
     EOperationStatus Status = EOperationStatus::Pending;
     float Progress = 0.0f;
     double StartTime = 0.0;
@@ -240,38 +259,38 @@ struct FOperationState
     float ExecutionTimeMs = 0.0f;
     EComputeErrorType ErrorType = EComputeErrorType::None;
     FString ErrorMessage;
-    uint32 OperationTypeId = 0;
-    uint32 DataSize = 0;
+    int32 OperationTypeId = 0;
+    int32 DataSize = 0;
     TFunction<void(bool, float)> CompletionCallback;
 };
 
 /** Dispatch parameters for compute shaders */
 struct FDispatchParameters
 {
-    uint32 ThreadGroupSizeX = 8;
-    uint32 ThreadGroupSizeY = 8;
-    uint32 ThreadGroupSizeZ = 1;
-    uint32 SizeX = 0;
-    uint32 SizeY = 0;
-    uint32 SizeZ = 0;
-    TMap<FRHIResource*, FResourceState> Resources;
+    int32 ThreadGroupSizeX = 8;
+    int32 ThreadGroupSizeY = 8;
+    int32 ThreadGroupSizeZ = 1;
+    int32 SizeX = 0;
+    int32 SizeY = 0;
+    int32 SizeZ = 0;
+    TMap<class FRHIResource*, FResourceState> Resources;
 };
 
 /** Compute operation batch for grouping similar operations */
 struct FOperationBatch
 {
-    uint32 OperationTypeId = 0;
+    int32 OperationTypeId = 0;
     TArray<FBox> Regions;
     TArray<FMatrix> Transforms;
     TArray<float> Parameters;
-    uint32 EstimatedCost = 0;
+    int32 EstimatedCost = 0;
     bool bUseWideExecutionStrategy = false;
 };
 
 /** Pending async operation */
 struct FPendingAsyncOperation
 {
-    uint64 OperationId = 0;
+    int64 OperationId = 0;
     EAsyncPriority Priority = EAsyncPriority::Normal;
     TFunction<void(bool)> CompletionCallback;
     double QueueTime = 0.0;
@@ -281,8 +300,8 @@ struct FPendingAsyncOperation
 struct FShaderVariant
 {
     FString PermutationName;
-    uint32 OptimizationLevel = 0;
-    uint32 FeatureBitmask = 0;
+    int32 OptimizationLevel = 0;
+    int32 FeatureBitmask = 0;
     bool bEnableFastMath = false;
     bool bEnableSpecialIntrinsics = false;
     TArray<uint8> Flags;
@@ -298,6 +317,12 @@ struct FDistributionConfig
     float ComplexityThreshold = 100.0f;
     float GpuUtilizationThreshold = 0.9f;
     float PerformanceRatioThreshold = 0.8f;
+    
+    // Whether the device supports async compute
+    bool bDeviceSupportsAsyncCompute = false;
+    
+    // Device performance tier (0-3, where 3 is highest)
+    int32 DevicePerformanceTier = 1;
 };
 
 /** Compute operation parameters */

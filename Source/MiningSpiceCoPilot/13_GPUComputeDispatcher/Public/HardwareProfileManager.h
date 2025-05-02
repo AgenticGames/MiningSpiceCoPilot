@@ -3,7 +3,7 @@
 #include "CoreMinimal.h"
 #include "RHI.h"
 #include "RHIDefinitions.h"
-#include "13_GPUComputeDispatcher/Public/ComputeOperationTypes.h"
+#include "ComputeOperationTypes.h"
 
 /**
  * Hardware capability detection and profile management

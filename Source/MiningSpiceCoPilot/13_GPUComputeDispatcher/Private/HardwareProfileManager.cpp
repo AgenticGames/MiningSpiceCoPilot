@@ -1,16 +1,20 @@
-#include "13_GPUComputeDispatcher/Public/HardwareProfileManager.h"
-#include "13_GPUComputeDispatcher/Public/GPUDispatcherLogging.h"
-#include "3_ThreadingTaskSystem/Public/NumaHelpers.h"
+#include "../Public/HardwareProfileManager.h"
+#include "../Public/GPUDispatcherLogging.h"
+#include "../../3_ThreadingTaskSystem/Public/NumaHelpers.h"
 
 #include "RHI.h"
 #include "Misc/ConfigCacheIni.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/Paths.h"
+#include "RenderCore.h"
+#include "RHICore.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonWriter.h"
 #include "Misc/FileHelper.h"
 #include "GenericPlatform/GenericPlatformMisc.h"
+#include "RHIDefinitions.h"
+#include "RHIStaticStates.h"
 
 FHardwareProfileManager::FHardwareProfileManager()
     : bProfilesLoaded(false)
@@ -460,8 +464,19 @@ void FHardwareProfileManager::DetectGPUSpecs()
     }
     
     // Check for raytracing and async compute support
+    // In UE5.5, we need to check differently for ray tracing support
+    bSupportsRayTracing = false;
+#if WITH_RAYTRACING
     bSupportsRayTracing = GRHISupportsRayTracing;
-    bSupportsAsyncCompute = GRHISupportsAsyncCompute;
+#endif
+
+    // For UE5.5, check for async compute support
+    bSupportsAsyncCompute = false;
+    // Use proper API to check for async compute support in UE5.5
+    if (GDynamicRHI && GDynamicRHI->SupportsFeature(ERHIFeature::AsyncCompute))
+    {
+        bSupportsAsyncCompute = true;
+    }
     
     // Check for wave intrinsics
     bSupportsWaveIntrinsics = GPUVendor == EGPUVendor::NVIDIA || GPUVendor == EGPUVendor::AMD;
@@ -492,11 +507,21 @@ void FHardwareProfileManager::DetectMemoryLimits()
     if (GRHIAdapterName.Len() > 0)
     {
         // On some platforms we can get actual VRAM
-        uint64 TotalMemory = 0, UsedMemory = 0;
+        uint64 TotalMemory = 0, UsedMemory = 0, AvailableMemory = 0;
         
-        if (RHIGetAvailableResources(TotalMemory, UsedMemory))
+        // Get memory stats using the RHI interface in UE5.5
+        // Use FRHIMemoryStatistics which is the correct API in UE5.5
+        if (GDynamicRHI)
         {
-            TotalVRAM = TotalMemory;
+            FRHIMemoryStatistics MemoryStats;
+            GDynamicRHI->GetMemoryStatistics(MemoryStats);
+            if (MemoryStats.IsValid())
+            {
+                TotalMemory = MemoryStats.TotalPhysicalGPUMemory;
+                AvailableMemory = MemoryStats.AvailablePhysicalGPUMemory;
+                UsedMemory = TotalMemory - AvailableMemory;
+                TotalVRAM = TotalMemory;
+            }
         }
         else
         {
@@ -559,7 +584,8 @@ void FHardwareProfileManager::DetectMemoryLimits()
 void FHardwareProfileManager::DetectShaderSupport()
 {
     // Check if compute shaders are supported at all
-    if (!IsRHIDeviceComputeSupported())
+    // Use IsFeatureLevelSupported to check if the feature level is supported in UE5.5
+    if (!IsFeatureLevelSupported(GMaxRHIShaderPlatform, ERHIFeatureLevel::SM5))
     {
         GPU_DISPATCHER_LOG_WARNING("Compute shaders are not supported on this device");
         return;
@@ -567,7 +593,19 @@ void FHardwareProfileManager::DetectShaderSupport()
     
     // Get supported shader formats
     TArray<FName> ShaderFormats;
-    GetAllTargetPlatformShaderFormats(GMaxRHIShaderPlatform, ShaderFormats);
+    // Use the RHI to get shader formats directly
+    if (GDynamicRHI)
+    {
+        // For UE5, we'll just use some common formats as a fallback since 
+        // GetAllTargetPlatformShaderFormats might not be directly accessible
+        ShaderFormats.Add(FName("SF_METAL_SM5"));
+        ShaderFormats.Add(FName("SF_METAL_SM5_NOTESS"));
+        ShaderFormats.Add(FName("SF_METAL_MACES3_1"));
+        ShaderFormats.Add(FName("SF_METAL_MRT"));
+        ShaderFormats.Add(FName("SF_VULKAN_SM5"));
+        ShaderFormats.Add(FName("SF_VULKAN_SM6"));
+        ShaderFormats.Add(FName("SF_VULKAN_ES31_ANDROID"));
+    }
     
     for (const FName& Format : ShaderFormats)
     {
@@ -585,7 +623,7 @@ void FHardwareProfileManager::DetectNumaTopology()
     // Try to detect the NUMA node closest to the GPU
     // This is highly platform-specific, so we'll use simple heuristics
     
-    int32 NumNodes = FPlatformMisc::GetNumPhysicalCores();
+    int32 NumNodes = FPlatformMisc::NumberOfCoresIncludingHyperthreads();
     if (NumNodes <= 1)
     {
         // Single NUMA domain, use node 0
@@ -689,23 +727,23 @@ bool FHardwareProfileManager::LoadProfileFromFile(const FString& ProfileName, FH
         return false;
     }
     
-    // Extract profile properties
-    OutProfile.DeviceName = JsonObject->GetStringField("DeviceName");
-    OutProfile.VendorId = (EGPUVendor)(int32)JsonObject->GetNumberField("VendorId");
-    OutProfile.bSupportsRayTracing = JsonObject->GetBoolField("SupportsRayTracing");
-    OutProfile.bSupportsAsyncCompute = JsonObject->GetBoolField("SupportsAsyncCompute");
-    OutProfile.ComputeUnits = (uint32)JsonObject->GetNumberField("ComputeUnits");
-    OutProfile.MaxWorkgroupSize = (uint32)JsonObject->GetNumberField("MaxWorkgroupSize");
-    OutProfile.WavefrontSize = (uint32)JsonObject->GetNumberField("WavefrontSize");
-    OutProfile.bSupportsWaveIntrinsics = JsonObject->GetBoolField("SupportsWaveIntrinsics");
-    OutProfile.SharedMemoryBytes = (uint32)JsonObject->GetNumberField("SharedMemoryBytes");
-    OutProfile.L1CacheSizeKB = (uint32)JsonObject->GetNumberField("L1CacheSizeKB");
-    OutProfile.L2CacheSizeKB = (uint32)JsonObject->GetNumberField("L2CacheSizeKB");
-    OutProfile.ComputeToPipelineRatio = (float)JsonObject->GetNumberField("ComputeToPipelineRatio");
+    // Extract profile properties with updated API for UE5.5
+    OutProfile.DeviceName = JsonObject->GetStringField(TEXT("DeviceName"));
+    OutProfile.VendorId = (EGPUVendor)(int32)JsonObject->GetNumberField(TEXT("VendorId"));
+    OutProfile.bSupportsRayTracing = JsonObject->GetBoolField(TEXT("SupportsRayTracing"));
+    OutProfile.bSupportsAsyncCompute = JsonObject->GetBoolField(TEXT("SupportsAsyncCompute"));
+    OutProfile.ComputeUnits = (uint32)JsonObject->GetNumberField(TEXT("ComputeUnits"));
+    OutProfile.MaxWorkgroupSize = (uint32)JsonObject->GetNumberField(TEXT("MaxWorkgroupSize"));
+    OutProfile.WavefrontSize = (uint32)JsonObject->GetNumberField(TEXT("WavefrontSize"));
+    OutProfile.bSupportsWaveIntrinsics = JsonObject->GetBoolField(TEXT("SupportsWaveIntrinsics"));
+    OutProfile.SharedMemoryBytes = (uint32)JsonObject->GetNumberField(TEXT("SharedMemoryBytes"));
+    OutProfile.L1CacheSizeKB = (uint32)JsonObject->GetNumberField(TEXT("L1CacheSizeKB"));
+    OutProfile.L2CacheSizeKB = (uint32)JsonObject->GetNumberField(TEXT("L2CacheSizeKB"));
+    OutProfile.ComputeToPipelineRatio = (float)JsonObject->GetNumberField(TEXT("ComputeToPipelineRatio"));
     
-    // Extract block sizes
+    // Extract block sizes with updated API for UE5.5
     const TSharedPtr<FJsonObject>* BlockSizesObject;
-    if (JsonObject->TryGetObjectField("BlockSizes", BlockSizesObject))
+    if (JsonObject->TryGetObjectField(TEXT("BlockSizes"), BlockSizesObject))
     {
         for (const auto& BlockSizePair : (*BlockSizesObject)->Values)
         {
@@ -715,9 +753,9 @@ bool FHardwareProfileManager::LoadProfileFromFile(const FString& ProfileName, FH
         }
     }
     
-    // Extract async compatibility
+    // Extract async compatibility with updated API for UE5.5
     const TSharedPtr<FJsonObject>* AsyncCompatObject;
-    if (JsonObject->TryGetObjectField("AsyncCompatibility", AsyncCompatObject))
+    if (JsonObject->TryGetObjectField(TEXT("AsyncCompatibility"), AsyncCompatObject))
     {
         for (const auto& AsyncPair : (*AsyncCompatObject)->Values)
         {

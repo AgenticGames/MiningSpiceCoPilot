@@ -4,7 +4,7 @@
 #include "ShaderCore.h"
 #include "RHICommandList.h"
 #include "ShaderParameterStruct.h"
-#include "13_GPUComputeDispatcher/Public/ComputeOperationTypes.h"
+#include "ComputeOperationTypes.h"
 
 class FShaderPermutationManager;
 
@@ -25,6 +25,8 @@ struct FSDFComputeKernel
     uint32 ThreadGroupSizeZ = 1;
     uint32 UsageCount = 0;
     double LastUsedTime = 0.0;
+    // Cell size for this kernel (size of each voxel in world units)
+    FVector CellSize = FVector(1.0f, 1.0f, 1.0f);
 };
 
 /** Shader compiler parameters structure */

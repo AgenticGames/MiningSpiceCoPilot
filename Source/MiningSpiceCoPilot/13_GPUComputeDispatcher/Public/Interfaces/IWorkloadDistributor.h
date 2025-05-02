@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
-#include "13_GPUComputeDispatcher/Public/ComputeOperationTypes.h"
+#include "../Public/ComputeOperationTypes.h"
 #include "IWorkloadDistributor.generated.h"
 
 UINTERFACE(MinimalAPI, meta=(CannotImplementInterfaceInBlueprint))
@@ -71,7 +71,7 @@ public:
      * Adjusts distribution strategy for memory pressure
      * @param AvailableBytes Available memory in bytes
      */
-    virtual void AdjustForMemoryPressure(uint64 AvailableBytes) = 0;
+    virtual void AdjustForMemoryPressure(int64 AvailableBytes) = 0;
     
     /**
      * Increases CPU workload ratio for fault tolerance
