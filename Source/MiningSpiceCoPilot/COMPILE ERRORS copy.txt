@@ -1,0 +1,363 @@
+[1/9] Compile [x64] AsyncComputeCoordinator.cpp (0:02.59 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\AsyncComputeCoordinator.cpp(321): error C2440: 'initializing': cannot convert from 'IAsyncOperation *' to 'FAsyncTaskManager *'    
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\AsyncComputeCoordinator.cpp(321): note: Cast from base to derived requires dynamic_cast or static_cast
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[2/9] Compile [x64] ZeroCopyResourceManager.cpp (0:02.56 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ZeroCopyResourceManager.cpp(199): error C2653: 'RHI': is not a class or namespace name
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ZeroCopyResourceManager.cpp(200): error C2653: 'RHI': is not a class or namespace name
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ZeroCopyResourceManager.cpp(200): error C2065: 'Undefined': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ZeroCopyResourceManager.cpp(204): error C2660: 'FDynamicRHI::RHICreateBuffer': function does not take 1 arguments
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\DynamicRHI.h(364): note: see declaration of 'FDynamicRHI::RHICreateBuffer'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ZeroCopyResourceManager.cpp(204): note: while trying to match the argument list '(const FRHIBufferDesc)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ZeroCopyResourceManager.cpp(222): error C2660: 'FDynamicRHI::RHICreateUnorderedAccessView': function does not take 2 arguments     
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\DynamicRHI.h(449): note: see declaration of 'FDynamicRHI::RHICreateUnorderedAccessView'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ZeroCopyResourceManager.cpp(222): note: while trying to match the argument list '(FRHIBuffer *, EPixelFormat)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ZeroCopyResourceManager.cpp(237): error C2660: 'FDynamicRHI::RHICreateShaderResourceView': function does not take 2 arguments
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\DynamicRHI.h(448): note: see declaration of 'FDynamicRHI::RHICreateShaderResourceView'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ZeroCopyResourceManager.cpp(237): note: while trying to match the argument list '(FRHIBuffer *, EPixelFormat)'
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[3/9] Compile [x64] ComputeShaderUtils.cpp (0:03.12 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2535: 'void FSDFComputeShaderBase::InternalInitializeBases(FTypeLayoutDesc &)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::InternalInitializeBases'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2535: 'void FSDFComputeShaderBase::InternalDestroy(void *,const FTypeLayoutDesc &,const FPointerTableBase *,bool)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::InternalDestroy'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2535: 'FTypeLayoutDesc &FSDFComputeShaderBase::StaticGetTypeLayout(void)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::StaticGetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2535: 'const FTypeLayoutDesc &FSDFComputeShaderBase::GetTypeLayout(void) const': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::GetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2086: 'const int FSDFComputeShaderBase::CounterBase': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2086: 'const ETypeLayoutInterface::Type FSDFComputeShaderBase::InterfaceType': redefinition        
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2953: 'FSDFComputeShaderBase::InternalLinkType': class template has already been defined
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::InternalLinkType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(68): error C2065: 'FComputePipelineStateDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(68): error C2146: syntax error: missing ';' before identifier 'PipelineDesc'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(68): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(69): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(70): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(70): error C2660: 'FRHIComputeCommandList::SetComputePipelineState': function does not take 1 arguments        
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\RHICommandList.h(2768): note: see declaration of 'FRHIComputeCommandList::SetComputePipelineState'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(70): note: while trying to match the argument list '()'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(73): error C2660: 'FRHIComputeCommandList::SetShaderParameters': function does not take 1 arguments
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\RHICommandList.h(2696): note: see declaration of 'FRHIComputeCommandList::SetShaderParameters'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(73): note: while trying to match the argument list '(FRHIUniformBuffer *)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2535: 'void FSDFOperationShader::InternalInitializeBases(FTypeLayoutDesc &)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::InternalInitializeBases'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2535: 'void FSDFOperationShader::InternalDestroy(void *,const FTypeLayoutDesc &,const FPointerTableBase *,bool)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::InternalDestroy'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2535: 'FTypeLayoutDesc &FSDFOperationShader::StaticGetTypeLayout(void)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::StaticGetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2535: 'const FTypeLayoutDesc &FSDFOperationShader::GetTypeLayout(void) const': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::GetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2086: 'const int FSDFOperationShader::CounterBase': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2086: 'const ETypeLayoutInterface::Type FSDFOperationShader::InterfaceType': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2953: 'FSDFOperationShader::InternalLinkType': class template has already been defined
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::InternalLinkType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2535: 'void FComputeShaderType::InternalInitializeBases(FTypeLayoutDesc &)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::InternalInitializeBases'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2535: 'void FComputeShaderType::InternalDestroy(void *,const FTypeLayoutDesc &,const FPointerTableBase *,bool)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::InternalDestroy'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2535: 'FTypeLayoutDesc &FComputeShaderType::StaticGetTypeLayout(void)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::StaticGetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2535: 'const FTypeLayoutDesc &FComputeShaderType::GetTypeLayout(void) const': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::GetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2086: 'const int FComputeShaderType::CounterBase': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2086: 'const ETypeLayoutInterface::Type FComputeShaderType::InterfaceType': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2953: 'FComputeShaderType::InternalLinkType': class template has already been defined
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::InternalLinkType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(157): error C2065: 'FComputePipelineStateDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(157): error C3878: syntax error: unexpected token 'identifier' following 'expression'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(157): note: error recovery skipped: 'identifier'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(158): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(159): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(253): error C2065: 'FComputePipelineStateDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(253): error C2146: syntax error: missing ';' before identifier 'PipelineDesc'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(253): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(254): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(257): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(12): error C2338: static_assert failed: 'Invalid interface for FSDFComputeShaderBase'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(29): error C2535: 'void FGenericSDFOperation::InternalInitializeBases(FTypeLayoutDesc &)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(28): note: see declaration of 'FGenericSDFOperation::InternalInitializeBases'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(29): error C2535: 'void FGenericSDFOperation::InternalDestroy(void *,const FTypeLayoutDesc &,const FPointerTableBase *,bool)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(28): note: see declaration of 'FGenericSDFOperation::InternalDestroy'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(29): error C2535: 'FTypeLayoutDesc &FGenericSDFOperation::StaticGetTypeLayout(void)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(28): note: see declaration of 'FGenericSDFOperation::StaticGetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(29): error C2535: 'const FTypeLayoutDesc &FGenericSDFOperation::GetTypeLayout(void) const': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(28): note: see declaration of 'FGenericSDFOperation::GetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(29): error C2086: 'const int FGenericSDFOperation::CounterBase': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(29): error C2086: 'const ETypeLayoutInterface::Type FGenericSDFOperation::InterfaceType': redefinition      
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(29): error C2953: 'FGenericSDFOperation::InternalLinkType': class template has already been defined
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(28): note: see declaration of 'FGenericSDFOperation::InternalLinkType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(36): error C2338: static_assert failed: 'Invalid interface for FGenericSDFOperation'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(43): error C2535: 'void FDifferenceSDFOperation::InternalInitializeBases(FTypeLayoutDesc &)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(42): note: see declaration of 'FDifferenceSDFOperation::InternalInitializeBases'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(43): error C2535: 'void FDifferenceSDFOperation::InternalDestroy(void *,const FTypeLayoutDesc &,const FPointerTableBase *,bool)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(42): note: see declaration of 'FDifferenceSDFOperation::InternalDestroy'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(43): error C2535: 'FTypeLayoutDesc &FDifferenceSDFOperation::StaticGetTypeLayout(void)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(42): note: see declaration of 'FDifferenceSDFOperation::StaticGetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(43): error C2535: 'const FTypeLayoutDesc &FDifferenceSDFOperation::GetTypeLayout(void) const': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(42): note: see declaration of 'FDifferenceSDFOperation::GetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(43): error C2086: 'const int FDifferenceSDFOperation::CounterBase': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(43): error C2086: 'const ETypeLayoutInterface::Type FDifferenceSDFOperation::InterfaceType': redefinition   
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(43): error C2953: 'FDifferenceSDFOperation::InternalLinkType': class template has already been defined
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(42): note: see declaration of 'FDifferenceSDFOperation::InternalLinkType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(50): error C2338: static_assert failed: 'Invalid interface for FDifferenceSDFOperation'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(57): error C2535: 'void FIntersectionSDFOperation::InternalInitializeBases(FTypeLayoutDesc &)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(56): note: see declaration of 'FIntersectionSDFOperation::InternalInitializeBases'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(57): error C2535: 'void FIntersectionSDFOperation::InternalDestroy(void *,const FTypeLayoutDesc &,const FPointerTableBase *,bool)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(56): note: see declaration of 'FIntersectionSDFOperation::InternalDestroy'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(57): error C2535: 'FTypeLayoutDesc &FIntersectionSDFOperation::StaticGetTypeLayout(void)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(56): note: see declaration of 'FIntersectionSDFOperation::StaticGetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(57): error C2535: 'const FTypeLayoutDesc &FIntersectionSDFOperation::GetTypeLayout(void) const': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(56): note: see declaration of 'FIntersectionSDFOperation::GetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(57): error C2086: 'const int FIntersectionSDFOperation::CounterBase': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(57): error C2086: 'const ETypeLayoutInterface::Type FIntersectionSDFOperation::InterfaceType': redefinition 
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(57): error C2953: 'FIntersectionSDFOperation::InternalLinkType': class template has already been defined    
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(56): note: see declaration of 'FIntersectionSDFOperation::InternalLinkType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(64): error C2338: static_assert failed: 'Invalid interface for FIntersectionSDFOperation'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(71): error C2535: 'void FSmoothingSDFOperation::InternalInitializeBases(FTypeLayoutDesc &)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(70): note: see declaration of 'FSmoothingSDFOperation::InternalInitializeBases'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(71): error C2535: 'void FSmoothingSDFOperation::InternalDestroy(void *,const FTypeLayoutDesc &,const FPointerTableBase *,bool)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(70): note: see declaration of 'FSmoothingSDFOperation::InternalDestroy'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(71): error C2535: 'FTypeLayoutDesc &FSmoothingSDFOperation::StaticGetTypeLayout(void)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(70): note: see declaration of 'FSmoothingSDFOperation::StaticGetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(71): error C2535: 'const FTypeLayoutDesc &FSmoothingSDFOperation::GetTypeLayout(void) const': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(70): note: see declaration of 'FSmoothingSDFOperation::GetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(71): error C2086: 'const int FSmoothingSDFOperation::CounterBase': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(71): error C2086: 'const ETypeLayoutInterface::Type FSmoothingSDFOperation::InterfaceType': redefinition    
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(71): error C2953: 'FSmoothingSDFOperation::InternalLinkType': class template has already been defined       
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(70): note: see declaration of 'FSmoothingSDFOperation::InternalLinkType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(78): error C2338: static_assert failed: 'Invalid interface for FSmoothingSDFOperation'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(85): error C2535: 'void FMaterialBlendSDFOperation::InternalInitializeBases(FTypeLayoutDesc &)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(84): note: see declaration of 'FMaterialBlendSDFOperation::InternalInitializeBases'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(85): error C2535: 'void FMaterialBlendSDFOperation::InternalDestroy(void *,const FTypeLayoutDesc &,const FPointerTableBase *,bool)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(84): note: see declaration of 'FMaterialBlendSDFOperation::InternalDestroy'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(85): error C2535: 'FTypeLayoutDesc &FMaterialBlendSDFOperation::StaticGetTypeLayout(void)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(84): note: see declaration of 'FMaterialBlendSDFOperation::StaticGetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(85): error C2535: 'const FTypeLayoutDesc &FMaterialBlendSDFOperation::GetTypeLayout(void) const': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(84): note: see declaration of 'FMaterialBlendSDFOperation::GetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(85): error C2086: 'const int FMaterialBlendSDFOperation::CounterBase': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(85): error C2086: 'const ETypeLayoutInterface::Type FMaterialBlendSDFOperation::InterfaceType': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(85): error C2953: 'FMaterialBlendSDFOperation::InternalLinkType': class template has already been defined   
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(84): note: see declaration of 'FMaterialBlendSDFOperation::InternalLinkType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\ComputeShaderUtils.cpp(92): error C2338: static_assert failed: 'Invalid interface for FMaterialBlendSDFOperation'
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[4/9] Compile [x64] MissingImplementations.cpp (0:03.42 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2535: 'void FSDFComputeShaderBase::InternalInitializeBases(FTypeLayoutDesc &)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::InternalInitializeBases'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2535: 'void FSDFComputeShaderBase::InternalDestroy(void *,const FTypeLayoutDesc &,const FPointerTableBase *,bool)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::InternalDestroy'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2535: 'FTypeLayoutDesc &FSDFComputeShaderBase::StaticGetTypeLayout(void)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::StaticGetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2535: 'const FTypeLayoutDesc &FSDFComputeShaderBase::GetTypeLayout(void) const': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::GetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2086: 'const int FSDFComputeShaderBase::CounterBase': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2086: 'const ETypeLayoutInterface::Type FSDFComputeShaderBase::InterfaceType': redefinition        
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2953: 'FSDFComputeShaderBase::InternalLinkType': class template has already been defined
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::InternalLinkType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(68): error C2065: 'FComputePipelineStateDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(68): error C2146: syntax error: missing ';' before identifier 'PipelineDesc'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(68): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(69): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(70): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(70): error C2660: 'FRHIComputeCommandList::SetComputePipelineState': function does not take 1 arguments        
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\RHICommandList.h(2768): note: see declaration of 'FRHIComputeCommandList::SetComputePipelineState'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(70): note: while trying to match the argument list '()'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(73): error C2660: 'FRHIComputeCommandList::SetShaderParameters': function does not take 1 arguments
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\RHICommandList.h(2696): note: see declaration of 'FRHIComputeCommandList::SetShaderParameters'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(73): note: while trying to match the argument list '(FRHIUniformBuffer *)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2535: 'void FSDFOperationShader::InternalInitializeBases(FTypeLayoutDesc &)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::InternalInitializeBases'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2535: 'void FSDFOperationShader::InternalDestroy(void *,const FTypeLayoutDesc &,const FPointerTableBase *,bool)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::InternalDestroy'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2535: 'FTypeLayoutDesc &FSDFOperationShader::StaticGetTypeLayout(void)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::StaticGetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2535: 'const FTypeLayoutDesc &FSDFOperationShader::GetTypeLayout(void) const': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::GetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2086: 'const int FSDFOperationShader::CounterBase': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2086: 'const ETypeLayoutInterface::Type FSDFOperationShader::InterfaceType': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2953: 'FSDFOperationShader::InternalLinkType': class template has already been defined
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::InternalLinkType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2535: 'void FComputeShaderType::InternalInitializeBases(FTypeLayoutDesc &)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::InternalInitializeBases'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2535: 'void FComputeShaderType::InternalDestroy(void *,const FTypeLayoutDesc &,const FPointerTableBase *,bool)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::InternalDestroy'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2535: 'FTypeLayoutDesc &FComputeShaderType::StaticGetTypeLayout(void)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::StaticGetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2535: 'const FTypeLayoutDesc &FComputeShaderType::GetTypeLayout(void) const': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::GetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2086: 'const int FComputeShaderType::CounterBase': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2086: 'const ETypeLayoutInterface::Type FComputeShaderType::InterfaceType': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2953: 'FComputeShaderType::InternalLinkType': class template has already been defined
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::InternalLinkType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(157): error C2065: 'FComputePipelineStateDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(157): error C3878: syntax error: unexpected token 'identifier' following 'expression'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(157): note: error recovery skipped: 'identifier'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(158): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(159): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(253): error C2065: 'FComputePipelineStateDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(253): error C2146: syntax error: missing ';' before identifier 'PipelineDesc'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(253): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(254): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(257): error C2065: 'PipelineDesc': undeclared identifier
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[5/9] Compile [x64] HardwareProfileManager.cpp (0:03.42 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(471): error C4668: 'WITH_RAYTRACING' is not defined as a preprocessor macro, replacing with '0' for '#if/#elif'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(476): error C2039: 'SupportsAsyncCompute': is not a member of 'FDynamicRHI'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\DynamicRHI.h(124): note: see declaration of 'FDynamicRHI'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(511): error C2065: 'FRHIAdapterInfo': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(511): error C2146: syntax error: missing ';' before identifier 'AdapterInfo'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(511): error C2065: 'AdapterInfo': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(512): error C2039: 'GetAdapterInfo': is not a member of 'FDynamicRHI'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\DynamicRHI.h(124): note: see declaration of 'FDynamicRHI'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(512): error C2065: 'AdapterInfo': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(514): error C2065: 'FRHIGPUStatistics': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(514): error C2146: syntax error: missing ';' before identifier 'GPUStats'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(514): error C2065: 'GPUStats': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(515): error C2039: 'GetGPUStatistics': is not a member of 'FDynamicRHI'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\DynamicRHI.h(124): note: see declaration of 'FDynamicRHI'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(515): error C2065: 'GPUStats': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(517): error C2065: 'GPUStats': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(518): error C2065: 'GPUStats': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(578): error C2059: syntax error: '}'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(578): error C2143: syntax error: missing ';' before '}'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(581): error C2143: syntax error: missing ';' before '{'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\HardwareProfileManager.cpp(581): error C2447: '{': missing function header (old-style formal list?)
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)
+[6/9] Compile [x64] GPUDispatcher.cpp (0:04.17 at +0:00)
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2535: 'void FSDFComputeShaderBase::InternalInitializeBases(FTypeLayoutDesc &)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::InternalInitializeBases'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2535: 'void FSDFComputeShaderBase::InternalDestroy(void *,const FTypeLayoutDesc &,const FPointerTableBase *,bool)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::InternalDestroy'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2535: 'FTypeLayoutDesc &FSDFComputeShaderBase::StaticGetTypeLayout(void)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::StaticGetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2535: 'const FTypeLayoutDesc &FSDFComputeShaderBase::GetTypeLayout(void) const': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::GetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2086: 'const int FSDFComputeShaderBase::CounterBase': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2086: 'const ETypeLayoutInterface::Type FSDFComputeShaderBase::InterfaceType': redefinition        
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(29): error C2953: 'FSDFComputeShaderBase::InternalLinkType': class template has already been defined
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(28): note: see declaration of 'FSDFComputeShaderBase::InternalLinkType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(68): error C2065: 'FComputePipelineStateDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(68): error C2146: syntax error: missing ';' before identifier 'PipelineDesc'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(68): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(69): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(70): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(70): error C2660: 'FRHIComputeCommandList::SetComputePipelineState': function does not take 1 arguments        
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\RHICommandList.h(2768): note: see declaration of 'FRHIComputeCommandList::SetComputePipelineState'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(70): note: while trying to match the argument list '()'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(73): error C2660: 'FRHIComputeCommandList::SetShaderParameters': function does not take 1 arguments
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\RHICommandList.h(2696): note: see declaration of 'FRHIComputeCommandList::SetShaderParameters'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(73): note: while trying to match the argument list '(FRHIUniformBuffer *)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2535: 'void FSDFOperationShader::InternalInitializeBases(FTypeLayoutDesc &)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::InternalInitializeBases'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2535: 'void FSDFOperationShader::InternalDestroy(void *,const FTypeLayoutDesc &,const FPointerTableBase *,bool)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::InternalDestroy'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2535: 'FTypeLayoutDesc &FSDFOperationShader::StaticGetTypeLayout(void)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::StaticGetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2535: 'const FTypeLayoutDesc &FSDFOperationShader::GetTypeLayout(void) const': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::GetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2086: 'const int FSDFOperationShader::CounterBase': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2086: 'const ETypeLayoutInterface::Type FSDFOperationShader::InterfaceType': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(89): error C2953: 'FSDFOperationShader::InternalLinkType': class template has already been defined
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(88): note: see declaration of 'FSDFOperationShader::InternalLinkType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2535: 'void FComputeShaderType::InternalInitializeBases(FTypeLayoutDesc &)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::InternalInitializeBases'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2535: 'void FComputeShaderType::InternalDestroy(void *,const FTypeLayoutDesc &,const FPointerTableBase *,bool)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::InternalDestroy'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2535: 'FTypeLayoutDesc &FComputeShaderType::StaticGetTypeLayout(void)': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::StaticGetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2535: 'const FTypeLayoutDesc &FComputeShaderType::GetTypeLayout(void) const': member function already defined or declared
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::GetTypeLayout'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2086: 'const int FComputeShaderType::CounterBase': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2086: 'const ETypeLayoutInterface::Type FComputeShaderType::InterfaceType': redefinition
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(123): error C2953: 'FComputeShaderType::InternalLinkType': class template has already been defined
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(122): note: see declaration of 'FComputeShaderType::InternalLinkType'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(157): error C2065: 'FComputePipelineStateDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(157): error C3878: syntax error: unexpected token 'identifier' following 'expression'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(157): note: error recovery skipped: 'identifier'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(158): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(159): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(147): note: This diagnostic occurred in the compiler generated function 'void FComputeShaderType::SetParameters(FRHICommandList &,FRHIComputeShader *,const TParameters &)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(253): error C2065: 'FComputePipelineStateDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(253): error C2146: syntax error: missing ';' before identifier 'PipelineDesc'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(253): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(254): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Public\ComputeShaderUtils.h(257): error C2065: 'PipelineDesc': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(34): error C2143: syntax error: missing ';' before '<class-head>'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(34): error C4430: missing type specifier - int assumed. Note: C++ does not support default-int
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(36): error C4430: missing type specifier - int assumed. Note: C++ does not support default-int
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(40): error C2143: syntax error: missing ';' before '<class-head>'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(40): error C4430: missing type specifier - int assumed. Note: C++ does not support default-int
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(42): error C4430: missing type specifier - int assumed. Note: C++ does not support default-int
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(252): error C2653: 'RHI': is not a class or namespace name
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(252): error C2653: 'RHI': is not a class or namespace name
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(252): error C2653: 'RHI': is not a class or namespace name
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(254): error C2653: 'RHI': is not a class or namespace name
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(254): error C2065: 'SRVMask': undeclared identifier
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(258): error C2660: 'FDynamicRHI::RHICreateBuffer': function does not take 1 arguments
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\DynamicRHI.h(364): note: see declaration of 'FDynamicRHI::RHICreateBuffer'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(258): note: while trying to match the argument list '(const FRHIBufferDesc)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(321): error C2027: use of undefined type 'FConfigCacheIni'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\Object.h(21): note: see declaration of 'FConfigCacheIni'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(322): error C2027: use of undefined type 'FConfigCacheIni'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\Object.h(21): note: see declaration of 'FConfigCacheIni'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(323): error C2027: use of undefined type 'FConfigCacheIni'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\CoreUObject\Public\UObject\Object.h(21): note: see declaration of 'FConfigCacheIni'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(934): error C2664: 'void TMemoryWriterBase<TSizedDefaultAllocator<32>>::Serialize(void *,int64)': cannot convert argument 1 from 'const uint32 *' to 'void *'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(934): note: Conversion loses qualifiers
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\Core\Public\Serialization\MemoryWriter.h(38): note: see declaration of 'TMemoryWriterBase<TSizedDefaultAllocator<32>>::Serialize'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(934): note: while trying to match the argument list '(const uint32 *, size_t)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(955): error C2664: 'void TMemoryWriterBase<TSizedDefaultAllocator<32>>::Serialize(void *,int64)': cannot convert argument 1 from 'const int32 *' to 'void *'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(955): note: Conversion loses qualifiers
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\Core\Public\Serialization\MemoryWriter.h(38): note: see declaration of 'TMemoryWriterBase<TSizedDefaultAllocator<32>>::Serialize'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(955): note: while trying to match the argument list '(const int32 *, size_t)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1071): error C2672: 'FRDGBuilder::AddPass': no matching overloaded function found
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RenderCore\Public\RenderGraphBuilder.h(248): note: could be 'FRDGPassRef FRDGBuilder::AddPass(FRDGEventName &&,ERDGPassFlags,ExecuteLambdaType &&)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1071): note: 'FRDGPassRef FRDGBuilder::AddPass(FRDGEventName &&,ERDGPassFlags,ExecuteLambdaType &&)': expects 3 arguments - 4 provided
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RenderCore\Public\RenderGraphBuilder.h(240): note: or       'FRDGPassRef FRDGBuilder::AddPass(FRDGEventName &&,const FShaderParametersMetadata *,const void *,ERDGPassFlags,ExecuteLambdaType &&)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1071): note: 'FRDGPassRef FRDGBuilder::AddPass(FRDGEventName &&,const FShaderParametersMetadata *,const void *,ERDGPassFlags,ExecuteLambdaType &&)': expects 5 arguments - 4 provided
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RenderCore\Public\RenderGraphBuilder.h(236): note: or       'FRDGPassRef FRDGBuilder::AddPass(FRDGEventName &&,const ParameterStructType *,ERDGPassFlags,ExecuteLambdaType &&)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1071): note: 'FRDGPassRef FRDGBuilder::AddPass(FRDGEventName &&,const ParameterStructType *,ERDGPassFlags,ExecuteLambdaType &&)': could not deduce template argument for 'const ParameterStructType *' from 'nullptr'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1429): error C2039: 'GetRHIBuffer': is not a member of 'FRHIResource'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RenderCore\Public\ShaderParameterStruct.h(23): note: see declaration of 'FRHIResource'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1437): error C2039: 'GetRHITexture': is not a member of 'FRHIResource'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RenderCore\Public\ShaderParameterStruct.h(23): note: see declaration of 'FRHIResource'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1445): error C2039: 'GetRHIUnorderedAccessView': is not a member of 'FRHIResource'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RenderCore\Public\ShaderParameterStruct.h(23): note: see declaration of 'FRHIResource'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1453): error C2039: 'GetRHIShaderResourceView': is not a member of 'FRHIResource'
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RenderCore\Public\ShaderParameterStruct.h(23): note: see declaration of 'FRHIResource'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1456): error C2440: '<function-style-cast>': cannot convert from 'initializer list' to 'FRHITransitionInfo'      
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1456): note: 'FRHITransitionInfo::FRHITransitionInfo': no overloaded function could convert all the argument types
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\RHITransition.h(163): note: could be 'FRHITransitionInfo::FRHITransitionInfo(FRHIRayTracingAccelerationStructure *,ERHIAccess,ERHIAccess,EResourceTransitionFlags)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1456): note: 'FRHITransitionInfo::FRHITransitionInfo(FRHIRayTracingAccelerationStructure *,ERHIAccess,ERHIAccess,EResourceTransitionFlags)': cannot convert argument 1 from 'FRHIShaderResourceView *' to 'FRHIRayTracingAccelerationStructure *'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1457): note: Types pointed to are unrelated; conversion requires reinterpret_cast, C-style cast or parenthesized function-style cast
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\RHITransition.h(147): note: or       'FRHITransitionInfo::FRHITransitionInfo(FRHIBuffer *,ERHIAccess,ERHIAccess,EResourceTransitionFlags)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1456): note: 'FRHITransitionInfo::FRHITransitionInfo(FRHIBuffer *,ERHIAccess,ERHIAccess,EResourceTransitionFlags)': cannot convert argument 1 from 'FRHIShaderResourceView *' to 'FRHIBuffer *'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1457): note: Types pointed to are unrelated; conversion requires reinterpret_cast, C-style cast or parenthesized function-style cast
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\RHITransition.h(139): note: or       'FRHITransitionInfo::FRHITransitionInfo(FRHIUnorderedAccessView *,ERHIAccess,ERHIAccess,EResourceTransitionFlags)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1456): note: 'FRHITransitionInfo::FRHITransitionInfo(FRHIUnorderedAccessView *,ERHIAccess,ERHIAccess,EResourceTransitionFlags)': cannot convert argument 1 from 'FRHIShaderResourceView *' to 'FRHIUnorderedAccessView *'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1457): note: Types pointed to are unrelated; conversion requires reinterpret_cast, C-style cast or parenthesized function-style cast
+C:\Program Files\Epic Games\UE_5.5\Engine\Source\Runtime\RHI\Public\RHITransition.h(123): note: or       'FRHITransitionInfo::FRHITransitionInfo(FRHITexture *,ERHIAccess,ERHIAccess,EResourceTransitionFlags,uint32,uint32,uint32)'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1456): note: 'FRHITransitionInfo::FRHITransitionInfo(FRHITexture *,ERHIAccess,ERHIAccess,EResourceTransitionFlags,uint32,uint32,uint32)': cannot convert argument 1 from 'FRHIShaderResourceView *' to 'FRHITexture *'
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1457): note: Types pointed to are unrelated; conversion requires reinterpret_cast, C-style cast or parenthesized function-style cast
+C:\MiningSpiceCoPilot - Copy\Source\MiningSpiceCoPilot\13_GPUComputeDispatcher\Private\GPUDispatcher.cpp(1456): note: while trying to match the argument list '(FRHIShaderResourceView *, ERHIAccess, const ERHIAccess)'  
+
+Error executing C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64\cl.exe (tool returned code: 2)

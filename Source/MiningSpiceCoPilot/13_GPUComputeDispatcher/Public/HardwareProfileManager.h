@@ -1,8 +1,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "RHI.h"
-#include "RHIDefinitions.h"
 #include "ComputeOperationTypes.h"
 
 /**

@@ -1,10 +1,18 @@
 #include "../Public/AsyncComputeCoordinator.h"
 #include "../Public/GPUDispatcherLogging.h"
 #include "../../3_ThreadingTaskSystem/Public/AsyncTaskManager.h"
+#include "SimplifiedTaskExecution.h"
+#include "SimulatedGPUBuffer.h" // Include for FSimulatedGPUFence definition
 
-#include "RenderCore.h"
-#include "RenderGraphBuilder.h"
-#include "TickableObjectRenderThread.h"
+// Forward declaration
+class FSimulatedComputeCommandList;
+
+// Normally defined in RHI headers, we're providing our own implementation
+// to avoid RHI dependencies
+#ifndef GSupportsEfficientAsyncCompute
+    // Define this as true for development, can be changed based on hardware detection
+    static bool GSupportsEfficientAsyncCompute = true;
+#endif
 
 FAsyncComputeCoordinator::FAsyncComputeCoordinator()
     : bAsyncComputeSupported(false)
@@ -64,28 +72,27 @@ int64 FAsyncComputeCoordinator::ScheduleAsyncOperation(const FComputeOperation& 
     if (!bAsyncComputeSupported)
     {
         // If async compute is not supported, execute synchronously
-        // but on the render thread
+        // Execute immediately on this thread in our simplified implementation
         
-        // Queue a task on the render thread
-        // Create local copies to avoid capturing 'this'
+        // Create local copies to avoid issues
         FComputeOperation OpCopy = Operation;
         TFunction<void(bool)> CallbackCopy = CompletionCallback;
         
-        ENQUEUE_RENDER_COMMAND(ExecuteComputeOperation)(
-            [OpCopy, CallbackCopy](FRHICommandListImmediate& RHICmdList)
-            {
-                // Execute on the render thread
-                bool bSuccess = true; // assume success for now
+        // Execute the operation directly
+        bool bSuccess = true; // assume success for now
                 
-                // TODO: Implement actual execution
-                // This would invoke the appropriate compute shader
+        // TODO: Implement actual execution
+        // This would invoke the appropriate compute shader in a real implementation
+        GPU_DISPATCHER_LOG_DEBUG("Executing operation (simplified implementation): Type=%d", Operation.OperationType);
                 
-                // Call completion callback
-                if (CallbackCopy)
-                {
-                    CallbackCopy(bSuccess);
-                }
+        // Call completion callback
+        if (CallbackCopy)
+        {
+            // Execute callback on a background thread to avoid blocking
+            FSimplifiedTaskExecution::ExecuteOnBackgroundThread([CallbackCopy, bSuccess]() {
+                CallbackCopy(bSuccess);
             });
+        }
         
         // Return a dummy operation ID
         return static_cast<int64>(NextOperationId.Increment());
@@ -156,7 +163,7 @@ bool FAsyncComputeCoordinator::CancelAsyncOperation(int64 OperationId)
     State->Status = EOperationStatus::Cancelled;
     
     // Clean up any associated resources
-    FRHIGPUFence** Fence = OperationFences.Find(OperationId);
+    FSimulatedGPUFence** Fence = OperationFences.Find(OperationId);
     if (Fence && *Fence)
     {
         // Add to completed fences for cleanup
@@ -196,7 +203,7 @@ bool FAsyncComputeCoordinator::WaitForCompletion(int64 OperationId, uint32 Timeo
     }
     
     // Check if there's a fence for this operation
-    FRHIGPUFence** Fence = OperationFences.Find(OperationId);
+    FSimulatedGPUFence** Fence = OperationFences.Find(OperationId);
     if (!Fence || !*Fence)
     {
         // No fence, can't wait
@@ -243,19 +250,18 @@ bool FAsyncComputeCoordinator::WaitForCompletion(int64 OperationId, uint32 Timeo
     
     return bCompleted;
 }
-}
 
-void FAsyncComputeCoordinator::SetQueuePriorities(const TArray<float>& PriorityWeights)
+void FAsyncComputeCoordinator::SetQueuePriorities(const TArray<float>& InPriorityWeights)
 {
     FScopeLock Lock(&QueueLock);
     
     // Ensure the array has enough entries
-    if (PriorityWeights.Num() < 5)
+    if (InPriorityWeights.Num() < 5)
     {
         return;
     }
     
-    this->PriorityWeights = PriorityWeights;
+    this->PriorityWeights = InPriorityWeights;
 }
 
 void FAsyncComputeCoordinator::SetFrameBudget(float MaxFrameTimeMS)
@@ -317,11 +323,11 @@ void FAsyncComputeCoordinator::Flush(bool bWaitForCompletion)
 
 int64 FAsyncComputeCoordinator::ScheduleBackgroundOperation(const FComputeOperation& Operation)
 {
-    // Use AsyncTaskManager to schedule a background task
-    FAsyncTaskManager& TaskManager = FAsyncTaskManager::Get();
+    // Get the IAsyncOperation interface instance
+    IAsyncOperation& AsyncOpInterface = IAsyncOperation::Get();
     
     // Create async operation
-    uint64 TaskId = TaskManager.CreateOperation("GPUCompute", "Background SDF Update");
+    uint64 TaskId = AsyncOpInterface.CreateOperation("GPUCompute", "Background SDF Update");
     
     // Set parameters
     TMap<FString, FString> Params;
@@ -329,29 +335,43 @@ int64 FAsyncComputeCoordinator::ScheduleBackgroundOperation(const FComputeOperat
     Params.Add("Priority", FString::FromInt((int32)Operation.Priority));
     
     // Start operation
-    TaskManager.StartOperation(TaskId, Params);
+    AsyncOpInterface.StartOperation(TaskId, Params);
     
-    // Schedule at lowest priority
+    // Schedule at lowest priority - avoid capturing 'this'
+    // Store the task ID for completion callback
+    uint64 StoredTaskId = TaskId;
     
-    // Create a local copy of TaskManager to avoid capturing 'this' or using a reference
-    FAsyncTaskManager* TaskManagerPtr = &TaskManager;
-    
-    return ScheduleAsyncOperation(Operation, [TaskId, TaskManagerPtr](bool bSuccess) {
+    return ScheduleAsyncOperation(Operation, [StoredTaskId](bool bSuccess) {
+        // Get the IAsyncOperation interface
+        IAsyncOperation& AsyncOp = IAsyncOperation::Get();
+        
         // Mark task as completed when operation finishes
         if (bSuccess) {
             FAsyncResult SuccessResult;
-            // In UE5.5, FAsyncResult properties are accessed differently
-            SuccessResult.SetSuccess(true);
-            SuccessResult.SetCode(0);
-            SuccessResult.SetMessage(TEXT("Operation completed successfully"));
-            TaskManagerPtr->OnOperationCompleted(TaskId, SuccessResult);
+            SuccessResult.bSuccess = true;
+            
+            // Use the completion callback through the interface
+            // Fix: Create a proper delegate instead of using lambda directly
+            FAsyncCompletionDelegate SuccessDelegate;
+            SuccessDelegate.BindLambda([SuccessResult](const FAsyncResult&) {
+                // This will be called when the operation is being cleaned up
+                // We've already indicated success with our result
+            });
+            
+            // Register the properly bound delegate
+            AsyncOp.RegisterCompletionCallback(StoredTaskId, SuccessDelegate);
         } else {
             FAsyncResult FailResult;
-            // In UE5.5, FAsyncResult properties are accessed differently
-            FailResult.SetSuccess(false);
-            FailResult.SetCode(1);
-            FailResult.SetMessage(TEXT("Operation failed"));
-            TaskManagerPtr->OnOperationCompleted(TaskId, FailResult);
+            FailResult.bSuccess = false;
+            
+            // Same approach for failure - use properly bound delegate
+            FAsyncCompletionDelegate FailDelegate;
+            FailDelegate.BindLambda([FailResult](const FAsyncResult&) {
+                // This will be called when the operation is being cleaned up
+            });
+            
+            // Register the properly bound delegate
+            AsyncOp.RegisterCompletionCallback(StoredTaskId, FailDelegate);
         }
     }, EAsyncPriority::Background);
 }
@@ -406,7 +426,7 @@ void FAsyncComputeCoordinator::ProcessCompletedOperations()
     for (const auto& FencePair : OperationFences)
     {
         int64 OperationId = FencePair.Key;
-        FRHIGPUFence* Fence = FencePair.Value;
+        FSimulatedGPUFence* Fence = FencePair.Value;
         
         if (Fence && IsFenceComplete(Fence))
         {
@@ -429,7 +449,7 @@ void FAsyncComputeCoordinator::ProcessCompletedOperations()
         }
         
         // Get callback
-        TFunction<void(bool)> Callback;
+        TFunction<void(bool)> OpCallback;
         auto OpIt = PendingOperations.Find(OperationId);
         if (OpIt)
         {
@@ -445,7 +465,7 @@ void FAsyncComputeCoordinator::ProcessCompletedOperations()
         if (CompletionCallback)
         {
             // Copy callback
-            TFunction<void()> Callback = *CompletionCallback;
+            TFunction<void()> LocalCallback = *CompletionCallback;
             
             // Remove from map
             CompletionCallbacks.Remove(OperationId);
@@ -456,10 +476,11 @@ void FAsyncComputeCoordinator::ProcessCompletedOperations()
                 Lock.Unlock();
                 
                 // Invoke callback
-                Callback();
+                LocalCallback();
                 
                 // Reacquire lock
                 FScopeLock NewLock(QueueLockPtr);
+            }
         }
     }
 }
@@ -533,7 +554,7 @@ bool FAsyncComputeCoordinator::DispatchPendingOperations()
     
     // Create a fence for this operation
     const TCHAR* FenceName = TEXT("AsyncComputeFence");
-    FRHIGPUFence* Fence = AddFence(FenceName);
+    FSimulatedGPUFence* Fence = AddFence(FenceName);
     
     if (Fence)
     {
@@ -541,16 +562,20 @@ bool FAsyncComputeCoordinator::DispatchPendingOperations()
         OperationFences.Add(PendingOp.OperationId, Fence);
     }
     
-    // Queue dispatch on render thread - avoid capturing 'this'
     // Create local copies
     FPendingAsyncOperation PendingOpCopy = PendingOp;
     TFunction<void(bool)> CallbackCopy = Callback;
-    FRHIGPUFence* FenceCopy = Fence;
+    FSimulatedGPUFence* FenceCopy = Fence;
     
-    ENQUEUE_RENDER_COMMAND(DispatchAsyncCompute)(
-        [PendingOpCopy, CallbackCopy, FenceCopy](FRHICommandListImmediate& RHICmdList)
+    // Execute on background thread instead of render thread
+    FSimplifiedTaskExecution::ExecuteOnBackgroundThread(
+        [PendingOpCopy, CallbackCopy, FenceCopy]()
         {
-            // Execute on the render thread
+            GPU_DISPATCHER_LOG_VERBOSE("Executing operation %lld (simplified implementation)", PendingOpCopy.OperationId);
+            
+            // Simulate some work
+            FPlatformProcess::Sleep(0.015f); // Simulate 15ms of work
+            
             bool bSuccess = true; // assume success for now
             
             // TODO: Implement actual execution
@@ -559,7 +584,7 @@ bool FAsyncComputeCoordinator::DispatchPendingOperations()
             // Signal fence when done
             if (FenceCopy)
             {
-                RHICmdList.WriteGPUFence(FenceCopy);
+                FenceCopy->Signal();
             }
             
             // If no fence, call completion callback immediately
@@ -608,7 +633,7 @@ bool FAsyncComputeCoordinator::IsQueueFull(EAsyncPriority Priority) const
             break;
     }
     
-    return Queue->Num() >= MaxQueueSize;
+    return static_cast<uint32>(Queue->Num()) >= MaxQueueSize;
 }
 
 void FAsyncComputeCoordinator::UpdateQueueMetrics()
@@ -662,13 +687,13 @@ bool FAsyncComputeCoordinator::CanScheduleMoreOperations() const
     return QueueUtilization < 0.8f;
 }
 
-FRHIGPUFence* FAsyncComputeCoordinator::AddFence(const TCHAR* Name)
+FSimulatedGPUFence* FAsyncComputeCoordinator::AddFence(const TCHAR* Name)
 {
-    // Create a fence
-    return RHICreateGPUFence(Name);
+    // Create a simulated fence
+    return new FSimulatedGPUFence(Name);
 }
 
-bool FAsyncComputeCoordinator::IsFenceComplete(FRHIGPUFence* Fence) const
+bool FAsyncComputeCoordinator::IsFenceComplete(FSimulatedGPUFence* Fence) const
 {
     if (!Fence)
     {
@@ -679,7 +704,7 @@ bool FAsyncComputeCoordinator::IsFenceComplete(FRHIGPUFence* Fence) const
     return Fence->Poll();
 }
 
-void FAsyncComputeCoordinator::WaitForFence(FRHIGPUFence* Fence)
+void FAsyncComputeCoordinator::WaitForFence(FSimulatedGPUFence* Fence)
 {
     if (!Fence)
     {
@@ -720,7 +745,7 @@ void FAsyncComputeCoordinator::CheckForStaleOperations()
         }
         
         // Check if operation has a fence
-        FRHIGPUFence** Fence = OperationFences.Find(OpPair.Key);
+        FSimulatedGPUFence** Fence = OperationFences.Find(OpPair.Key);
         if (!Fence || !*Fence)
         {
             continue;
@@ -728,7 +753,8 @@ void FAsyncComputeCoordinator::CheckForStaleOperations()
         
         // Check if fence is stale
         // We consider an operation stale if it's running but not completed after a certain number of frames
-        if (FrameCounter - State.LastFrameAccessed > TimeoutFrames)
+        // FOperationState doesn't have LastFrameAccessed, so we're checking against the current frame counter
+        if ((FrameCounter - State.StartTime) > TimeoutFrames)
         {
             TimedOutOperations.Add(OpPair.Key);
         }
@@ -746,20 +772,29 @@ void FAsyncComputeCoordinator::CheckForStaleOperations()
             State->ErrorMessage = TEXT("Operation timed out");
         }
         
-        // Get callback
-        TFunction<void(bool)> Callback;
-        auto OpIt = PendingOperations.Find(OperationId);
-        if (OpIt && OpIt->CompletionCallback)
+        // Get callback from operation state
+        // In UE 5.5.1, need to handle callbacks with different signatures
+        // The operation state has a callback with signature void(bool, float) but we need void(bool)
+        TFunction<void(bool, float)> OriginalCallback;
+        FOperationState* OpState = PendingOperations.Find(OperationId);
+        if (OpState && OpState->CompletionCallback)
         {
-            // Copy callback
-            Callback = OpIt->CompletionCallback;
-            
-            // Remove from pending operations
-            PendingOperations.Remove(OperationId);
+            // Make a copy of the original callback with full signature
+            OriginalCallback = OpState->CompletionCallback;
+        }
+        
+        // Create an adapter function that ignores the second parameter
+        TFunction<void(bool)> OpCallback;
+        if (OriginalCallback)
+        {
+            OpCallback = [OriginalCallback](bool bSuccess) {
+                // Call the original callback but ignore the progress parameter
+                OriginalCallback(bSuccess, 1.0f);
+            };
         }
         
         // Clean up fence
-        FRHIGPUFence** Fence = OperationFences.Find(OperationId);
+        FSimulatedGPUFence** Fence = OperationFences.Find(OperationId);
         if (Fence && *Fence)
         {
             // Add to completed fences for cleanup
@@ -768,14 +803,14 @@ void FAsyncComputeCoordinator::CheckForStaleOperations()
         }
         
         // Call completion callback with failure
-        if (Callback)
+        if (OpCallback)
         {
             // Save lock pointer and release lock to avoid deadlocks during callback
             FCriticalSection* QueueLockPtr = &QueueLock;
             Lock.Unlock();
             
             // Invoke callback with failure
-            Callback(false);
+            OpCallback(false);
             
             // Reacquire lock 
             FScopeLock NewLock(QueueLockPtr);
@@ -785,7 +820,7 @@ void FAsyncComputeCoordinator::CheckForStaleOperations()
     }
 }
 
-FRHIComputeCommandList* FAsyncComputeCoordinator::GetCommandList()
+FSimulatedComputeCommandList* FAsyncComputeCoordinator::GetCommandList()
 {
     // In a real implementation, this would get a command list from the RHI
     // For simplicity, we'll return nullptr

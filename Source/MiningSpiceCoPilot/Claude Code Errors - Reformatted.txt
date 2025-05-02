@@ -1,5 +1,166 @@
 # UNREAL ENGINE 5.5 COMPILER ERRORS AND SOLUTIONS GUIDE FOR CLAUDE CODE
 
+## JULY 2025 UPDATE - SYSTEM 13 GPU COMPUTE DISPATCHER RHI FIXES
+
+### 1. RHI Type Layout and Shader Parameters
+**Error Description:** FRHIComputeShaderParameters undeclared, SetComputeShaderParameters not a member of RHICommandList, and DECLARE_TYPE_LAYOUT causing conflicts.
+
+**Root Cause:**
+- In UE5.5, the batch shader parameters API has been completely revamped
+- DECLARE_TYPE_LAYOUT can conflict with existing shader type definitions
+
+**Solution:**
+```cpp
+// Old style shader parameters
+FRHIComputeShaderParameters ShaderParams;
+ShaderParams.AddParameter(GetUniformBufferParameter<FParameters>(), ParametersUB);
+RHICmdList.SetComputeShaderParameters(ShaderRHI, ShaderParams);
+
+// New style - simpler direct approach
+FRHIUniformBuffer* ParametersUB = FParameters::CreateUniformBuffer(Parameters, EUniformBufferUsage::UniformBuffer_SingleDraw);
+RHICmdList.SetShaderParameters(ShaderRHI, ParametersUB);
+
+// Old style class declaration with redundant type layout
+class MININGSPICECOPILOT_API FComputeShaderType : public FGlobalShader
+{
+    DECLARE_TYPE_LAYOUT(FComputeShaderType, NonVirtual);
+    DECLARE_SHADER_TYPE(FComputeShaderType, Global);
+};
+
+// New style - keep it simple
+class MININGSPICECOPILOT_API FComputeShaderType : public FGlobalShader
+{
+    DECLARE_SHADER_TYPE(FComputeShaderType, Global);
+};
+```
+
+### 2. RHI Feature Detection in UE5.5
+**Error Description:** WITH_RAYTRACING not defined, ERHIFeature::AsyncCompute missing, FDynamicRHI::SupportsFeature not a member
+
+**Root Cause:**
+- UE5.5 changes how engine features are detected
+- Global feature flags replace function calls
+
+**Solution:**
+```cpp
+// Old style feature detection
+#if WITH_RAYTRACING
+    bSupportsRayTracing = true;
+#else
+    bSupportsRayTracing = false;
+#endif
+
+if (GDynamicRHI && GDynamicRHI->SupportsFeature(ERHIFeature::AsyncCompute))
+{
+    bSupportsAsyncCompute = true;
+}
+
+// New style using global flags
+#if WITH_RAYTRACING
+bSupportsRayTracing = GRHISupportsRayTracing;
+#endif
+
+bSupportsAsyncCompute = GRHISupportsAsyncCompute;
+```
+
+### 3. Memory Statistics Updates
+**Error Description:** FRHIMemoryStatistics undeclared, error accessing MemoryStats members
+
+**Root Cause:**
+- UE5.5 changes how GPU memory statistics are retrieved
+- FRHIMemoryStatistics replaced with FGraphicsAdapterStatistics
+
+**Solution:**
+```cpp
+// Old style memory statistics
+FRHIMemoryStatistics MemoryStats;
+GDynamicRHI->GetMemoryStatistics(MemoryStats);
+if (MemoryStats.IsValid())
+{
+    TotalMemory = MemoryStats.TotalPhysicalGPUMemory;
+    AvailableMemory = MemoryStats.AvailablePhysicalGPUMemory;
+}
+
+// New style using UE5.5 API
+FGraphicsAdapterStatistics GpuStats;
+RHIGetAdapterStatistics(GpuStats);
+
+TotalMemory = GpuStats.DedicatedVideoMemory;
+AvailableMemory = GpuStats.DedicatedVideoMemory - GpuStats.DedicatedVideoMemoryUsed;
+```
+
+### 4. Buffer Creation API in UE5.5
+**Error Description:** ERHIBufferUsageFlags undeclared, AccessFlags and ClearValue not members of FRHIBufferCreateInfo
+
+**Root Cause:**
+- UE5.5 changes how buffers are created
+- FRHIBufferCreateInfo structure completely revised
+
+**Solution:**
+```cpp
+// Old style buffer creation
+FRHIBufferCreateInfo BufferInfo;
+BufferInfo.Usage = ERHIBufferUsageFlags::Static;
+BufferInfo.AccessFlags = ERHIAccess::SRVMask;
+BufferInfo.ClearValue = FRHIClearValue();
+FBufferRHIRef BufferRef = RHICreateBuffer(BufferInfo);
+
+// New style buffer creation with UE5.5 API
+// Create buffer descriptor with all fields
+const FRHIBufferDesc BufferDesc(
+    SizeInBytes,
+    ERHIBufferUsageFlags::Static | ERHIBufferUsageFlags::ShaderResource | ERHIBufferUsageFlags::UnorderedAccess,
+    ERHIResourceState::Undefined,  // initial state
+    TEXT("ZeroCopyResource"));
+
+// Create the buffer directly 
+FRHIBuffer* BufferRHI = RHICreateBuffer(BufferDesc);
+```
+
+### 5. Feature Level Checks
+**Error Description:** IsFeatureLevelSupported returning wrong results
+
+**Root Cause:**
+- UE5.5 changes how feature level support is checked
+- EnumHasAnyFlags should be used instead of IsFeatureLevelSupported
+
+**Solution:**
+```cpp
+// Old style feature level check
+if (!IsFeatureLevelSupported(GMaxRHIShaderPlatform, ERHIFeatureLevel::SM5))
+{
+    // Not supported
+}
+
+// New style feature level check
+if (!EnumHasAnyFlags(GMaxRHIFeatureLevel, ERHIFeatureLevel::SM5))
+{
+    // Not supported
+}
+```
+
+### 6. Resource Transition Updates
+**Error Description:** Cannot convert from ERHIPipeline to EResourceTransitionFlags, CreateAccessTransition not a member
+
+**Root Cause:**
+- UE5.5 changes how resource transitions are defined
+- Pipeline state no longer used in transitions
+
+**Solution:**
+```cpp
+// Old style resource transition
+Transitions.Add(FRHITransitionInfo::CreateAccessTransition(
+    static_cast<FRHITexture*>(Resource), 
+    CurrentState->CurrentAccess, 
+    TargetState.CurrentAccess));
+
+// New style resource transition
+Transitions.Add(FRHITransitionInfo(
+    Resource, 
+    CurrentState->CurrentAccess, 
+    TargetState.CurrentAccess));
+```
+
 ## JUNE 2025 UPDATE - GPU COMPUTE DISPATCHER NON-RHI FIXES
 
 ### 1. Lambda Capture Issues with 'this' Pointer
@@ -835,6 +996,187 @@ class MININGSPICECOPILOT_API FMiningSDFComputeShaderUtils
 This guide documents common errors encountered when working with Unreal Engine 5.5 projects, along with solutions and best practices. Use this as a reference when implementing systems for Unreal Engine 5.5 to avoid common pitfalls.
 
 This guide documents common errors Claude Code encounters when working with Unreal Engine 5 projects, along with solutions and best practices. Use this as a reference when implementing systems for Unreal Engine 5 to avoid common pitfalls.
+
+## SEPTEMBER 2025 UPDATES - SYSTEM 13 GPU COMPUTE DISPATCHER RHI FIXES
+
+### 1. RHI Feature Detection in UE5.5
+**Error Description:** WITH_RAYTRACING not defined, GRHISupportsAsyncCompute undeclared, RHIGetRenderingDrivers identifier not found
+
+**Root Cause:** 
+- UE5.5 changes how engine features are detected
+- Global variables and functions have different names or need additional includes
+
+**Solution:**
+```cpp
+// Include the necessary headers
+#include "RHIDefinitions.h"
+#include "RHIResource.h"        // For FGraphicsAdapterStatistics
+#include "RHIUtilities.h"       // For RHIGetAdapterStatistics
+#include "RenderGraphUtils.h"   // For RHIGetRenderingDrivers
+
+// Check for raytracing support
+bSupportsRayTracing = false;
+#if WITH_RAYTRACING
+    bSupportsRayTracing = GRHISupportsRayTracing;
+#endif
+
+// Check for async compute support
+bSupportsAsyncCompute = GRHISupportsAsyncCompute;
+
+// Get render driver information
+const FRHIRenderingDrivers* RenderingDrivers = RHIGetRenderingDrivers();
+if (RenderingDrivers)
+{
+    RenderingDrivers->GetAllTargetedShaderFormats(ShaderFormats);
+}
+```
+
+### 2. Graphics Adapter Statistics
+**Error Description:** FGraphicsAdapterStatistics undeclared, RHIGetAdapterStatistics identifier not found
+
+**Root Cause:**
+- UE5.5 changed how GPU memory statistics are retrieved
+- FRHIMemoryStatistics replaced with FGraphicsAdapterStatistics
+
+**Solution:**
+```cpp
+// Get memory stats using the RHI interface in UE5.5
+FGraphicsAdapterStatistics GpuStats;
+RHIGetAdapterStatistics(GpuStats);
+
+TotalMemory = GpuStats.DedicatedVideoMemory;
+AvailableMemory = GpuStats.DedicatedVideoMemory - GpuStats.DedicatedVideoMemoryUsed;
+UsedMemory = GpuStats.DedicatedVideoMemoryUsed;
+```
+
+### 3. EnumHasAnyFlags Template Ambiguity
+**Error Description:** EnumHasAnyFlags no matching overloaded function found, template parameter 'Enum' is ambiguous
+
+**Root Cause:**
+- EnumHasAnyFlags template function causes ambiguity with certain enum types
+- The compiler can't deduce which type to use for the template parameter
+
+**Solution:**
+```cpp
+// Instead of:
+if (EnumHasAnyFlags(GMaxRHIFeatureLevel, ERHIFeatureLevel::SM5))
+
+// Use direct comparison:
+if (GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5)
+
+// For shader permutation:
+static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+{
+    // Use direct comparison instead of EnumHasAnyFlags to avoid template ambiguity
+    return GetMaxSupportedFeatureLevel(Parameters.Platform) >= ERHIFeatureLevel::SM5;
+}
+```
+
+### 4. Buffer Creation API Changes
+**Error Description:** FRHIBufferCreateInfo AccessFlags and ClearValue not members, RHICreateBuffer identifier not found
+
+**Root Cause:**
+- UE5.5 changes how buffers are created
+- FRHIBufferCreateInfo structure completely revised, use FRHIBufferDesc instead
+
+**Solution:**
+```cpp
+// Old style:
+FRHIBufferCreateInfo BufferInfo;
+BufferInfo.Size = Size;
+BufferInfo.Usage = ERHIBufferUsageFlags::Static;
+BufferInfo.AccessFlags = ERHIAccess::SRVMask;
+BufferInfo.ClearValue = FRHIClearValue();
+FBufferRHIRef BufferRef = RHICreateBuffer(BufferInfo);
+
+// New style:
+const FRHIBufferDesc BufferDesc(
+    Size,
+    ERHIBufferUsageFlags::Static | ERHIBufferUsageFlags::ShaderResource,
+    ERHIResourceState::Undefined,  // initial state
+    TEXT("BufferName"));
+FBufferRHIRef BufferRef = RHICreateBuffer(BufferDesc);
+```
+
+### 5. UAV and SRV Creation
+**Error Description:** FRHIUnorderedAccessViewDesc and FRHIShaderResourceViewDesc undeclared identifiers
+
+**Root Cause:**
+- UE5.5 simplified the API for creating UAVs and SRVs
+- No need for separate descriptor structures
+
+**Solution:**
+```cpp
+// Old style:
+FRHIUnorderedAccessViewDesc UAVDesc;
+UAVDesc.Buffer.Buffer = Buffer;
+UAVDesc.Buffer.Format = Format;
+FUnorderedAccessViewRHIRef UAVRef = RHICreateUnorderedAccessView(UAVDesc);
+
+// New style:
+FUnorderedAccessViewRHIRef UAVRef = RHICreateUnorderedAccessView(Buffer, Format);
+
+// Similarly for SRVs:
+FShaderResourceViewRHIRef SRVRef = RHICreateShaderResourceView(Buffer, Format);
+```
+
+### 6. Shader Parameter Handling
+**Error Description:** FRHIComputeCommandList::SetShaderParameters function does not take 2 arguments
+
+**Root Cause:**
+- UE5.5 changes how shader parameters are set
+- Now uses a simpler API with direct uniform buffer binding
+
+**Solution:**
+```cpp
+// Old style:
+FRHIComputeShaderParameters ShaderParams;
+ShaderParams.AddParameter(GetUniformBufferParameter<FParameters>(), ParametersUB);
+RHICmdList.SetComputeShaderParameters(ShaderRHI, ShaderParams);
+
+// New style:
+RHICmdList.SetShaderParameters(ShaderRHI, ParametersUB);
+```
+
+### 7. Shader Type Layout Requirements
+**Error Description:** static_assert failed: 'Invalid interface for FSDFComputeShaderBase'
+
+**Root Cause:**
+- UE5.5 requires DECLARE_TYPE_LAYOUT macro for shader classes
+- Missing type layout declaration causes static assertion failure
+
+**Solution:**
+```cpp
+// Old style:
+class MININGSPICECOPILOT_API FSDFComputeShaderBase : public FGlobalShader
+{
+    DECLARE_SHADER_TYPE(FSDFComputeShaderBase, Global);
+    // Implementation...
+};
+
+// New style:
+class MININGSPICECOPILOT_API FSDFComputeShaderBase : public FGlobalShader
+{
+    DECLARE_TYPE_LAYOUT(FSDFComputeShaderBase, NonVirtual);
+    DECLARE_SHADER_TYPE(FSDFComputeShaderBase, Global);
+    // Implementation...
+    
+    // Add virtual destructor for classes with virtual functions
+    virtual ~FSDFComputeShaderBase() {}
+};
+```
+
+### 8. Missing Closing Braces
+**Error Description:** local function definitions are illegal - '{' which has not yet been matched
+
+**Root Cause:**
+- Missing closing brace(s) in function definitions
+- Can cause cascading errors with subsequent function definitions appearing as "local"
+
+**Solution:**
+- Carefully check function definitions for missing closing braces
+- Use code formatting/indentation to more easily spot mismatched braces
+- Check all error locations to identify where the mismatch begins
 
 ## MAY 2025 UPDATES - UNREAL ENGINE 5.5 COMPATIBILITY FIXES
 

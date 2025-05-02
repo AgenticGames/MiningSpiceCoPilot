@@ -201,6 +201,7 @@ public:
     virtual void Shutdown() override;
     virtual bool IsInitialized() const override;
     virtual bool RegisterService(void* InService, const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override;
+    virtual bool RegisterServiceByTypeName(const FString& ServiceTypeName, void* InService, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override;
     virtual void* ResolveService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override;
     virtual bool UnregisterService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) override;
     virtual bool HasService(const UClass* InInterfaceType, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) const override;

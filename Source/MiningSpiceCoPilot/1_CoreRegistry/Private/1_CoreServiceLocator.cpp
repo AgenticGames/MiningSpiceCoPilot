@@ -144,6 +144,47 @@ bool FCoreServiceLocator::RegisterService(void* InService, const UClass* InInter
     return true;
 }
 
+bool FCoreServiceLocator::RegisterServiceByTypeName(const FString& ServiceTypeName, void* InService, int32 InZoneID, int32 InRegionID)
+{
+    if (!IsInitialized())
+    {
+        UE_LOG(LogTemp, Error, TEXT("FCoreServiceLocator::RegisterServiceByTypeName failed - locator not initialized"));
+        return false;
+    }
+    
+    if (!InService)
+    {
+        UE_LOG(LogTemp, Error, TEXT("FCoreServiceLocator::RegisterServiceByTypeName failed - null service"));
+        return false;
+    }
+    
+    // Create a FName from the service type name
+    FName InterfaceName(*ServiceTypeName);
+    
+    // Generate context key
+    FString ContextKey = GetServiceContextKey(InZoneID, InRegionID);
+    
+    // Create service instance
+    FServiceInstance Instance(InService, InZoneID, InRegionID);
+    
+    // Take write lock
+    FScopedWriteLock Lock(ServiceMapRWLock);
+    
+    // Get or create interface map entry
+    TMap<FString, TArray<FServiceInstance>>& ContextMap = ServiceMap.FindOrAdd(InterfaceName);
+    
+    // Get or create context entry
+    TArray<FServiceInstance>& Instances = ContextMap.FindOrAdd(ContextKey);
+    
+    // Add service instance
+    Instances.Add(Instance);
+    
+    UE_LOG(LogTemp, Verbose, TEXT("FCoreServiceLocator::RegisterServiceByTypeName - Registered service %s with context %s"),
+        *InterfaceName.ToString(), *ContextKey);
+    
+    return true;
+}
+
 void* FCoreServiceLocator::ResolveService(const UClass* InInterfaceType, int32 InZoneID, int32 InRegionID)
 {
     if (!IsInitialized())

@@ -1,16 +1,8 @@
 #include "../Public/ZeroCopyResourceManager.h"
 #include "../Public/GPUDispatcherLogging.h"
+#include "SimulatedGPUBuffer.h"
 
-#include "RenderCore.h"
-#include "RHIResources.h"
-#include "RHIDefinitions.h"
-#include "RHI.h"
-#include "RHIUtilities.h"
-#include "RHIStaticStates.h"
-#include "PipelineStateCache.h"
-#include "RenderGraphResources.h" // For FBufferUnorderedAccessViewDesc
-#include "Shader.h" // For SupportsComputeShaders
-
+// Simplified implementation - no RHI dependencies
 FZeroCopyResourceManager::FZeroCopyResourceManager()
     : NextBufferIndex(0)
     , TotalAllocatedBytes(0)
@@ -37,21 +29,8 @@ FZeroCopyResourceManager::~FZeroCopyResourceManager()
 
 bool FZeroCopyResourceManager::Initialize()
 {
-    // Check if RHI supports compute shaders (needed for shared resources)
-    bool bSupportsSharedMemory = IsFeatureLevelSupported(GMaxRHIShaderPlatform, ERHIFeatureLevel::SM5);
-    
-    if (!bSupportsSharedMemory)
-    {
-        GPU_DISPATCHER_LOG_WARNING("RHI does not support compute shaders, zero-copy buffers will be emulated");
-    }
-    
-    // Initialize the RHI if not done already
-    if (!GDynamicRHI)
-    {
-        GPU_DISPATCHER_LOG_WARNING("DynamicRHI not initialized, some operations may fail");
-    }
-    
-    GPU_DISPATCHER_LOG_DEBUG("ZeroCopyResourceManager initialized");
+    // Simplified initialization with no RHI checks
+    GPU_DISPATCHER_LOG_DEBUG("ZeroCopyResourceManager initialized with simplified implementation");
     return true;
 }
 
@@ -71,8 +50,8 @@ void* FZeroCopyResourceManager::PinMemory(void* CPUAddress, SIZE_T Size, uint32&
     Buffer.LastUsedTime = FPlatformTime::Seconds();
     Buffer.UsageCount = 1;
     
-    // Create a GPU buffer for this memory
-    Buffer.GPUBuffer = new FRHIGPUBufferReadback(TEXT("ZeroCopyBuffer"));
+    // Create a simulated GPU buffer
+    Buffer.GPUBuffer = new FSimulatedGPUReadback(*GetBufferName(OutBufferIndex));
     
     // Track allocated memory
     TotalAllocatedBytes += Size;
@@ -84,7 +63,7 @@ void* FZeroCopyResourceManager::PinMemory(void* CPUAddress, SIZE_T Size, uint32&
     return CPUAddress;
 }
 
-FRHIGPUBufferReadback* FZeroCopyResourceManager::GetGPUBuffer(uint32 BufferIndex)
+FSimulatedGPUReadback* FZeroCopyResourceManager::GetGPUBuffer(uint32 BufferIndex)
 {
     // Create a mutable reference to ResourceLock before using it with FScopeLock
     FCriticalSection& MutableLock = const_cast<FCriticalSection&>(ResourceLock);
@@ -138,36 +117,11 @@ void FZeroCopyResourceManager::ReleaseMemory(uint32 BufferIndex)
     CleanupUnusedResources();
 }
 
-void FZeroCopyResourceManager::TransitionResource(FRHIResource* Resource, ERHIAccess NewAccess, ERHIPipeline Pipeline)
+void FZeroCopyResourceManager::TransitionResource(FSimplifiedResource* Resource, ESimplifiedAccess NewAccess, ESimplifiedPipeline Pipeline)
 {
-    // Create a mutable reference to ResourceLock before using it with FScopeLock
-    FCriticalSection& MutableLock = const_cast<FCriticalSection&>(ResourceLock);
-    FScopeLock Lock(&MutableLock);
-    
-    // Check if resource exists
-    if (!Resource)
-    {
-        return;
-    }
-    
-    // Get current access and pipeline
-    ERHIAccess CurrentAccess = ResourceAccessMap.FindRef(Resource);
-    ERHIPipeline CurrentPipeline = ResourcePipelineMap.FindRef(Resource);
-    
-    // Skip if no transition needed
-    if (CurrentAccess == NewAccess && CurrentPipeline == Pipeline)
-    {
-        return;
-    }
-    
-    // Update resource state
-    ResourceAccessMap.Add(Resource, NewAccess);
-    ResourcePipelineMap.Add(Resource, Pipeline);
-    
-    // In a real implementation, we would enqueue a resource transition
-    // For simplicity, we'll just log the transition
-    GPU_DISPATCHER_LOG_VERBOSE("Transitioned resource %p: Access %d -> %d, Pipeline %d -> %d",
-        Resource, (int32)CurrentAccess, (int32)NewAccess, (int32)CurrentPipeline, (int32)Pipeline);
+    // Simplified implementation with no actual RHI transitions
+    // Just log the intended transition
+    GPU_DISPATCHER_LOG_VERBOSE("Resource transition requested (simplified implementation)");
 }
 
 uint64 FZeroCopyResourceManager::GetTotalAllocatedMemory() const
@@ -175,73 +129,55 @@ uint64 FZeroCopyResourceManager::GetTotalAllocatedMemory() const
     return TotalAllocatedBytes;
 }
 
-FRHIBuffer* FZeroCopyResourceManager::CreateBuffer(SIZE_T Size, EBufferUsageFlags Usage, FRHIResourceCreateInfo& CreateInfo)
+FSimulatedGPUBuffer* FZeroCopyResourceManager::CreateBuffer(SIZE_T Size, uint32 UsageFlags)
 {
-    // This is just a wrapper around RHI buffer creation
-    // In a real implementation, it would handle shared memory setup
+    // Simplified implementation using our own buffer class
+    GPU_DISPATCHER_LOG_DEBUG("CreateBuffer called with size %llu (simplified implementation)", Size);
     
-    // Cast to uint32 to avoid operator overload ambiguity
-    uint32 AdditionalUsageFlags = static_cast<uint32>(BUF_Shared | BUF_ShaderResource | BUF_StructuredBuffer);
-    uint32 UsageFlags = static_cast<uint32>(Usage) | AdditionalUsageFlags;
-    
-    // Updated buffer creation for UE5.5
-    FRHIResourceCreateInfo ResourceCreateInfo = CreateInfo;
-    
-    // Set buffer usage flags (combine with provided flags)
-    uint32 FinalUsageFlags = static_cast<uint32>(Usage) | AdditionalUsageFlags;
-
-    // Create buffer using UE5.5 compatible API
-    FRHIBufferCreateInfo BufferCreateInfo;
-    BufferCreateInfo.Size = Size;
-    BufferCreateInfo.Usage = static_cast<ERHIBufferUsageFlags>(FinalUsageFlags);
-    BufferCreateInfo.AccessFlags = ERHIAccess::SRVMask;
-    BufferCreateInfo.ClearValue = FRHIClearValue();
-    
-    FBufferRHIRef BufferRef = RHICreateBuffer(BufferCreateInfo);
+    // Create a new simulated GPU buffer
+    FSimulatedGPUBuffer* Buffer = new FSimulatedGPUBuffer(
+        Size, 
+        UsageFlags, 
+        FString::Printf(TEXT("Buffer_%llu"), FMath::Rand()));
     
     // Track allocated memory
     TotalAllocatedBytes += Size;
     
-    // Return raw pointer (ownership transferred to caller)
-    return BufferRef.GetReference();
+    return Buffer;
 }
 
-FRHIUnorderedAccessView* FZeroCopyResourceManager::CreateUAV(FRHIBuffer* Buffer, EPixelFormat Format)
+void* FZeroCopyResourceManager::CreateUAV(FSimulatedGPUBuffer* Buffer, uint32 Format)
 {
-    if (!Buffer)
+    // Simplified implementation - logging only
+    if (Buffer)
     {
-        return nullptr;
+        GPU_DISPATCHER_LOG_DEBUG("CreateUAV called for buffer %s (simplified implementation)", 
+            *Buffer->GetName());
+    }
+    else
+    {
+        GPU_DISPATCHER_LOG_DEBUG("CreateUAV called with null buffer (simplified implementation)");
     }
     
-    // Create UAV with updated API for UE5.5
-    // Create UAV descriptor specifying format and buffer
-    FRHIUnorderedAccessViewDesc UAVDesc;
-    UAVDesc.Buffer.Buffer = Buffer;
-    UAVDesc.Buffer.Format = Format;
-    
-    FUnorderedAccessViewRHIRef UAVRef = RHICreateUnorderedAccessView(UAVDesc);
-    
-    // Return raw pointer (ownership transferred to caller)
-    return UAVRef.GetReference();
+    // Return buffer's CPU address as a proxy for a UAV
+    return Buffer ? Buffer->GetCPUAddress() : nullptr;
 }
 
-FRHIShaderResourceView* FZeroCopyResourceManager::CreateSRV(FRHIBuffer* Buffer, EPixelFormat Format)
+void* FZeroCopyResourceManager::CreateSRV(FSimulatedGPUBuffer* Buffer, uint32 Format)
 {
-    if (!Buffer)
+    // Simplified implementation - logging only
+    if (Buffer)
     {
-        return nullptr;
+        GPU_DISPATCHER_LOG_DEBUG("CreateSRV called for buffer %s (simplified implementation)", 
+            *Buffer->GetName());
+    }
+    else
+    {
+        GPU_DISPATCHER_LOG_DEBUG("CreateSRV called with null buffer (simplified implementation)");
     }
     
-    // Create SRV with updated API for UE5.5
-    // Create SRV descriptor specifying format and buffer
-    FRHIShaderResourceViewDesc SRVDesc;
-    SRVDesc.Buffer.Buffer = Buffer;
-    SRVDesc.Buffer.Format = Format;
-    
-    FShaderResourceViewRHIRef SRVRef = RHICreateShaderResourceView(SRVDesc);
-    
-    // Return raw pointer (ownership transferred to caller)
-    return SRVRef.GetReference();
+    // Return buffer's CPU address as a proxy for an SRV
+    return Buffer ? Buffer->GetCPUAddress() : nullptr;
 }
 
 FString FZeroCopyResourceManager::GetBufferName(uint32 Index) const

@@ -214,6 +214,51 @@ bool FServiceLocator::RegisterService(void* InService, const UClass* InInterface
     return true;
 }
 
+bool FServiceLocator::RegisterServiceByTypeName(const FString& ServiceTypeName, void* InService, int32 InZoneID, int32 InRegionID)
+{
+    if (!bIsInitialized || !InService)
+    {
+        return false;
+    }
+    
+    // Create a UClass*-equivalent NULL for the interface type
+    UE_LOG(LogTemp, Verbose, TEXT("Registering service of type %s"), *ServiceTypeName);
+    
+    // Determine service scope
+    EServiceScope Scope = EServiceScope::Global;
+    if (InZoneID != INDEX_NONE)
+    {
+        Scope = EServiceScope::Zone;
+    }
+    if (InRegionID != INDEX_NONE)
+    {
+        Scope = EServiceScope::Region;
+    }
+    
+    // Take write lock
+    FScopedWriteLock WriteLock(ServiceMapLock);
+    
+    // Create the service key (just FName in this implementation)
+    FName TypeName(*ServiceTypeName);
+    
+    // Create service entry
+    FServiceEntry Entry;
+    Entry.ServiceInstance = InService;
+    Entry.ZoneID = InZoneID;
+    Entry.RegionID = InRegionID;
+    Entry.Version = FServiceVersion(1, 0, 0);  // Default version
+    Entry.HealthStatus = EServiceHealthStatus::Healthy;
+    Entry.Scope = Scope;
+    Entry.Priority = 0;
+    
+    // Create or update the array of entries for this service type
+    TArray<FServiceEntry>& Entries = ServiceMap.FindOrAdd(TypeName);
+    Entries.Add(Entry);
+    
+    UE_LOG(LogTemp, Verbose, TEXT("Service of type %s registered successfully"), *ServiceTypeName);
+    return true;
+}
+
 void* FServiceLocator::ResolveService(const UClass* InInterfaceType, int32 InZoneID, int32 InRegionID)
 {
     if (!bIsInitialized || !InInterfaceType)

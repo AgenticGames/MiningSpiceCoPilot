@@ -1,10 +1,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "RHICommandList.h"
-#include "RHIResources.h"
-#include "RenderGraphResources.h"
-#include "RHIGPUReadback.h"
+#include "ComputeOperationTypes.h"
+
+// Forward declarations for simplified implementation
+class FSimulatedGPUBuffer;
+class FSimulatedGPUReadback;
 
 /**
  * Manages zero-copy resources for efficient CPU/GPU data sharing
@@ -23,21 +24,21 @@ public:
     void* PinMemory(void* CPUAddress, SIZE_T Size, uint32& OutBufferIndex);
     
     // Get GPU buffer for pinned memory
-    FRHIGPUBufferReadback* GetGPUBuffer(uint32 BufferIndex);
+    FSimulatedGPUReadback* GetGPUBuffer(uint32 BufferIndex);
     
     // Release pinned memory
     void ReleaseMemory(uint32 BufferIndex);
     
     // Resource state transitions
-    void TransitionResource(FRHIResource* Resource, ERHIAccess NewAccess, ERHIPipeline Pipeline);
+    void TransitionResource(FSimplifiedResource* Resource, ESimplifiedAccess NewAccess, ESimplifiedPipeline Pipeline);
     
     // Memory usage tracking
     uint64 GetTotalAllocatedMemory() const;
     
     // Buffer creation and management
-    FRHIBuffer* CreateBuffer(SIZE_T Size, EBufferUsageFlags Usage, FRHIResourceCreateInfo& CreateInfo);
-    FRHIUnorderedAccessView* CreateUAV(FRHIBuffer* Buffer, EPixelFormat Format = PF_Unknown);
-    FRHIShaderResourceView* CreateSRV(FRHIBuffer* Buffer, EPixelFormat Format = PF_Unknown);
+    FSimulatedGPUBuffer* CreateBuffer(SIZE_T Size, uint32 UsageFlags);
+    void* CreateUAV(FSimulatedGPUBuffer* Buffer, uint32 Format = 0);
+    void* CreateSRV(FSimulatedGPUBuffer* Buffer, uint32 Format = 0);
     
 private:
     // Structure to track pinned memory
@@ -45,7 +46,7 @@ private:
     {
         void* CPUAddress;
         SIZE_T Size;
-        FRHIGPUBufferReadback* GPUBuffer;
+        FSimulatedGPUReadback* GPUBuffer;
         double LastUsedTime;
         uint32 UsageCount;
     };
@@ -57,8 +58,8 @@ private:
     uint64 TotalAllocatedBytes;
     
     // Resource state tracking
-    TMap<FRHIResource*, ERHIAccess> ResourceAccessMap;
-    TMap<FRHIResource*, ERHIPipeline> ResourcePipelineMap;
+    TMap<FSimplifiedResource*, ESimplifiedAccess> ResourceAccessMap;
+    TMap<FSimplifiedResource*, ESimplifiedPipeline> ResourcePipelineMap;
     
     // Helper methods
     FString GetBufferName(uint32 Index) const;

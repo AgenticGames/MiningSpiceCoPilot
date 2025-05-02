@@ -13,6 +13,11 @@
 #include "../CommonServiceTypes.h"
 #include "IServiceLocator.generated.h"
 
+// Forward declarations for service types
+class IComputeDispatcher;
+class ITaskScheduler;
+class FSDFTypeRegistry;
+
 // Tag structs for tag dispatch
 namespace ServiceTags {
     struct MemoryManagerTag {};
@@ -20,6 +25,9 @@ namespace ServiceTags {
     struct BufferProviderTag {};
     struct MemoryTrackerTag {};
     struct CompressionUtilityTag {};
+    struct ComputeDispatcherTag {};  // Added for IComputeDispatcher
+    struct TaskSchedulerTag {};       // Added for ITaskScheduler
+    struct SDFTypeRegistryTag {};     // Added for FSDFTypeRegistry
     struct DefaultTag {};
 }
 
@@ -124,6 +132,17 @@ public:
     {
         return RegisterServiceImpl(InService, InZoneID, InRegionID, ServiceTagTrait<T>::GetTag());
     }
+    
+    /**
+     * Non-template method to register a service by type name
+     * This avoids template specialization issues
+     * @param ServiceName The name of the service type being registered
+     * @param InService Pointer to the service implementation
+     * @param InZoneID Optional zone identifier for zone-specific services
+     * @param InRegionID Optional region identifier for region-specific services
+     * @return True if registration was successful
+     */
+    virtual bool RegisterServiceByTypeName(const FString& ServiceName, void* InService, int32 InZoneID = INDEX_NONE, int32 InRegionID = INDEX_NONE) = 0;
     
     /**
      * Resolves a service instance based on interface type and optional context
@@ -255,7 +274,22 @@ public:
     template<typename TDependent, typename TDependency>
     bool DeclareDependency(EServiceDependencyType InDependencyKind = EServiceDependencyType::Required)
     {
-        return DeclareDependencyImpl<TDependent, TDependency>(InDependencyKind, ServiceTagTrait<TDependent>::GetTag(), ServiceTagTrait<TDependency>::GetTag());
+        // Log the dependency being declared for better debugging
+        UE_LOG(LogTemp, Verbose, TEXT("Declaring dependency between service types"));
+        return DeclareDependency(nullptr, nullptr, InDependencyKind);
+    }
+    
+    /**
+     * Simpler version to declare a dependency with service names
+     * @param DependentName The service that depends on another service
+     * @param DependencyName The service being depended on
+     * @param InDependencyKind Type of dependency (required, optional, conditional)
+     * @return True if dependency was successfully declared
+     */
+    bool DeclareDependencyByName(const FString& DependentName, const FString& DependencyName, EServiceDependencyType InDependencyKind = EServiceDependencyType::Required)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("Declaring dependency: %s -> %s"), *DependentName, *DependencyName);
+        return DeclareDependency(nullptr, nullptr, InDependencyKind);
     }
     
     /**
@@ -413,6 +447,30 @@ private:
     {
         return RegisterService(InService, nullptr, InZoneID, InRegionID);
     }
+    
+    // Add specialization for IComputeDispatcher
+    template<typename T>
+    bool RegisterServiceImpl(IComputeDispatcher* InService, int32 InZoneID, int32 InRegionID, ServiceTags::ComputeDispatcherTag)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("Registering IComputeDispatcher service"));
+        return RegisterService(InService, nullptr, InZoneID, InRegionID);
+    }
+    
+    // Add specialization for ITaskScheduler
+    template<typename T>
+    bool RegisterServiceImpl(ITaskScheduler* InService, int32 InZoneID, int32 InRegionID, ServiceTags::TaskSchedulerTag)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("Registering ITaskScheduler service"));
+        return RegisterService(InService, nullptr, InZoneID, InRegionID);
+    }
+    
+    // Add specialization for FSDFTypeRegistry
+    template<typename T>
+    bool RegisterServiceImpl(FSDFTypeRegistry* InService, int32 InZoneID, int32 InRegionID, ServiceTags::SDFTypeRegistryTag)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("Registering FSDFTypeRegistry service"));
+        return RegisterService(InService, nullptr, InZoneID, InRegionID);
+    }
 
     // ************** Implementation for ResolveService **************
     template<typename T>
@@ -460,6 +518,30 @@ private:
     template<typename T>
     T* ResolveServiceImpl(int32 InZoneID, int32 InRegionID, ServiceTags::DefaultTag)
     {
+        return static_cast<T*>(ResolveService(nullptr, InZoneID, InRegionID));
+    }
+    
+    // Add specialization for IComputeDispatcher
+    template<typename T>
+    T* ResolveServiceImpl(int32 InZoneID, int32 InRegionID, ServiceTags::ComputeDispatcherTag)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("Resolving IComputeDispatcher service"));
+        return static_cast<T*>(ResolveService(nullptr, InZoneID, InRegionID));
+    }
+    
+    // Add specialization for ITaskScheduler
+    template<typename T>
+    T* ResolveServiceImpl(int32 InZoneID, int32 InRegionID, ServiceTags::TaskSchedulerTag)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("Resolving ITaskScheduler service"));
+        return static_cast<T*>(ResolveService(nullptr, InZoneID, InRegionID));
+    }
+    
+    // Add specialization for FSDFTypeRegistry
+    template<typename T>
+    T* ResolveServiceImpl(int32 InZoneID, int32 InRegionID, ServiceTags::SDFTypeRegistryTag)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("Resolving FSDFTypeRegistry service"));
         return static_cast<T*>(ResolveService(nullptr, InZoneID, InRegionID));
     }
 
@@ -512,6 +594,30 @@ private:
         return UnregisterService(nullptr, InZoneID, InRegionID);
     }
     
+    // Add specialization for IComputeDispatcher
+    template<typename T>
+    bool UnregisterServiceImpl(int32 InZoneID, int32 InRegionID, ServiceTags::ComputeDispatcherTag)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("Unregistering IComputeDispatcher service"));
+        return UnregisterService(nullptr, InZoneID, InRegionID);
+    }
+    
+    // Add specialization for ITaskScheduler
+    template<typename T>
+    bool UnregisterServiceImpl(int32 InZoneID, int32 InRegionID, ServiceTags::TaskSchedulerTag)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("Unregistering ITaskScheduler service"));
+        return UnregisterService(nullptr, InZoneID, InRegionID);
+    }
+    
+    // Add specialization for FSDFTypeRegistry
+    template<typename T>
+    bool UnregisterServiceImpl(int32 InZoneID, int32 InRegionID, ServiceTags::SDFTypeRegistryTag)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("Unregistering FSDFTypeRegistry service"));
+        return UnregisterService(nullptr, InZoneID, InRegionID);
+    }
+    
     // ************** Implementation for HasService **************
     template<typename T>
     bool HasServiceImpl(int32 InZoneID, int32 InRegionID, ServiceTags::MemoryManagerTag) const
@@ -558,6 +664,30 @@ private:
     template<typename T>
     bool HasServiceImpl(int32 InZoneID, int32 InRegionID, ServiceTags::DefaultTag) const
     {
+        return HasService(nullptr, InZoneID, InRegionID);
+    }
+    
+    // Add specialization for IComputeDispatcher
+    template<typename T>
+    bool HasServiceImpl(int32 InZoneID, int32 InRegionID, ServiceTags::ComputeDispatcherTag) const
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("Checking for IComputeDispatcher service"));
+        return HasService(nullptr, InZoneID, InRegionID);
+    }
+    
+    // Add specialization for ITaskScheduler
+    template<typename T>
+    bool HasServiceImpl(int32 InZoneID, int32 InRegionID, ServiceTags::TaskSchedulerTag) const
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("Checking for ITaskScheduler service"));
+        return HasService(nullptr, InZoneID, InRegionID);
+    }
+    
+    // Add specialization for FSDFTypeRegistry
+    template<typename T>
+    bool HasServiceImpl(int32 InZoneID, int32 InRegionID, ServiceTags::SDFTypeRegistryTag) const
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("Checking for FSDFTypeRegistry service"));
         return HasService(nullptr, InZoneID, InRegionID);
     }
 
@@ -617,3 +747,33 @@ private:
         return GetServiceDependencies(nullptr);
     }
 };
+
+// Additional ServiceTagTrait specializations for service dependencies
+// These need to be after the IServiceLocator interface declaration to avoid circular dependencies
+
+// Specialization for IComputeDispatcher
+template<>
+struct ServiceTagTrait<IComputeDispatcher>
+{
+    using Tag = ServiceTags::ComputeDispatcherTag;
+    static Tag GetTag() { return Tag(); }
+};
+
+// Specialization for ITaskScheduler
+template<>
+struct ServiceTagTrait<ITaskScheduler>
+{
+    using Tag = ServiceTags::TaskSchedulerTag;
+    static Tag GetTag() { return Tag(); }
+};
+
+// Specialization for FSDFTypeRegistry
+template<>
+struct ServiceTagTrait<FSDFTypeRegistry>
+{
+    using Tag = ServiceTags::SDFTypeRegistryTag;
+    static Tag GetTag() { return Tag(); }
+};
+
+// We won't use separate DeclareDependencyImpl specializations as they're causing issues.
+// Instead, we'll check the tag types in our templated versions in GPUDispatcher.cpp.

@@ -35,8 +35,10 @@ public:
     virtual bool QueryOperationStatus(int64 OperationId, FOperationStatus& OutStatus) override;
     virtual FComputeCapabilities GetCapabilities() const override;
     virtual bool DispatchComputeAsync(const FComputeOperation& Operation, TFunction<void(bool, float)> CompletionCallback) override;
+    // Implement the IComputeDispatcher interface method for SDF operations 
     virtual bool DispatchSDFOperation(int32 OpType, const FBox& Bounds, 
         const TArray<FRDGBufferRef>& InputBuffers, FRDGBufferRef OutputBuffer) override;
+    // Implement the IComputeDispatcher interface method for material operations
     virtual bool DispatchMaterialOperation(int32 MaterialChannelId, const FBox& Bounds, 
         const TArray<FRDGBufferRef>& InputBuffers, FRDGBufferRef OutputBuffer) override;
     virtual bool FlushOperations(bool bWaitForCompletion) override;
@@ -66,11 +68,17 @@ public:
                           
     // Zero-copy buffer management
     void* PinMemoryForGPU(void* CPUAddress, SIZE_T Size, uint32& OutBufferIndex);
-    FRHIGPUBufferReadback* GetGPUBuffer(uint32 BufferIndex);
+    class FSimulatedGPUReadback* GetGPUBuffer(uint32 BufferIndex);
     void ReleaseMemory(uint32 BufferIndex);
     
     // Log and debug
     void LogOperationCompletion(const FComputeOperation& Operation, bool bSuccess, float DurationMs);
+    
+    // Calculate the size of data required for an operation (in bytes)
+    uint32 CalculateOperationDataSize(const FComputeOperation& Operation) const;
+    
+    // Process an operation directly on the GPU
+    bool ProcessOnGPU(const FComputeOperation& Operation);
     
 private:
     // Internal implementation methods
@@ -102,6 +110,14 @@ private:
     FCriticalSection OperationLock;
     FThreadSafeCounter64 NextOperationId;
     FThreadSafeBool bIsInitialized;
+    
+    // Helper to safely get bIsInitialized value
+    bool IsInitialized() const 
+    {
+        // We can access the underlying int32 and check if it's non-zero
+        // This avoids the GetValue() private method issue
+        return bIsInitialized != 0;
+    }
     
     // Performance tracking
     TArray<FOperationMetrics> PerformanceHistory;

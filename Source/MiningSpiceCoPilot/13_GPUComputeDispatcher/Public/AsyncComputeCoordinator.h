@@ -1,8 +1,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "RHICommandList.h"
 #include "ComputeOperationTypes.h"
+
+// Forward declarations for simplified RHI-free implementation
+class FSimulatedGPUFence;
+class FSimulatedComputeCommandList;
 
 /**
  * Asynchronous compute scheduling for non-critical SDF updates
@@ -46,22 +49,22 @@ private:
     bool CanScheduleMoreOperations() const;
     
     // Fence management
-    FRHIGPUFence* AddFence(const TCHAR* Name);
-    bool IsFenceComplete(FRHIGPUFence* Fence) const;
-    void WaitForFence(FRHIGPUFence* Fence);
+    FSimulatedGPUFence* AddFence(const TCHAR* Name);
+    bool IsFenceComplete(FSimulatedGPUFence* Fence) const;
+    void WaitForFence(FSimulatedGPUFence* Fence);
     void CleanupFences();
     
     // Resource management
     void CheckForStaleOperations();
-    FRHIComputeCommandList* GetCommandList();
+    FSimulatedComputeCommandList* GetCommandList();
     
     // Member variables
     bool bAsyncComputeSupported;
     TMap<EAsyncPriority, TArray<FPendingAsyncOperation>> PriorityQueues;
     TMap<int64, FOperationState> PendingOperations;
     TMap<int64, TFunction<void()>> CompletionCallbacks;
-    TMap<int64, FRHIGPUFence*> OperationFences;
-    TArray<FRHIGPUFence*> CompletedFences;
+    TMap<int64, FSimulatedGPUFence*> OperationFences;
+    TArray<FSimulatedGPUFence*> CompletedFences;
     float FrameBudgetMS;
     FCriticalSection QueueLock;
     FThreadSafeCounter64 NextOperationId;

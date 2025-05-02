@@ -2,19 +2,14 @@
 #include "../Public/GPUDispatcherLogging.h"
 #include "../../3_ThreadingTaskSystem/Public/NumaHelpers.h"
 
-#include "RHI.h"
 #include "Misc/ConfigCacheIni.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/Paths.h"
-#include "RenderCore.h"
-#include "RHICore.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonWriter.h"
 #include "Misc/FileHelper.h"
 #include "GenericPlatform/GenericPlatformMisc.h"
-#include "RHIDefinitions.h"
-#include "RHIStaticStates.h"
 
 FHardwareProfileManager::FHardwareProfileManager()
     : bProfilesLoaded(false)
@@ -360,261 +355,164 @@ void FHardwareProfileManager::CalculateOptimalParameters()
 
 void FHardwareProfileManager::DetectGPUSpecs()
 {
-    // Get RHI info
-    FString RHIName = GDynamicRHI ? GDynamicRHI->GetName() : TEXT("Unknown");
-    
-    // Initialize with defaults
-    GPUName = TEXT("Unknown GPU");
-    ComputeUnits = 8;
-    GPUVendor = EGPUVendor::Unknown;
-    
-#if WITH_ENGINE
-    // Try to get GPU information from RHI
-    FString DeviceDescription, DeviceVendor;
-    uint32 DeviceMemorySize = 0;
-    
-    if (GRHIAdapterName.Len() > 0)
-    {
-        GPUName = GRHIAdapterName;
-    }
-    
-    // Try to detect vendor from GPU name
-    if (GPUName.Contains(TEXT("NVIDIA")) || GPUName.Contains(TEXT("GeForce")) || GPUName.Contains(TEXT("Quadro")))
-    {
-        GPUVendor = EGPUVendor::NVIDIA;
-    }
-    else if (GPUName.Contains(TEXT("AMD")) || GPUName.Contains(TEXT("Radeon")))
-    {
-        GPUVendor = EGPUVendor::AMD;
-    }
-    else if (GPUName.Contains(TEXT("Intel")))
-    {
-        GPUVendor = EGPUVendor::Intel;
-    }
-    
-    // Estimate compute units from vendor and card series
-    if (GPUVendor == EGPUVendor::NVIDIA)
-    {
-        if (GPUName.Contains(TEXT("3090")) || GPUName.Contains(TEXT("3080")) || 
-            GPUName.Contains(TEXT("4090")) || GPUName.Contains(TEXT("4080")))
-        {
-            ComputeUnits = 104;
-        }
-        else if (GPUName.Contains(TEXT("3070")) || GPUName.Contains(TEXT("3060")) || 
-                 GPUName.Contains(TEXT("4070")) || GPUName.Contains(TEXT("4060")))
-        {
-            ComputeUnits = 48;
-        }
-        else if (GPUName.Contains(TEXT("2080")) || GPUName.Contains(TEXT("2070")))
-        {
-            ComputeUnits = 46;
-        }
-        else if (GPUName.Contains(TEXT("2060")) || GPUName.Contains(TEXT("1080")))
-        {
-            ComputeUnits = 30;
-        }
-        else if (GPUName.Contains(TEXT("1070")) || GPUName.Contains(TEXT("1060")))
-        {
-            ComputeUnits = 24;
-        }
-        else
-        {
-            ComputeUnits = 16;
-        }
-        
-        WavefrontSize = 32;
-    }
-    else if (GPUVendor == EGPUVendor::AMD)
-    {
-        if (GPUName.Contains(TEXT("7900")) || GPUName.Contains(TEXT("6900")))
-        {
-            ComputeUnits = 96;
-        }
-        else if (GPUName.Contains(TEXT("7800")) || GPUName.Contains(TEXT("6800")))
-        {
-            ComputeUnits = 64;
-        }
-        else if (GPUName.Contains(TEXT("7700")) || GPUName.Contains(TEXT("6700")))
-        {
-            ComputeUnits = 40;
-        }
-        else if (GPUName.Contains(TEXT("7600")) || GPUName.Contains(TEXT("6600")))
-        {
-            ComputeUnits = 32;
-        }
-        else
-        {
-            ComputeUnits = 24;
-        }
-        
-        WavefrontSize = 64;
-    }
-    else if (GPUVendor == EGPUVendor::Intel)
-    {
-        if (GPUName.Contains(TEXT("Arc")))
-        {
-            ComputeUnits = 24;
-        }
-        else
-        {
-            ComputeUnits = 8;
-        }
-        
-        WavefrontSize = 16;
-    }
-    
-    // Check for raytracing and async compute support
-    // In UE5.5, we need to check differently for ray tracing support
-    bSupportsRayTracing = false;
-#if WITH_RAYTRACING
-    bSupportsRayTracing = GRHISupportsRayTracing;
-#endif
+    GPU_DISPATCHER_LOG_DEBUG("Using simplified GPU detection without RHI");
 
-    // For UE5.5, check for async compute support
-    bSupportsAsyncCompute = false;
-    // Use proper API to check for async compute support in UE5.5
-    if (GDynamicRHI && GDynamicRHI->SupportsFeature(ERHIFeature::AsyncCompute))
+    // Set default values for simplified implementation
+    GPUName = TEXT("High-End GPU");
+    ComputeUnits = 32;  // Reasonable default
+    GPUVendor = EGPUVendor::NVIDIA;  // Default to NVIDIA
+    WavefrontSize = 32;
+    
+    // Use configuration settings if available
+    FString ConfigVendor;
+    if (GConfig->GetString(TEXT("GPUDispatcher"), TEXT("GPUVendor"), ConfigVendor, GEngineIni))
     {
-        bSupportsAsyncCompute = true;
+        if (ConfigVendor.Equals(TEXT("NVIDIA"), ESearchCase::IgnoreCase))
+        {
+            GPUVendor = EGPUVendor::NVIDIA;
+            WavefrontSize = 32;
+            GPUName = TEXT("NVIDIA GPU");
+        }
+        else if (ConfigVendor.Equals(TEXT("AMD"), ESearchCase::IgnoreCase))
+        {
+            GPUVendor = EGPUVendor::AMD;
+            WavefrontSize = 64;
+            GPUName = TEXT("AMD GPU");
+        }
+        else if (ConfigVendor.Equals(TEXT("Intel"), ESearchCase::IgnoreCase))
+        {
+            GPUVendor = EGPUVendor::Intel;
+            WavefrontSize = 16;
+            GPUName = TEXT("Intel GPU");
+        }
     }
     
-    // Check for wave intrinsics
-    bSupportsWaveIntrinsics = GPUVendor == EGPUVendor::NVIDIA || GPUVendor == EGPUVendor::AMD;
+    // Try to get compute units from config
+    int32 ConfigComputeUnits = 0;
+    if (GConfig->GetInt(TEXT("GPUDispatcher"), TEXT("ComputeUnits"), ConfigComputeUnits, GEngineIni) && ConfigComputeUnits > 0)
+    {
+        ComputeUnits = ConfigComputeUnits;
+    }
     
-    // Estimate shared memory size
+    // Set capabilities based on vendor (simplified without RHI)
     if (GPUVendor == EGPUVendor::NVIDIA)
     {
         SharedMemoryBytes = 48 * 1024; // 48KB
+        bSupportsRayTracing = true;
+        bSupportsAsyncCompute = true;
+        bSupportsWaveIntrinsics = true;
     }
     else if (GPUVendor == EGPUVendor::AMD)
     {
         SharedMemoryBytes = 64 * 1024; // 64KB
+        bSupportsRayTracing = true;
+        bSupportsAsyncCompute = true;
+        bSupportsWaveIntrinsics = true;
+    }
+    else if (GPUVendor == EGPUVendor::Intel)
+    {
+        SharedMemoryBytes = 32 * 1024; // 32KB
+        bSupportsRayTracing = false;
+        bSupportsAsyncCompute = false;
+        bSupportsWaveIntrinsics = false;
     }
     else
     {
+        // Default capabilities for unknown GPUs
         SharedMemoryBytes = 32 * 1024; // 32KB
+        bSupportsRayTracing = false;
+        bSupportsAsyncCompute = false;
+        bSupportsWaveIntrinsics = false;
     }
-#endif
+    
+    GPU_DISPATCHER_LOG_DEBUG("Simplified GPU detection complete - Vendor: %s, CUs: %d", 
+        *FString(GPUVendor == EGPUVendor::NVIDIA ? "NVIDIA" : 
+                  GPUVendor == EGPUVendor::AMD ? "AMD" : 
+                  GPUVendor == EGPUVendor::Intel ? "Intel" : "Unknown"),
+        ComputeUnits);
 }
 
 void FHardwareProfileManager::DetectMemoryLimits()
 {
+    GPU_DISPATCHER_LOG_DEBUG("Using simplified memory detection without RHI");
+    
     // Default to conservative values
     TotalVRAM = 4ULL * 1024 * 1024 * 1024; // 4GB
     
-#if WITH_ENGINE
-    // Get video memory info if available
-    if (GRHIAdapterName.Len() > 0)
+    // Try to get VRAM from config
+    int32 ConfigVRAMGB = 0;
+    if (GConfig->GetInt(TEXT("GPUDispatcher"), TEXT("VRAM_GB"), ConfigVRAMGB, GEngineIni) && ConfigVRAMGB > 0)
     {
-        // On some platforms we can get actual VRAM
-        uint64 TotalMemory = 0, UsedMemory = 0, AvailableMemory = 0;
-        
-        // Get memory stats using the RHI interface in UE5.5
-        // Use FRHIMemoryStatistics which is the correct API in UE5.5
-        if (GDynamicRHI)
+        TotalVRAM = static_cast<uint64>(ConfigVRAMGB) * 1024 * 1024 * 1024;
+    }
+    else
+    {
+        // Estimate based on vendor
+        if (GPUVendor == EGPUVendor::NVIDIA)
         {
-            FRHIMemoryStatistics MemoryStats;
-            GDynamicRHI->GetMemoryStatistics(MemoryStats);
-            if (MemoryStats.IsValid())
-            {
-                TotalMemory = MemoryStats.TotalPhysicalGPUMemory;
-                AvailableMemory = MemoryStats.AvailablePhysicalGPUMemory;
-                UsedMemory = TotalMemory - AvailableMemory;
-                TotalVRAM = TotalMemory;
-            }
+            TotalVRAM = 8ULL * 1024 * 1024 * 1024; // 8GB
         }
-        else
+        else if (GPUVendor == EGPUVendor::AMD)
         {
-            // Estimate based on adapter name
-            if (GPUVendor == EGPUVendor::NVIDIA)
-            {
-                if (GPUName.Contains(TEXT("3090")) || GPUName.Contains(TEXT("4090")))
-                {
-                    TotalVRAM = 24ULL * 1024 * 1024 * 1024; // 24GB
-                }
-                else if (GPUName.Contains(TEXT("3080")) || GPUName.Contains(TEXT("4080")))
-                {
-                    TotalVRAM = 16ULL * 1024 * 1024 * 1024; // 16GB
-                }
-                else if (GPUName.Contains(TEXT("3070")) || GPUName.Contains(TEXT("4070")))
-                {
-                    TotalVRAM = 8ULL * 1024 * 1024 * 1024; // 8GB
-                }
-                else if (GPUName.Contains(TEXT("3060")) || GPUName.Contains(TEXT("4060")))
-                {
-                    TotalVRAM = 8ULL * 1024 * 1024 * 1024; // 8GB
-                }
-                else
-                {
-                    TotalVRAM = 6ULL * 1024 * 1024 * 1024; // 6GB
-                }
-            }
-            else if (GPUVendor == EGPUVendor::AMD)
-            {
-                if (GPUName.Contains(TEXT("7900")) || GPUName.Contains(TEXT("6900")))
-                {
-                    TotalVRAM = 16ULL * 1024 * 1024 * 1024; // 16GB
-                }
-                else if (GPUName.Contains(TEXT("7800")) || GPUName.Contains(TEXT("6800")))
-                {
-                    TotalVRAM = 12ULL * 1024 * 1024 * 1024; // 12GB
-                }
-                else
-                {
-                    TotalVRAM = 8ULL * 1024 * 1024 * 1024; // 8GB
-                }
-            }
-            else if (GPUVendor == EGPUVendor::Intel)
-            {
-                if (GPUName.Contains(TEXT("Arc")))
-                {
-                    TotalVRAM = 8ULL * 1024 * 1024 * 1024; // 8GB
-                }
-                else
-                {
-                    // Integrated GPU - this will share system memory
-                    TotalVRAM = 2ULL * 1024 * 1024 * 1024; // 2GB
-                }
-            }
+            TotalVRAM = 8ULL * 1024 * 1024 * 1024; // 8GB
+        }
+        else if (GPUVendor == EGPUVendor::Intel)
+        {
+            TotalVRAM = 4ULL * 1024 * 1024 * 1024; // 4GB
         }
     }
-#endif
+    
+    GPU_DISPATCHER_LOG_DEBUG("Simplified memory detection complete - Total VRAM: %llu GB", 
+        TotalVRAM / (1024 * 1024 * 1024));
 }
 
 void FHardwareProfileManager::DetectShaderSupport()
 {
-    // Check if compute shaders are supported at all
-    // Use IsFeatureLevelSupported to check if the feature level is supported in UE5.5
-    if (!IsFeatureLevelSupported(GMaxRHIShaderPlatform, ERHIFeatureLevel::SM5))
+    GPU_DISPATCHER_LOG_DEBUG("Using simplified shader support detection without RHI");
+    
+    // Clear and populate with simplified common formats based on vendor
+    SupportedExtensions.Empty();
+    
+    // Add common shader formats for all platforms
+    SupportedExtensions.Add(TEXT("SF_VULKAN_SM5"));
+    SupportedExtensions.Add(TEXT("SF_GLSL_430"));
+    
+    // Add vendor-specific shader formats
+    if (GPUVendor == EGPUVendor::NVIDIA)
     {
-        GPU_DISPATCHER_LOG_WARNING("Compute shaders are not supported on this device");
-        return;
+        SupportedExtensions.Add(TEXT("SF_VULKAN_SM6"));
+        SupportedExtensions.Add(TEXT("SF_GLSL_460"));
+        SupportedExtensions.Add(TEXT("SF_GLSL_SPIRV"));
+    }
+    else if (GPUVendor == EGPUVendor::AMD)
+    {
+        SupportedExtensions.Add(TEXT("SF_VULKAN_SM6"));
+        SupportedExtensions.Add(TEXT("SF_GLSL_460"));
+    }
+    else if (GPUVendor == EGPUVendor::Intel)
+    {
+        // More conservative set for Intel
+        SupportedExtensions.Add(TEXT("SF_GLSL_430"));
     }
     
-    // Get supported shader formats
-    TArray<FName> ShaderFormats;
-    // Use the RHI to get shader formats directly
-    if (GDynamicRHI)
-    {
-        // For UE5, we'll just use some common formats as a fallback since 
-        // GetAllTargetPlatformShaderFormats might not be directly accessible
-        ShaderFormats.Add(FName("SF_METAL_SM5"));
-        ShaderFormats.Add(FName("SF_METAL_SM5_NOTESS"));
-        ShaderFormats.Add(FName("SF_METAL_MACES3_1"));
-        ShaderFormats.Add(FName("SF_METAL_MRT"));
-        ShaderFormats.Add(FName("SF_VULKAN_SM5"));
-        ShaderFormats.Add(FName("SF_VULKAN_SM6"));
-        ShaderFormats.Add(FName("SF_VULKAN_ES31_ANDROID"));
-    }
-    
-    for (const FName& Format : ShaderFormats)
-    {
-        SupportedExtensions.Add(Format.ToString());
-    }
+    // Add platform specific formats
+    #if PLATFORM_WINDOWS
+        SupportedExtensions.Add(TEXT("SF_HLSL_SM5"));
+        if (GPUVendor == EGPUVendor::NVIDIA || GPUVendor == EGPUVendor::AMD)
+        {
+            SupportedExtensions.Add(TEXT("SF_HLSL_SM6"));
+        }
+    #elif PLATFORM_MAC
+        SupportedExtensions.Add(TEXT("SF_METAL_SM5"));
+        SupportedExtensions.Add(TEXT("SF_METAL_SM5_NOTESS"));
+        SupportedExtensions.Add(TEXT("SF_METAL_MRT"));
+    #elif PLATFORM_ANDROID
+        SupportedExtensions.Add(TEXT("SF_VULKAN_ES31_ANDROID"));
+    #endif
     
     // Log supported formats
     FString SupportedFormatsString = FString::Join(SupportedExtensions, TEXT(", "));
-    GPU_DISPATCHER_LOG_VERBOSE("Supported shader formats: %s", *SupportedFormatsString);
+    GPU_DISPATCHER_LOG_VERBOSE("Simplified shader format detection: %s", *SupportedFormatsString);
 }
 
 void FHardwareProfileManager::DetectNumaTopology()

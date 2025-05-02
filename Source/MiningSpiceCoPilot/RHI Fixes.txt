@@ -1,0 +1,406 @@
+RHI Fixes Required:
+
+ComputeShaderUtils.h:
+- Line 67: Error C2660: 'FRHIComputeCommandList::SetShaderParameters': function does not take 2 arguments
+  Note: See declaration in RHICommandList.h(2696)
+  Context: Trying to match argument list '(FRHIComputeShader *, FRHIUniformBuffer *)'
+- Line 241: Error C2065: 'FComputePipelineStateInitializer': undeclared identifier
+- Line 241: Error C2146: syntax error: missing ';' before identifier 'PipelineInitializer'
+- Line 241-245: Error C2065: 'PipelineInitializer': undeclared identifier (multiple instances)
+
+FIXES FOR ComputeShaderUtils.h (UE 5.5.1):
+1. SetShaderParameters signature change:
+   - In UE 5.5.1, this method now only takes a uniform buffer parameter instead of both shader and buffer
+   - Change: RHICmdList.SetShaderParameters(ShaderRHI, ParametersUB) → RHICmdList.SetShaderParameters(ParametersUB)
+   - The shader binding context is now inferred from the previous SetComputePipelineState call
+   - Example implementation:
+     ```cpp
+     // Old (UE 5.4):
+     FComputeShaderRHIRef ComputeShader = GetComputeShader();
+     RHICmdList.SetComputeShader(ComputeShader);
+     RHICmdList.SetShaderParameters(ComputeShader, UniformBuffer);
+     
+     // New (UE 5.5.1):
+     FComputeShaderRHIRef ComputeShader = GetComputeShader();
+     // Set the pipeline state first, which provides context for parameter binding
+     FComputePipelineStateDesc PipelineDesc;
+     PipelineDesc.ComputeShader = ComputeShader;
+     RHICmdList.SetComputePipelineState(PipelineStateCache::GetAndOrCreateComputePipelineState(RHICmdList, PipelineDesc));
+     // Now just pass the uniform buffer - shader context is already established
+     RHICmdList.SetShaderParameters(UniformBuffer);
+     ```
+   - IMPORTANT: Always ensure SetComputePipelineState is called BEFORE SetShaderParameters in UE 5.5.1
+
+2. FComputePipelineStateInitializer replacement:
+   - This class has been replaced with FComputePipelineStateDesc in UE 5.5.1
+   - Update code to use:
+     ```cpp
+     FComputePipelineStateDesc PipelineDesc;
+     PipelineDesc.ComputeShader = ShaderRHI;
+     
+     // Get or create the pipeline state using UE5.5.1 compatible API
+     return PipelineStateCache::GetAndOrCreateComputePipelineState(RHICmdList, PipelineDesc);
+     ```
+   - FComputePipelineStateDesc is found in PipelineStateCache.h, so you may need to add this include
+   - The API is now more consistent with graphics pipeline state creation
+   - PipelineStateCache handles caching and reuse of pipeline states for better performance
+   - Optional: You can add debug names to pipeline states with:
+     ```cpp
+     PipelineDesc.ComputeShader = ShaderRHI;
+     #if !UE_BUILD_SHIPPING
+     PipelineDesc.DebugName = TEXT("MyComputeShader");
+     #endif
+     ```
+
+ZeroCopyResourceManager.cpp:
+- Line 199: Error C2061: syntax error: identifier 'ERHIBufferUsageFlags'
+- Line 200: Error C2653: 'ERHIResourceState': is not a class or namespace name
+- Line 203: Error C3861: 'RHICreateBuffer': identifier not found
+- Line 221: Error C3861: 'RHICreateUnorderedAccessView': identifier not found
+- Line 236: Error C3861: 'RHICreateShaderResourceView': identifier not found
+
+FIXES FOR ZeroCopyResourceManager.cpp (UE 5.5.1):
+1. ERHIBufferUsageFlags change:
+   - This enum has been moved to a namespace in UE 5.5.1
+   - Use: RHI::EBufferUsageFlags or EBufferUsageFlags (if using appropriate namespace)
+   - You may need to add: using namespace RHI; or explicitly prefix with RHI::
+   - Complete example:
+     ```cpp
+     // Old (UE 5.4):
+     ERHIBufferUsageFlags BufferFlags = ERHIBufferUsageFlags::ShaderResource | ERHIBufferUsageFlags::UnorderedAccess;
+     
+     // New (UE 5.5.1) Option 1 - explicit namespace:
+     RHI::EBufferUsageFlags BufferFlags = RHI::EBufferUsageFlags::ShaderResource | RHI::EBufferUsageFlags::UnorderedAccess;
+     
+     // New (UE 5.5.1) Option 2 - with using statement:
+     using namespace RHI;
+     EBufferUsageFlags BufferFlags = EBufferUsageFlags::ShaderResource | EBufferUsageFlags::UnorderedAccess;
+     ```
+   - Include "RHI.h" before using these types
+
+2. ERHIResourceState change:
+   - This has been renamed or moved to a namespace
+   - Use: RHI::EResourceState or EResourceState (if using appropriate namespace)
+   - Similar approach as with EBufferUsageFlags
+   - Example:
+     ```cpp
+     // Old (UE 5.4):
+     ERHIResourceState InitialState = ERHIResourceState::SRVCompute;
+     
+     // New (UE 5.5.1):
+     RHI::EResourceState InitialState = RHI::EResourceState::SRVCompute;
+     ```
+
+3. Buffer and view creation changes:
+   - Direct RHI functions have been replaced with factory methods on the RHI device
+   - Replace:
+     ```cpp
+     // Old (UE 5.4):
+     FBufferRHIRef Buffer = RHICreateBuffer(...);
+     
+     // New (UE 5.5.1) - Option 1 - Using GDynamicRHI:
+     FRHIBuffer* Buffer = GDynamicRHI->RHICreateBuffer(Size, BufferFlags, Stride, InitialState, CreateInfo);
+     
+     // New (UE 5.5.1) - Option 2 - Using command list (preferred in most cases):
+     FRHIBuffer* Buffer = RHICmdList.CreateBuffer(
+         Size,            // Size in bytes
+         BufferFlags,     // RHI::EBufferUsageFlags
+         Stride,          // Stride (0 for byte address buffer)
+         InitialState,    // RHI::EResourceState
+         CreateInfo       // FRHIResourceCreateInfo
+     );
+     
+     // For UAV/SRV creation:
+     // Old (UE 5.4):
+     FUnorderedAccessViewRHIRef UAV = RHICreateUnorderedAccessView(Buffer, Format);
+     
+     // New (UE 5.5.1):
+     FRHIUnorderedAccessView* UAV = GDynamicRHI->RHICreateUnorderedAccessView(
+         Buffer,      // FRHIBuffer*
+         Format       // EPixelFormat
+     );
+     
+     // Similar for SRV:
+     FRHIShaderResourceView* SRV = GDynamicRHI->RHICreateShaderResourceView(
+         Buffer,      // FRHIBuffer*
+         Format       // EPixelFormat
+     );
+     ```
+   - Note the change from FBufferRHIRef to FRHIBuffer* return type
+   - This is part of a broader movement in UE 5.5 to use raw pointers for RHI resources
+   - The RHI system manages lifetime of these resources, so no manual deletion is needed
+
+HardwareProfileManager.cpp:
+- Line 476: Error C2065: 'GRHISupportsAsyncCompute': undeclared identifier
+- Line 511: Error C3861: 'RHIGetAdapterStatistics': identifier not found
+- Line 510: Error C2065: 'FGraphicsAdapterStatistics': undeclared identifier (RHI-related)
+
+FIXES FOR HardwareProfileManager.cpp (UE 5.5.1):
+1. GRHISupportsAsyncCompute replacement:
+   - This global variable has been replaced with a method call in UE 5.5.1
+   - Preferred option: GDynamicRHI->SupportsAsyncCompute()
+   - Alternative: GRHISupportsFeature(ERHIFeature::AsyncCompute)
+   - Example implementation:
+     ```cpp
+     // Old (UE 5.4):
+     bool bSupportsAsyncCompute = GRHISupportsAsyncCompute;
+     
+     // New (UE 5.5.1) - Option 1 (preferred):
+     bool bSupportsAsyncCompute = GDynamicRHI->SupportsAsyncCompute();
+     
+     // New (UE 5.5.1) - Option 2:
+     bool bSupportsAsyncCompute = GRHISupportsFeature(ERHIFeature::AsyncCompute);
+     ```
+   - Note: GRHISupportsFeature is a more generic method to query various RHI features
+
+2. Adapter statistics API changes:
+   - The structure and function have been renamed/restructured
+   - Use:
+     ```cpp
+     // Old (UE 5.4):
+     FGraphicsAdapterStatistics Stats;
+     RHIGetAdapterStatistics(Stats);
+     
+     // New (UE 5.5.1) - For general adapter info:
+     FRHIAdapterInfo AdapterInfo;
+     GDynamicRHI->GetAdapterInfo(AdapterInfo);
+     // Access properties like:
+     FString AdapterName = AdapterInfo.AdapterName;
+     uint32 VendorId = AdapterInfo.VendorId;
+     uint32 DeviceId = AdapterInfo.DeviceId;
+     
+     // New (UE 5.5.1) - For GPU statistics:
+     FRHIGPUStatistics GPUStats;
+     GDynamicRHI->GetGPUStatistics(GPUStats);
+     // Access properties like:
+     uint64 TotalMemory = GPUStats.TotalMemory;
+     uint64 UsedMemory = GPUStats.UsedMemory;
+     ```
+   - Note that the API has been split into two different functions for better organization:
+     - GetAdapterInfo() - for static adapter properties (name, IDs, etc.)
+     - GetGPUStatistics() - for dynamic statistics (memory usage, etc.)
+   - Check RHI.h for all available properties on these structures
+
+GPUDispatcher.cpp:
+- Line 248: Error C3861: 'RHICreateBuffer': identifier not found
+- Line 1064: Error C2672: 'FRDGBuilder::AddPass': no matching overloaded function found
+  Note: Multiple overloaded versions with different parameters listed in RenderGraphBuilder.h
+- Line 1421-1422: Error C2440: Cannot convert from 'initializer list' to 'FRHITransitionInfo'
+  Note: Multiple 'FRHITransitionInfo' constructor overloads with FRHIRayTracingAccelerationStructure*, 
+        FRHIBuffer*, FRHIUnorderedAccessView*, FRHITexture* parameters not accepting FRHIResource*
+
+FIXES FOR GPUDispatcher.cpp (UE 5.5.1):
+1. RHICreateBuffer replacement:
+   - Same fix as for ZeroCopyResourceManager.cpp above
+   - Use GDynamicRHI->RHICreateBuffer() or RHICmdList.CreateBuffer()
+
+2. FRDGBuilder::AddPass signature changes:
+   - The AddPass method signature has changed in UE 5.5.1
+   - Now requires RDG_EVENT_NAME macro for the pass name
+   - Updated usage:
+     ```cpp
+     // Old (UE 5.4):
+     GraphBuilder.AddPass(
+         "MyPassName",
+         ShaderParams,
+         ERDGPassFlags::Compute,
+         [ComputeShader, ShaderParams, DispatchDim](FRHIComputeCommandList& RHICmdList) {
+             // Pass logic
+         });
+     
+     // New (UE 5.5.1):
+     GraphBuilder.AddPass(
+         RDG_EVENT_NAME("MyPassName"),  // Use RDG_EVENT_NAME macro instead of direct string
+         ShaderParams,
+         ERDGPassFlags::Compute,
+         [ComputeShader, ShaderParams, DispatchDim](FRHIComputeCommandList& RHICmdList) {
+             // Pass logic
+         });
+     ```
+   - The RDG_EVENT_NAME macro enables more robust event tracking in profiling tools
+   - Optional: For conditional debug names, you can use:
+     ```cpp
+     FString PassName = FString::Printf(TEXT("MyPass_%d"), InstanceId);
+     GraphBuilder.AddPass(
+         RDG_EVENT_NAME("%s", *PassName),
+         ShaderParams,
+         ERDGPassFlags::Compute,
+         [/* captured variables */](FRHIComputeCommandList& RHICmdList) {
+             // Pass logic
+         });
+     ```
+
+3. FRHITransitionInfo constructor changes:
+   - The constructor now requires explicit resource type specification
+   - FRHIResource* is no longer accepted; you must cast to the appropriate resource type
+   - Update:
+     ```cpp
+     // Old (UE 5.4):
+     RHICmdList.Transition(FRHITransitionInfo(Resource, PreviousState, NewState));
+     
+     // New (UE 5.5.1) - Type-specific transitions:
+     // For Buffer:
+     if (FRHIBuffer* BufferResource = Resource->GetRHIBuffer())
+     {
+         RHICmdList.Transition(FRHITransitionInfo(BufferResource, PreviousState, NewState));
+     }
+     // For Texture:
+     else if (FRHITexture* TextureResource = Resource->GetRHITexture())
+     {
+         RHICmdList.Transition(FRHITransitionInfo(TextureResource, PreviousState, NewState));
+     }
+     // For UAV:
+     else if (FRHIUnorderedAccessView* UAVResource = Resource->GetRHIUnorderedAccessView())
+     {
+         RHICmdList.Transition(FRHITransitionInfo(UAVResource, PreviousState, NewState));
+     }
+     // For SRV (if needed):
+     else if (FRHIShaderResourceView* SRVResource = Resource->GetRHIShaderResourceView())
+     {
+         // Handle SRV transition if needed
+     }
+     // Additional resource types might need to be handled
+     ```
+   - This is part of UE 5.5's improved type safety for RHI resources
+   - Most common scenarios:
+     - Buffer transitions: Use BufferResource->GetRHIBuffer()
+     - Texture transitions: Use TextureResource->GetRHITexture()
+     - UAV transitions: Use UAVResource->GetRHIUnorderedAccessView()
+   - If you know the resource type in advance, cast directly:
+     ```cpp
+     RHICmdList.Transition(FRHITransitionInfo(static_cast<FRHIBuffer*>(BufferResource), PreviousState, NewState));
+     ```
+
+AsyncComputeCoordinator.cpp:
+- Line 755: Error C2679: binary '=': no operator found for TFunction with differing parameter counts
+  Context: Trying to match argument list '(TFunction<void(bool)>, TFunction<void(bool,float)>)'
+
+FIXES FOR AsyncComputeCoordinator.cpp (UE 5.5.1):
+1. TFunction parameter mismatch:
+   - The callback signatures must match exactly - functions with different parameter counts can't be assigned directly
+   - Options:
+     
+     a) Modify the receiving function to match the incoming signature (preferred if possible):
+        ```cpp
+        // Change from:
+        TFunction<void(bool)> CompletionCallback;
+        // To:
+        TFunction<void(bool, float)> CompletionCallback;
+        
+        // Then update all call sites to handle the additional parameter
+        ```
+     
+     b) Or create an adapter function (better for maintaining backward compatibility):
+        ```cpp
+        // Original callback with single parameter
+        auto OriginalCallback = [this](bool bSuccess) { 
+            // Original logic 
+        };
+        
+        // Create an adapter that converts the signatures:
+        auto AdapterCallback = [OriginalCallback](bool bSuccess, float Progress) {
+            OriginalCallback(bSuccess);  // Ignore the additional Progress parameter
+        };
+        
+        // Then use AdapterCallback where the TFunction<void(bool, float)> is expected
+        SomeFunction(AdapterCallback);
+        ```
+     
+     c) For cases with many callbacks, you might consider a helper template:
+        ```cpp
+        template<typename F>
+        auto MakeProgressAdapter(F&& Callback)
+        {
+            return [Callback = Forward<F>(Callback)](bool bSuccess, float Progress) {
+                Callback(bSuccess);
+            };
+        }
+        
+        // Usage:
+        SomeFunction(MakeProgressAdapter(OriginalCallback));
+        ```
+   
+   - If you control both the caller and callee, option (a) is usually better for long-term code health
+   - If you need to maintain compatibility with existing code, option (b) or (c) is preferred
+
+GENERAL NOTES ON UE 5.5.1 RHI CHANGES:
+1. Many direct RHI functions have been moved to method calls on RHI devices or command lists
+2. Namespace organization has changed for many RHI types, with increased use of the RHI:: namespace
+3. Pipeline state creation has been revised with new descriptor classes for better organization
+4. Resource transitions and state management has been updated for better API consistency and type safety
+5. RDG (Render Graph) API has been enhanced with RDG_EVENT_NAME for better profiling and debugging
+6. Return types have changed from *RHIRef smart pointers to raw pointers in many cases
+7. More explicit type handling is required, especially for resource transitions
+8. The API generally follows a pattern of moving from global functions to methods on specific objects
+9. Many APIs now require explicit resource type information for improved type safety
+
+DEBUGGING TIPS FOR RHI ERRORS:
+1. RHI errors often manifest at runtime rather than compile time - use RHI validation layers where possible
+2. For complex resource transitions, consider adding debug names to resources with RHI_RESOURCE_DEBUG_NAME macro
+3. For pipeline state errors, ensure you've updated all related code - pipeline state APIs often change together
+4. Use RDG_EVENT_SCOPE and RDG_EVENT_NAME consistently for better profiling information
+5. Remember that RHI API surface is one of the most frequently changing aspects of UE - updates between minor versions are common
+
+RHI-RELATED ERRORS FROM LATEST COMPILATION:
+
+ZeroCopyResourceManager.cpp:
+- Line 199: Error C2653: 'RHI': is not a class or namespace name
+- Line 200: Error C2653: 'RHI': is not a class or namespace name
+- Line 200: Error C2065: 'Undefined': undeclared identifier
+- Line 204: Error C2660: 'FDynamicRHI::RHICreateBuffer': function does not take 1 arguments
+  Note: See declaration of 'FDynamicRHI::RHICreateBuffer'
+- Line 222: Error C2660: 'FDynamicRHI::RHICreateUnorderedAccessView': function does not take 2 arguments
+  Note: See declaration of 'FDynamicRHI::RHICreateUnorderedAccessView'
+  Note: While trying to match argument list '(FRHIBuffer *, EPixelFormat)'
+- Line 237: Error C2660: 'FDynamicRHI::RHICreateShaderResourceView': function does not take 2 arguments
+  Note: See declaration of 'FDynamicRHI::RHICreateShaderResourceView'
+  Note: While trying to match argument list '(FRHIBuffer *, EPixelFormat)'
+
+ComputeShaderUtils.h:
+- Line 68: Error C2065: 'FComputePipelineStateDesc': undeclared identifier
+- Line 68: Error C2146: syntax error: missing ';' before identifier 'PipelineDesc'
+- Line 68-70: Error C2065: 'PipelineDesc': undeclared identifier (multiple instances)
+- Line 70: Error C2660: 'FRHIComputeCommandList::SetComputePipelineState': function does not take 1 arguments
+  Note: See declaration of 'FRHIComputeCommandList::SetComputePipelineState'
+- Line 73: Error C2660: 'FRHIComputeCommandList::SetShaderParameters': function does not take 1 arguments
+  Note: See declaration of 'FRHIComputeCommandList::SetShaderParameters'
+  Note: While trying to match argument list '(FRHIUniformBuffer *)'
+- Line 157-159: Error C2065: 'FComputePipelineStateDesc': undeclared identifier and related syntax errors
+- Line 253-257: Error C2065: 'FComputePipelineStateDesc': undeclared identifier and related syntax errors
+- Lines 28-29, 88-89, 122-123: Multiple errors with duplicate IMPLEMENT_TYPE_LAYOUT-related functions:
+  Error C2535: Multiple member functions already defined or declared
+  Error C2086: Multiple const variables redefined
+  Error C2953: Multiple class templates already defined
+
+HardwareProfileManager.cpp:
+- Line 471: Error C4668: 'WITH_RAYTRACING' is not defined as a preprocessor macro
+- Line 476: Error C2039: 'SupportsAsyncCompute': is not a member of 'FDynamicRHI'
+  Note: See declaration of 'FDynamicRHI'
+- Line 511: Error C2065: 'FRHIAdapterInfo': undeclared identifier
+- Line 511: Error C2146: syntax error: missing ';' before identifier 'AdapterInfo'
+- Line 512: Error C2039: 'GetAdapterInfo': is not a member of 'FDynamicRHI'
+- Line 514: Error C2065: 'FRHIGPUStatistics': undeclared identifier
+- Line 514: Error C2146: syntax error: missing ';' before identifier 'GPUStats'
+- Line 515: Error C2039: 'GetGPUStatistics': is not a member of 'FDynamicRHI'
+
+GPUDispatcher.cpp:
+- Line 34-42: Multiple syntax errors with missing semicolons before class definitions (RHI-related classes)
+- Line 252-254: Error C2653: 'RHI': is not a class or namespace name (multiple instances)
+- Line 254: Error C2065: 'SRVMask': undeclared identifier
+- Line 258: Error C2660: 'FDynamicRHI::RHICreateBuffer': function does not take 1 arguments
+  Note: While trying to match argument list '(const FRHIBufferDesc)'
+- Line 321-323: Error C2027: use of undefined type 'FConfigCacheIni' (RHI configuration related)
+- Line 934, 955: Error C2664: Cannot convert argument from 'const uint32 *'/'const int32 *' to 'void *'
+  Note: Conversion loses qualifiers (in TMemoryWriterBase<>::Serialize - used for shader parameters)
+- Line 1071: Error C2672: 'FRDGBuilder::AddPass': no matching overloaded function found
+  Note: Multiple options listed with different parameter expectations
+- Line 1429: Error C2039: 'GetRHIBuffer': is not a member of 'FRHIResource'
+- Line 1437: Error C2039: 'GetRHITexture': is not a member of 'FRHIResource'
+- Line 1445: Error C2039: 'GetRHIUnorderedAccessView': is not a member of 'FRHIResource'
+- Line 1453: Error C2039: 'GetRHIShaderResourceView': is not a member of 'FRHIResource'
+- Line 1456: Error C2440: Cannot convert from 'initializer list' to 'FRHITransitionInfo'
+  Note: Multiple constructor overloads exist but none match the provided argument types
+
+AsyncComputeCoordinator.cpp:
+- Line 321: Error C2440: 'initializing': cannot convert from 'IAsyncOperation *' to 'FAsyncTaskManager *'
+  Note: Cast from base to derived requires dynamic_cast or static_cast

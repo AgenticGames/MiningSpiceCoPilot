@@ -2,12 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/EngineTypes.h"
-#include "RHI.h"
-#include "RHIDefinitions.h"
-#include "RHIResources.h"
-#include "RHICommandList.h"
 #include "HAL/Platform.h" 
-#include "RHIStaticStates.h"
 #include "ComputeOperationTypes.generated.h"
 
 /** GPU vendor identifiers */
@@ -70,11 +65,41 @@ enum class EAsyncPriority : uint8
     Background  // Very low priority, execute when system is idle
 };
 
+/**
+ * Pipeline types (simplified without RHI)
+ */
+UENUM(BlueprintType)
+enum class ESimplifiedPipeline : uint8
+{
+    Graphics,
+    Compute,
+    AsyncCompute,
+    Copy
+};
+
+/**
+ * Resource access types (simplified without RHI)
+ */
+UENUM(BlueprintType)
+enum class ESimplifiedAccess : uint8
+{
+    None = 0,
+    SRVRead = 1,      // Shader Resource View (read)
+    UAVReadWrite = 2, // Unordered Access View (read/write)
+    RTV = 3,          // Render Target View
+    DSV = 4,          // Depth Stencil View
+    CopyDest = 5,     // Copy Destination 
+    CopySrc = 6,      // Copy Source
+    ResolveDst = 7,   // Resolve Destination
+    ResolveSrc = 8,   // Resolve Source
+    General = 9       // General Access
+};
+
 /** Resource state for tracking */
 struct FResourceState
 {
-    ERHIAccess CurrentAccess = ERHIAccess::SRVMask;
-    ERHIPipeline CurrentPipeline = ERHIPipeline::Graphics;
+    ESimplifiedAccess CurrentAccess = ESimplifiedAccess::SRVRead;
+    ESimplifiedPipeline CurrentPipeline = ESimplifiedPipeline::Graphics;
     int32 LastFrameAccessed = 0;
 };
 
@@ -264,6 +289,30 @@ struct FOperationState
     TFunction<void(bool, float)> CompletionCallback;
 };
 
+/**
+ * Simplified resource handle for tracking without RHI dependencies
+ */
+class MININGSPICECOPILOT_API FSimplifiedResource
+{
+public:
+    FSimplifiedResource() : Id(NextResourceId++) {}
+    virtual ~FSimplifiedResource() {}
+    
+    uint64 GetId() const { return Id; }
+    
+    bool operator==(const FSimplifiedResource& Other) const { return Id == Other.Id; }
+    
+    /** Get the resource type name */
+    virtual FString GetTypeName() const { return TEXT("GenericResource"); }
+    
+    /** Get the resource size in bytes */
+    virtual uint64 GetSizeBytes() const { return 0; }
+    
+private:
+    uint64 Id;
+    static uint64 NextResourceId;
+};
+
 /** Dispatch parameters for compute shaders */
 struct FDispatchParameters
 {
@@ -273,7 +322,7 @@ struct FDispatchParameters
     int32 SizeX = 0;
     int32 SizeY = 0;
     int32 SizeZ = 0;
-    TMap<class FRHIResource*, FResourceState> Resources;
+    TMap<FSimplifiedResource*, FResourceState> Resources;
 };
 
 /** Compute operation batch for grouping similar operations */
