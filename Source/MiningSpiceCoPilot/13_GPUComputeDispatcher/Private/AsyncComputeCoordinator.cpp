@@ -3,9 +3,7 @@
 #include "../../3_ThreadingTaskSystem/Public/AsyncTaskManager.h"
 #include "SimplifiedTaskExecution.h"
 #include "SimulatedGPUBuffer.h" // Include for FSimulatedGPUFence definition
-
-// Forward declaration
-class FSimulatedComputeCommandList;
+#include "SimulatedGPUClasses.h" // Include for FSimulatedComputeCommandList
 
 // Normally defined in RHI headers, we're providing our own implementation
 // to avoid RHI dependencies
@@ -823,6 +821,6 @@ void FAsyncComputeCoordinator::CheckForStaleOperations()
 FSimulatedComputeCommandList* FAsyncComputeCoordinator::GetCommandList()
 {
     // In a real implementation, this would get a command list from the RHI
-    // For simplicity, we'll return nullptr
-    return nullptr;
+    // For simplicity, we'll create a new instance
+    return new FSimulatedComputeCommandList();
 }
